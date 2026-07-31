@@ -266,7 +266,7 @@ watch(deviceId, (id) => {
   padding: 16px 20px;
   background: linear-gradient(135deg, #ecf5ff 0%, #e1efff 100%);
   border-radius: 10px;
-  border-left: 4px solid #409eff;
+  border-left: 4px solid var(--el-color-primary);
 }
 
 .back-btn {
@@ -312,7 +312,7 @@ watch(deviceId, (id) => {
   background: linear-gradient(135deg, #ecf5ff 0%, #d9ecff 100%);
   border-radius: 10px;
   border: 1px solid #b3d8ff;
-  border-left: 4px solid #409eff;
+  border-left: 4px solid var(--el-color-primary);
 }
 
 .platform-tag {
@@ -337,7 +337,7 @@ watch(deviceId, (id) => {
 }
 
 .detail-section-block:nth-of-type(4n + 3) {
-  border-left-color: #409eff;
+  border-left-color: var(--el-color-primary);
 }
 
 .detail-section-block:nth-of-type(4n) {
@@ -349,14 +349,14 @@ watch(deviceId, (id) => {
   margin-bottom: 14px;
   font-size: 15px;
   padding-bottom: 8px;
-  border-bottom: 2px solid #409eff;
+  border-bottom: 2px solid var(--el-color-primary);
   display: inline-block;
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 .detail-section:not(.detail-section-card) .detail-section-title {
   color: #303133;
-  border-bottom-color: #409eff;
+  border-bottom-color: var(--el-color-primary);
 }
 
 .detail-row {
@@ -413,7 +413,7 @@ watch(deviceId, (id) => {
   color: #303133;
   font-weight: 600;
   background: #ecf5ff !important;
-  border-bottom: 2px solid #409eff;
+  border-bottom: 2px solid var(--el-color-primary);
 }
 
 .detail-apps-table :deep(.el-table__body td) {

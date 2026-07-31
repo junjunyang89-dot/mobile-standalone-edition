@@ -11,7 +11,7 @@ const routes: RouteRecordRaw[] = [
         path: 'home',
         name: 'Home',
         component: () => import('../views/Home.vue'),
-        meta: { title: '首页' }
+        meta: { title: '工作台' }
       },
       {
         path: 'devices',
@@ -77,7 +77,7 @@ const routes: RouteRecordRaw[] = [
         path: 'codewords-agent',
         name: 'CodeWordsAgent',
         component: () => import('../views/CodeWordsAgent.vue'),
-        meta: { title: '俊俊 AI 助手' }
+        meta: { title: 'AI助手' }
       },
       {
         path: 'ui-apps',
@@ -101,7 +101,7 @@ const routes: RouteRecordRaw[] = [
         path: 'ui-flows',
         name: 'UiFlows',
         component: () => import('../views/UiFlows.vue'),
-        meta: { title: '流程编排' }
+        meta: { title: '测试用例' }
       },
       {
         path: 'page-objects',

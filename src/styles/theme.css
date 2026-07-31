@@ -1,0 +1,12 @@
+/* 侧栏分组标题 */
+.nav-section-label {
+  margin: 10px 12px 2px;
+  padding: 8px 10px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: #9aa8b8;
+  user-select: none;
+  pointer-events: none;
+  line-height: 1.3;
+}

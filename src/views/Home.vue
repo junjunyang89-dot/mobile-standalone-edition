@@ -267,7 +267,7 @@ const onCreateTaskSuccess = () => {
 .stat-value {
   font-size: 32px;
   font-weight: bold;
-  color: #409eff;
+  color: var(--el-color-primary);
   margin-bottom: 8px;
 }
 
@@ -287,11 +287,11 @@ const onCreateTaskSuccess = () => {
 }
 
 .stat-card-devices:hover {
-  border-color: #409eff;
+  border-color: var(--el-color-primary);
 }
 
 .stat-link {
-  color: #409eff;
+  color: var(--el-color-primary);
   cursor: pointer;
 }
 
@@ -311,7 +311,7 @@ const onCreateTaskSuccess = () => {
   transform: translateY(-50%);
   font-size: 48px;
   opacity: 0.12;
-  color: #409eff;
+  color: var(--el-color-primary);
   pointer-events: none; /* 不阻挡下方内容点击 */
 }
 

@@ -1196,9 +1196,9 @@ onUnmounted(() => {
 }
 
 .app-card.active {
-  border-color: #409eff;
+  border-color: var(--el-color-primary);
   background: #ecf5ff;
-  box-shadow: 0 0 0 1px #409eff inset;
+  box-shadow: 0 0 0 1px var(--el-color-primary) inset;
 }
 
 .app-card-icon {
@@ -1216,7 +1216,7 @@ onUnmounted(() => {
 }
 
 .app-card.active .app-card-icon {
-  background: linear-gradient(145deg, #409eff, #2d6db5);
+  background: linear-gradient(145deg, var(--el-color-primary), var(--el-color-primary-dark-2));
 }
 
 .app-card-name {
@@ -1235,7 +1235,7 @@ onUnmounted(() => {
   position: absolute;
   right: 10px;
   top: 10px;
-  color: #409eff;
+  color: var(--el-color-primary);
   font-size: 18px;
 }
 

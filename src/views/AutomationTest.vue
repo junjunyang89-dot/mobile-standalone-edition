@@ -52,7 +52,7 @@
                       :data="mod.scenarios"
                       stripe
                       class="scenarios-table"
-                      :header-cell-style="{ background: '#f5f7fa' }"
+                      :header-cell-style="{ background: 'var(--el-fill-color-light)' }"
                     >
                       <el-table-column prop="id" label="场景 ID" min-width="200" show-overflow-tooltip />
                       <el-table-column prop="name" label="场景名称" min-width="160" show-overflow-tooltip />
@@ -103,7 +103,7 @@
             :data="testPlans"
             stripe
             style="width: 100%"
-           :header-cell-style="{ background: \'#f5f7fa\' }"
+           :header-cell-style="{ background: 'var(--el-fill-color-light)' }"
           >
             <el-table-column prop="name" label="计划名称" min-width="140" />
             <el-table-column prop="cronExpression" label="Cron" width="140" show-overflow-tooltip />
@@ -166,7 +166,7 @@
                   </el-descriptions>
                 </div>
                 <h4 style="margin-top: 16px">步骤列表</h4>
-                <el-table v-if="settingsExecuteSteps?.length" :data="settingsExecuteSteps" stripe size="small" max-height="320" class="settings-steps-table" :header-cell-style="{ background: '#f5f7fa' }">
+                <el-table v-if="settingsExecuteSteps?.length" :data="settingsExecuteSteps" stripe size="small" max-height="320" class="settings-steps-table" :header-cell-style="{ background: 'var(--el-fill-color-light)' }">
                   <el-table-column prop="stepName" label="步骤" min-width="200" show-overflow-tooltip />
                   <el-table-column prop="status" label="状态" width="90">
                     <template #default="{ row }">
@@ -1160,7 +1160,7 @@ watch(activeTab, (name) => {
   word-break: break-all;
   line-height: 1.5;
   padding: 6px 8px;
-  background: #f5f7fa;
+  background: var(--el-fill-color-light);
   border-radius: 4px;
 }
 
@@ -1187,7 +1187,7 @@ watch(activeTab, (name) => {
   margin-bottom: 8px;
 }
 .scenarios-inner-collapse :deep(.el-collapse-item__header) {
-  background: #f0f2f5;
+  background: var(--el-bg-color-page);
   border-radius: 4px;
   padding-left: 12px;
   border: none;
@@ -1328,7 +1328,7 @@ watch(activeTab, (name) => {
 
 .task-card-icon {
   font-size: 18px;
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 .task-card-id {
@@ -1412,7 +1412,7 @@ watch(activeTab, (name) => {
 
 .execute-status.running {
   background: #ecf5ff;
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 .execute-status.success {

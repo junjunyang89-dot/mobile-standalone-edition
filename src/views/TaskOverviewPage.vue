@@ -197,7 +197,7 @@
                               </div>
                             </div>
                             <div class="perf-issue-table-wrap">
-                              <el-table :data="issueTableRows" stripe class="perf-issue-table" :header-cell-style="{ background: '#f5f7fa' }">
+                              <el-table :data="issueTableRows" stripe class="perf-issue-table" :header-cell-style="{ background: 'var(--el-fill-color-light)' }">
                                 <el-table-column prop="opLabel" label="操作类型(次数)" width="140" />
                                 <el-table-column prop="responseDelay" label="响应时延" width="90" align="center">
                                   <template #default="{ row }">
@@ -327,7 +327,7 @@
                                       @click.prevent="scrollToPerfSection('operations')"
                                     >应用启动测试 -> {{ peakCpuStep.index }}.{{ peakCpuStep.actionLabel || peakCpuStep.type }}</a>
                                   </div>
-                                  <el-table v-if="cpuSummaryRows.length" :data="cpuSummaryRows" stripe class="perf-summary-table" :show-header="true" :header-cell-style="{ background: '#f5f7fa' }">
+                                  <el-table v-if="cpuSummaryRows.length" :data="cpuSummaryRows" stripe class="perf-summary-table" :show-header="true" :header-cell-style="{ background: 'var(--el-fill-color-light)' }">
                                     <el-table-column label="类型" prop="name" width="70" />
                                     <el-table-column label="峰值(%)" width="90">
                                       <template #default="{ row }">{{ formatResourceValue(row.peak) }}</template>
@@ -369,7 +369,7 @@
                                       @click.prevent="scrollToPerfSection('operations')"
                                     >应用启动测试 -> {{ peakMemoryStep.index }}.{{ peakMemoryStep.actionLabel || peakMemoryStep.type }}</a>
                                   </div>
-                                  <el-table v-if="memorySummaryRows.length" :data="memorySummaryRows" stripe class="perf-summary-table" :show-header="true" :header-cell-style="{ background: '#f5f7fa' }">
+                                  <el-table v-if="memorySummaryRows.length" :data="memorySummaryRows" stripe class="perf-summary-table" :show-header="true" :header-cell-style="{ background: 'var(--el-fill-color-light)' }">
                                     <el-table-column label="类型" prop="name" width="70" />
                                     <el-table-column label="峰值(MB)" prop="peak" width="95" />
                                     <el-table-column label="最小值(MB)" prop="min" width="95" />
@@ -397,7 +397,7 @@
                                 </div>
                                 <div class="perf-resource-summary">
                                   <div class="perf-resource-summary-title">网络速率 (Kb/s)</div>
-                                  <el-table v-if="networkSummaryRows.length" :data="networkSummaryRows" stripe class="perf-summary-table" :show-header="true" :header-cell-style="{ background: '#f5f7fa' }">
+                                  <el-table v-if="networkSummaryRows.length" :data="networkSummaryRows" stripe class="perf-summary-table" :show-header="true" :header-cell-style="{ background: 'var(--el-fill-color-light)' }">
                                     <el-table-column label="类型" prop="name" width="100" />
                                     <el-table-column label="峰值(Kb/s)" prop="peak" width="110" />
                                     <el-table-column label="最小值(Kb/s)" prop="min" width="110" />
@@ -430,7 +430,7 @@
                                 </div>
                                 <div class="perf-resource-summary">
                                   <div class="perf-resource-summary-title">设备温度 (℃)</div>
-                                  <el-table v-if="temperatureSummaryRows.length" :data="temperatureSummaryRows" stripe class="perf-summary-table" :show-header="true" :header-cell-style="{ background: '#f5f7fa' }">
+                                  <el-table v-if="temperatureSummaryRows.length" :data="temperatureSummaryRows" stripe class="perf-summary-table" :show-header="true" :header-cell-style="{ background: 'var(--el-fill-color-light)' }">
                                     <el-table-column label="峰值(℃)" prop="peak" width="100" />
                                     <el-table-column label="最小值(℃)" prop="min" width="100" />
                                     <el-table-column label="平均值(℃)" prop="avg" width="100" />
@@ -454,7 +454,7 @@
                             stripe
                             max-height="360"
                             class="performance-operations-table"
-                           :header-cell-style="{ background: \'#f5f7fa\' }"
+                           :header-cell-style="{ background: 'var(--el-fill-color-light)' }"
                           >
                             <!-- 5.4：操作类型 = index + actionLabel，列顺序与文档一致 -->
                             <el-table-column label="操作类型" min-width="160" show-overflow-tooltip>
@@ -543,7 +543,7 @@
                 :data="overview.testResultItems"
                 stripe
                 class="rules-table"
-               :header-cell-style="{ background: \'#f5f7fa\' }"
+               :header-cell-style="{ background: 'var(--el-fill-color-light)' }"
               >
                 <el-table-column prop="testItemCategory" label="测试项分类" width="140" />
                 <el-table-column prop="testItemName" label="测试项名称" min-width="220" />
@@ -2074,7 +2074,7 @@ watch([perfReportTab, resourceSubTab], () => {
 .task-overview-page {
   width: 100%;
   min-height: 100%;
-  background: #f5f7fa;
+  background: var(--el-fill-color-light);
 }
 
 .page-topbar {
@@ -2500,7 +2500,7 @@ watch([perfReportTab, resourceSubTab], () => {
   object-fit: contain;
   border-radius: 8px;
   border: 1px solid #ebeef5;
-  background: #f5f7fa;
+  background: var(--el-fill-color-light);
 }
 .overview-screenshot-preview-step {
   font-size: 13px;
@@ -2716,7 +2716,7 @@ watch([perfReportTab, resourceSubTab], () => {
   flex-direction: column;
   align-items: flex-start;
   padding: 12px 16px;
-  background: #f5f7fa;
+  background: var(--el-fill-color-light);
   border-radius: 8px;
 }
 
@@ -2749,7 +2749,7 @@ watch([perfReportTab, resourceSubTab], () => {
   flex: 1;
   min-height: 140px;
   min-width: 200px;
-  background: #f5f7fa;
+  background: var(--el-fill-color-light);
   border: 1px dashed #dcdfe6;
   border-radius: 8px;
   display: flex;
@@ -2767,7 +2767,7 @@ watch([perfReportTab, resourceSubTab], () => {
   flex: 1;
   min-width: 200px;
   min-height: 120px;
-  background: #f5f7fa;
+  background: var(--el-fill-color-light);
   border: 1px solid #ebeef5;
   border-radius: 8px;
   overflow: hidden;
@@ -2858,7 +2858,7 @@ watch([perfReportTab, resourceSubTab], () => {
   object-fit: contain;
   border-radius: 8px;
   border: 1px solid #ebeef5;
-  background: #f5f7fa;
+  background: var(--el-fill-color-light);
 }
 .perf-screenshot-preview-time {
   font-size: 13px;

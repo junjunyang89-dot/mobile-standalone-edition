@@ -209,7 +209,7 @@ const disconnectDevice = async (deviceId: string) => {
 .device-total {
   margin-left: 16px;
   font-size: 13px;
-  color: #409eff;
+  color: var(--el-color-primary);
   cursor: pointer;
 }
 
@@ -218,7 +218,7 @@ const disconnectDevice = async (deviceId: string) => {
 }
 
 .device-name-link {
-  color: #409eff;
+  color: var(--el-color-primary);
   cursor: pointer;
 }
 

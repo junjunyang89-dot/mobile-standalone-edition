@@ -759,7 +759,7 @@ onMounted(async () => {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: #409eff;
+  background: var(--el-color-primary);
   color: #fff;
   font-size: 12px;
   display: inline-flex;

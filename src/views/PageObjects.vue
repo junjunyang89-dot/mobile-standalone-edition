@@ -66,7 +66,7 @@
               :data="listByPlatform[platform] || []"
               stripe
               style="width: 100%"
-             :header-cell-style="{ background: \'#f5f7fa\' }"
+             :header-cell-style="{ background: 'var(--el-fill-color-light)' }"
               row-key="id"
               :expand-row-keys="expandedRowKeys"
               @expand-change="onExpandChange"
@@ -971,7 +971,7 @@ onMounted(() => {
   font-size: 13px;
   font-weight: 600;
   color: #303133;
-  background: #f0f2f5;
+  background: var(--el-bg-color-page);
   border-bottom: 1px solid #ebeef5;
 }
 
@@ -1023,7 +1023,7 @@ onMounted(() => {
 .expand-elements {
   padding: 12px 16px 12px 56px;
   background: #fafbfc;
-  border-left: 3px solid #409eff;
+  border-left: 3px solid var(--el-color-primary);
   max-height: 420px;
   overflow-y: auto;
 }
