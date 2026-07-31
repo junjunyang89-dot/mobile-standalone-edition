@@ -235,12 +235,10 @@ const isAgentPage = computed(() => route.path.includes('codewords-agent'))
 }
 
 .nav-section-label {
-  color: #7a8fa8 !important;
-  font-size: 10px !important;
+  color: #8899aa !important;
+  font-size: 12px !important;
   font-weight: 700 !important;
-  letter-spacing: 1px !important;
-  text-transform: uppercase !important;
-  padding: 16px 20px 4px !important;
+  padding: 18px 20px 6px !important;
   display: block !important;
 }
 
