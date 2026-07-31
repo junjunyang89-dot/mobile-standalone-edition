@@ -1,0 +1,127 @@
+/* 琥珀工业风主题 — 俊俊测试中台 */
+:root {
+  /* 背景层次 */
+  --app-bg: #12100e;
+  --app-sidebar: #161310;
+  --app-card: #1a1814;
+  --app-input: #201c16;
+  --app-border: #2a2218;
+  --app-border-hi: #3a2e20;
+
+  /* 主色：暖琥珀橙 */
+  --app-primary: #f0a050;
+  --app-primary-dark: #e07830;
+  --app-primary-dim: rgba(240, 160, 80, 0.1);
+  --app-primary-glow: rgba(240, 160, 80, 0.25);
+
+  /* 文字 */
+  --app-text: #e8e0d4;
+  --app-text-sub: #8a7d6e;
+  --app-text-dim: #4a3d2e;
+
+  /* 覆盖 Element Plus CSS 变量 */
+  --el-bg-color: #12100e;
+  --el-bg-color-overlay: #1a1814;
+  --el-bg-color-page: #0f0d0b;
+  --el-border-color: #2a2218;
+  --el-border-color-light: #3a2e20;
+  --el-border-color-lighter: #3a2e20;
+  --el-border-color-extra-light: #2a2218;
+  --el-color-primary: #f0a050;
+  --el-color-primary-light-3: #f4b870;
+  --el-color-primary-light-5: #f7ca98;
+  --el-color-primary-light-7: #fbe0c5;
+  --el-color-primary-light-8: #fceedd;
+  --el-color-primary-light-9: #fef7f0;
+  --el-color-primary-dark-2: #d08030;
+  --el-text-color-primary: #e8e0d4;
+  --el-text-color-regular: #c0b49e;
+  --el-text-color-secondary: #8a7d6e;
+  --el-text-color-placeholder: #4a3d2e;
+  --el-text-color-disabled: #3a2e20;
+  --el-fill-color: #201c16;
+  --el-fill-color-light: #1a1814;
+  --el-fill-color-lighter: #161310;
+  --el-fill-color-extra-light: #12100e;
+  --el-fill-color-blank: #1a1814;
+  --el-fill-color-dark: #2a2218;
+  --el-fill-color-darker: #3a2e20;
+  --el-mask-color: rgba(18, 16, 14, 0.8);
+  --el-menu-bg-color: #161310;
+  --el-menu-text-color: #8a7d6e;
+  --el-menu-hover-bg-color: #201c16;
+  --el-menu-hover-text-color: #e8e0d4;
+  --el-menu-active-color: #f0a050;
+  --el-menu-sub-item-height: 40px;
+  --el-header-bg-color: #161310;
+  --el-header-border-color: #2a2218;
+  --el-aside-bg-color: #161310;
+  --el-table-bg-color: #1a1814;
+  --el-table-tr-bg-color: #1a1814;
+  --el-table-row-hover-bg-color: #201c16;
+  --el-table-header-bg-color: #161310;
+  --el-table-border-color: #2a2218;
+  --el-card-bg-color: #1a1814;
+  --el-dialog-bg-color: #1a1814;
+  --el-input-bg-color: #201c16;
+  --el-input-border-color: #2a2218;
+  --el-select-dropdown-bg-color: #1a1814;
+  --el-select-option-hover-background: #201c16;
+  --el-tag-plain-color: #f0a050;
+  --el-switch-on-color: #f0a050;
+}
+
+/* 全局背景 */
+body, #app {
+  background: var(--app-bg) !important;
+  color: var(--app-text) !important;
+}
+
+/* 侧边栏分组标题 */
+.nav-section-label {
+  padding: 14px 16px 4px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--app-text-dim);
+  user-select: none;
+}
+
+/* 滚动条美化 */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--app-border-hi); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--app-primary-dim); }
+
+/* el-card 统一深色 */
+.el-card {
+  background: var(--app-card) !important;
+  border-color: var(--app-border) !important;
+}
+
+/* el-table 深色 */
+.el-table {
+  background: transparent !important;
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+}
+
+/* el-button primary 主色 */
+.el-button--primary {
+  background: var(--app-primary) !important;
+  border-color: var(--app-primary) !important;
+  color: #12100e !important;
+  font-weight: 600;
+}
+.el-button--primary:hover {
+  background: var(--app-primary-dark) !important;
+  border-color: var(--app-primary-dark) !important;
+}
+
+/* el-tag primary */
+.el-tag {
+  background: var(--app-primary-dim) !important;
+  border-color: var(--app-primary-glow) !important;
+  color: var(--app-primary) !important;
+}
