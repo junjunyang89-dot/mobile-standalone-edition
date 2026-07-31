@@ -180,15 +180,15 @@ const isAgentPage = computed(() => route.path.includes('codewords-agent'))
   padding-bottom: 16px;
 }
 
-/* 一级：分组下的菜单 / 子菜单标题（相对分组缩进） */
+/* 一级菜单项 — 紧凑、比例合理 */
 .sidebar-menu > :deep(.el-menu-item),
 .sidebar-menu > :deep(.el-sub-menu > .el-sub-menu__title) {
-  font-size: 14px !important;
-  height: 44px;
-  line-height: 44px;
-  margin: 2px 8px;
-  border-radius: 6px;
-  padding-left: 16px !important;
+  font-size: 13px !important;
+  height: 36px !important;
+  line-height: 36px !important;
+  margin: 1px 8px !important;
+  border-radius: 6px !important;
+  padding-left: 14px !important;
 }
 
 .sidebar-menu > :deep(.el-sub-menu > .el-sub-menu__title) {
@@ -235,9 +235,13 @@ const isAgentPage = computed(() => route.path.includes('codewords-agent'))
 }
 
 .nav-section-label {
-  color: #9aa8b8 !important;
-  font-size: 12px !important;
-  font-weight: 600 !important;
+  color: #7a8fa8 !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  letter-spacing: 1px !important;
+  text-transform: uppercase !important;
+  padding: 16px 20px 4px !important;
+  display: block !important;
 }
 
 .header {
