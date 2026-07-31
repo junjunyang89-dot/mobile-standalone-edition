@@ -8,37 +8,42 @@
         :default-active="activeMenu"
         router
         class="sidebar-menu"
-        background-color="#304156"
-        text-color="#bfcbd9"
-        active-text-color="#409eff"
       >
+        <!-- 主菜单 -->
+        <div class="nav-section-label">主菜单</div>
         <el-menu-item index="/home">
           <el-icon><HomeFilled /></el-icon>
-          <span>首页</span>
+          <span>工作台</span>
+        </el-menu-item>
+        <el-menu-item index="/codewords-agent">
+          <el-icon><ChatDotRound /></el-icon>
+          <span>问小科</span>
+        </el-menu-item>
+
+        <!-- 测试工具 -->
+        <div class="nav-section-label">测试工具</div>
+        <el-menu-item index="/ui-elements">
+          <el-icon><Grid /></el-icon>
+          <span>元素管理</span>
+        </el-menu-item>
+        <el-menu-item index="/tasks">
+          <el-icon><List /></el-icon>
+          <span>测试用例</span>
+        </el-menu-item>
+        <el-menu-item index="/specialized-testing">
+          <el-icon><VideoPlay /></el-icon>
+          <span>专项测试</span>
+        </el-menu-item>
+
+        <!-- 回归测试 -->
+        <div class="nav-section-label">回归测试</div>
+        <el-menu-item index="/app-online-regression">
+          <el-icon><Cellphone /></el-icon>
+          <span>国内回归</span>
         </el-menu-item>
         <el-menu-item index="/devices">
           <el-icon><Monitor /></el-icon>
           <span>设备管理</span>
-        </el-menu-item>
-        <el-menu-item index="/specialized-testing">
-          <el-icon><Grid /></el-icon>
-          <span>专项测试</span>
-        </el-menu-item>
-        <el-menu-item index="/app-online-regression">
-          <el-icon><Cellphone /></el-icon>
-          <span>APP线上回归</span>
-        </el-menu-item>
-        <el-menu-item index="/release-doc">
-          <el-icon><Document /></el-icon>
-          <span>发版文档与邮件</span>
-        </el-menu-item>
-        <el-menu-item index="/tracking-check">
-          <el-icon><DataAnalysis /></el-icon>
-          <span>埋点校验</span>
-        </el-menu-item>
-        <el-menu-item index="/tasks">
-          <el-icon><List /></el-icon>
-          <span>测试任务</span>
         </el-menu-item>
         <el-menu-item index="/reports">
           <el-icon><Document /></el-icon>
@@ -48,24 +53,20 @@
           <el-icon><DataAnalysis /></el-icon>
           <span>性能监控</span>
         </el-menu-item>
-        <el-sub-menu index="ui-assets">
-          <template #title>
-            <el-icon><DocumentCopy /></el-icon>
-            <span>资产编排</span>
-          </template>
-          <el-menu-item index="/ui-apps">应用字典</el-menu-item>
-          <el-menu-item index="/ui-elements">元素库</el-menu-item>
-          <el-menu-item index="/ui-keywords">关键字库</el-menu-item>
-          <el-menu-item index="/ui-flows">流程编排</el-menu-item>
-          <el-menu-item index="/page-objects">页面对象(旧)</el-menu-item>
-        </el-sub-menu>
+
+        <!-- 其他 -->
+        <div class="nav-section-label">其他</div>
+        <el-menu-item index="/tracking-check">
+          <el-icon><DataAnalysis /></el-icon>
+          <span>埋点校验</span>
+        </el-menu-item>
+        <el-menu-item index="/release-doc">
+          <el-icon><Document /></el-icon>
+          <span>发版文档</span>
+        </el-menu-item>
         <el-menu-item index="/automation-test">
           <el-icon><VideoPlay /></el-icon>
           <span>自动化测试</span>
-        </el-menu-item>
-        <el-menu-item index="/codewords-agent">
-          <el-icon><ChatDotRound /></el-icon>
-          <span>俊俊 AI 助手</span>
         </el-menu-item>
         <el-menu-item index="/settings">
           <el-icon><Setting /></el-icon>
