@@ -8,6 +8,9 @@
         :default-active="activeMenu"
         router
         class="sidebar-menu"
+        background-color="#304156"
+        text-color="#bfcbd9"
+        active-text-color="#409eff"
       >
         <!-- 主菜单 -->
         <div class="nav-section-label">主菜单</div>
