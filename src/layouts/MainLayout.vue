@@ -12,20 +12,16 @@
         text-color="#bfcbd9"
         active-text-color="#409eff"
       >
-        <div class="nav-section-label">主菜单</div>
         <el-menu-item index="/home">
-          <el-icon><HomeFilled /></el-icon><span>工作台</span>
-        </el-menu-item>
-        <el-menu-item index="/codewords-agent">
-          <el-icon><ChatDotRound /></el-icon><span>AI助手</span>
+          <el-icon><HomeFilled /></el-icon><span>首页</span>
         </el-menu-item>
 
-        <div class="nav-section-label">资产与元素</div>
-        <el-menu-item index="/ui-apps">
-          <el-icon><DocumentCopy /></el-icon><span>应用字典</span>
-        </el-menu-item>
+        <div class="nav-section-label">资产管理</div>
         <el-menu-item index="/ui-elements">
           <el-icon><Grid /></el-icon><span>元素管理</span>
+        </el-menu-item>
+        <el-menu-item index="/ui-apps">
+          <el-icon><DocumentCopy /></el-icon><span>应用字典</span>
         </el-menu-item>
         <el-menu-item index="/ui-keywords">
           <el-icon><Document /></el-icon><span>关键字库</span>
@@ -34,7 +30,10 @@
           <el-icon><Monitor /></el-icon><span>设备管理</span>
         </el-menu-item>
 
-        <div class="nav-section-label">测试执行</div>
+        <div class="nav-section-label">回归测试</div>
+        <el-menu-item index="/app-online-regression">
+          <el-icon><Cellphone /></el-icon><span>APP回归</span>
+        </el-menu-item>
         <el-menu-item index="/ui-flows">
           <el-icon><List /></el-icon><span>流程编排</span>
         </el-menu-item>
@@ -44,27 +43,29 @@
         <el-menu-item index="/specialized-testing">
           <el-icon><VideoPlay /></el-icon><span>专项测试</span>
         </el-menu-item>
-        <el-menu-item index="/app-online-regression">
-          <el-icon><Cellphone /></el-icon><span>APP线上回归</span>
-        </el-menu-item>
         <el-menu-item index="/automation-test">
           <el-icon><VideoPlay /></el-icon><span>自动化测试</span>
         </el-menu-item>
 
-        <div class="nav-section-label">测试报告</div>
-        <el-menu-item index="/reports">
-          <el-icon><Document /></el-icon><span>测试报告</span>
-        </el-menu-item>
+        <div class="nav-section-label">性能测试</div>
         <el-menu-item index="/performance">
           <el-icon><DataAnalysis /></el-icon><span>性能监控</span>
+        </el-menu-item>
+
+        <div class="nav-section-label">工具管理</div>
+        <el-menu-item index="/codewords-agent">
+          <el-icon><ChatDotRound /></el-icon><span>AI助手</span>
         </el-menu-item>
         <el-menu-item index="/tracking-check">
           <el-icon><DataAnalysis /></el-icon><span>埋点校验</span>
         </el-menu-item>
-
-        <div class="nav-section-label">其他</div>
         <el-menu-item index="/release-doc">
           <el-icon><Document /></el-icon><span>发版文档</span>
+        </el-menu-item>
+
+        <div class="nav-section-label">其他</div>
+        <el-menu-item index="/reports">
+          <el-icon><Document /></el-icon><span>测试报告</span>
         </el-menu-item>
         <el-menu-item index="/page-objects">
           <el-icon><DocumentCopy /></el-icon><span>页面对象(旧)</span>
