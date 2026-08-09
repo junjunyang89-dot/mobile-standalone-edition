@@ -487,6 +487,13 @@ class ApiClient {
     return this.request<any[]>(qs ? `/ui-pages?${qs}` : '/ui-pages')
   }
 
+  /** 中文页面名 → 建议的英文编码（AI 翻译）。生成不出来返回空串 */
+  async suggestPageCode(nameZh: string) {
+    return this.request<{ code: string }>(
+      `/ui-pages/suggest-code?nameZh=${encodeURIComponent(nameZh)}`
+    )
+  }
+
   async createUiPage(body: {
     appId: string
     pageId: string

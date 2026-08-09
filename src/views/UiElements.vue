@@ -459,16 +459,25 @@
           <span>{{ appLabel(filterAppId) || '请先在上方筛选选择应用' }}</span>
         </el-form-item>
         <el-form-item label="中文名" required>
+          <!-- 失焦时问一次 AI，不做输入即时触发：每敲一个字调一次模型是浪费 -->
           <el-input
             v-model="newPageNameZh"
             placeholder="如：赛程详情、侧边栏"
             maxlength="64"
             show-word-limit
+            @blur="fillPageCodeByAi"
           />
         </el-form-item>
         <el-form-item label="页面编码" required>
-          <el-input v-model="newPageId" placeholder="英文大写+下划线，如 MATCH_DETAIL" />
-          <p class="page-edit-hint">手动加元素时可选这个页面；编码建议稳定，少改。</p>
+          <el-input v-model="newPageId" placeholder="英文大写+下划线，如 MATCH_DETAIL">
+            <template #append>
+              <el-button :loading="suggestingCode" @click="fillPageCodeByAi(true)">AI 生成</el-button>
+            </template>
+          </el-input>
+          <p class="page-edit-hint">
+            填完中文名会自动翻译成编码，也可以点「AI 生成」重来一次，或者自己改。<br />
+            手动加元素时可选这个页面；<strong>编码建议稳定，少改</strong>——流程里引用元素用的就是它。
+          </p>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -794,6 +803,38 @@ watch(newPageNameZh, (n) => {
     newPageId.value = suggestPageId(n || '')
   }
 })
+
+const suggestingCode = ref(false)
+
+/**
+ * 中文名翻译成英文编码。
+ *
+ * 只在「编码还是自动生成的随机码」时覆盖，人手改过的不动——
+ * 否则你精心改成 LOGIN_SMS，一回中文名框失个焦就被冲掉了。
+ * force=true 是点「AI 生成」按钮，那是明确要求重来，可以覆盖。
+ */
+async function fillPageCodeByAi(force = false) {
+  const name = (newPageNameZh.value || '').trim()
+  if (!name) return
+  const current = (newPageId.value || '').trim()
+  const isAuto = !current || current.startsWith('PAGE_')
+  if (!force && !isAuto) return
+
+  suggestingCode.value = true
+  try {
+    const res = await apiClient.suggestPageCode(name)
+    if (res?.code) {
+      newPageId.value = res.code
+    } else if (force) {
+      // 明确点了按钮却没给出结果，要说一声，别让人以为按钮坏了
+      ElMessage.info('AI 没能翻译出编码，保留当前编码，可自己改')
+    }
+  } catch {
+    // 翻不出来不影响建页面——随机码兜底，静默即可
+  } finally {
+    suggestingCode.value = false
+  }
+}
 
 async function submitNewPage() {
   if (!filterAppId.value) {
