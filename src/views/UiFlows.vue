@@ -147,7 +147,13 @@
           </div>
         </el-form-item>
         <el-form-item label="设备" required>
-          <el-select v-model="execForm.deviceId" filterable placeholder="选择已连接设备" style="width: 100%">
+          <el-select
+            v-model="execForm.deviceId"
+            filterable
+            placeholder="选择已连接设备"
+            style="width: 100%"
+            @change="onExecDeviceChange"
+          >
             <el-option
               v-for="d in deviceOptions"
               :key="d.id"
@@ -2080,22 +2086,60 @@ async function openExecute(row: any) {
   execLaunchSummary.activity = activity
   execLaunchSummary.platform = platform
   applyExecInstallSummary(row)
-  if (flowUsesPgyerInstall(row) && appId) {
-    try {
-      const builds = await apiClient.getPgyerAppBuilds(appId, platform, 5)
-      pgyerBuilds.value = builds || []
-      if (pgyerBuilds.value.length) {
-        execForm.pgyerBuildKey = pgyerBuilds.value[0].buildKey
-      } else {
-        pgyerLoadError.value = '该应用未配置蒲公英 appKey，请到「应用字典」补上'
-      }
-    } catch (e: any) {
-      // 拉不到版本不该挡住执行：还可以走流程里原本填的 buildKey / URL
-      pgyerLoadError.value = e?.message || '拉取蒲公英版本失败'
-    }
-  }
+  // 先拉设备；若已有默认选中再按设备平台刷包名/蒲公英列表
   await loadConnectedDevices()
+  if (deviceOptions.value.length === 1) {
+    execForm.deviceId = deviceOptions.value[0].id
+    await refreshExecForDevice()
+  } else if (flowUsesPgyerInstall(row) && appId) {
+    // 尚未选设备时，先按流程平台预拉（选设备后会再按设备平台刷新）
+    await loadPgyerBuildsForExec(appId, platform)
+  }
   execVisible.value = true
+}
+
+/** 选设备后：包名按平台切 Android 包名 / iOS BundleId，蒲公英列表用对应 Key */
+async function onExecDeviceChange() {
+  await refreshExecForDevice()
+}
+
+async function refreshExecForDevice() {
+  const device = deviceOptions.value.find((d) => d.id === execForm.deviceId)
+  if (!device) return
+  const devicePlatform = String(device.platform || '').toUpperCase().includes('IOS') ? 'IOS' : 'ANDROID'
+  const appId = execLaunchSummary.appId
+  if (appId) {
+    const pkg = packageFromApp(appId, devicePlatform)
+    if (pkg) {
+      execLaunchSummary.packageName = pkg
+      execLaunchSummary.platform = devicePlatform
+      execLaunchSummary.activity =
+        devicePlatform === 'IOS' ? '' : activityForPackage(pkg)
+    }
+  } else {
+    execLaunchSummary.platform = devicePlatform
+  }
+  if (execFlow.value && flowUsesPgyerInstall(execFlow.value) && appId) {
+    await loadPgyerBuildsForExec(appId, devicePlatform)
+  }
+}
+
+async function loadPgyerBuildsForExec(appId: string, platform: string) {
+  execForm.pgyerBuildKey = ''
+  pgyerBuilds.value = []
+  pgyerLoadError.value = ''
+  try {
+    const builds = await apiClient.getPgyerAppBuilds(appId, platform, 5)
+    pgyerBuilds.value = builds || []
+    if (pgyerBuilds.value.length) {
+      execForm.pgyerBuildKey = pgyerBuilds.value[0].buildKey
+    } else {
+      const platLabel = String(platform || '').toUpperCase().includes('IOS') ? 'iOS' : 'Android'
+      pgyerLoadError.value = `该应用未配置${platLabel} 蒲公英 Key，请到「应用字典」补上`
+    }
+  } catch (e: any) {
+    pgyerLoadError.value = e?.message || '拉取蒲公英版本失败'
+  }
 }
 
 /** 只列已连接设备：列出离线设备只会让人选中之后再报一次错 */

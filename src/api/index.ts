@@ -1390,6 +1390,33 @@ class ApiClient {
 
   /** CodeWords 测试用例生成器 v2（仅返回 JSON，不落库） */
   /**
+   * 从 Appium Inspector 截图里认元素。只出草稿，不入库——
+   * 模型是在认字，定位器错一个字符不会报错，只会在跑流程时超时找不到。
+   */
+  async readInspectorShots(files: File[]) {
+    const fd = new FormData()
+    files.forEach((f) => fd.append('files', f))
+    const res = await fetch(`${this.baseURL}/ui-elements/read-inspector-shot`, {
+      method: 'POST',
+      body: fd
+    })
+    const data = await res.json().catch(() => ({ message: '识别失败' }))
+    if (!res.ok) throw new Error(data.message || '识别失败')
+    return data as {
+      drafts: Array<{
+        nameEn: string
+        nameZh: string
+        locatorType: string
+        locatorValue: string
+        fallbacks: string[]
+        visualHint: string
+        confidence: 'HIGH' | 'MEDIUM' | 'LOW'
+        note: string
+      }>
+    }
+  }
+
+  /**
    * 用千问生成用例（不落库）。截图/需求文档直接传文件，不用先放到公网。
    * 替代原来按次计费的 CodeWords 工作流，产出格式一致。
    */

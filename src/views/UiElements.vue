@@ -11,6 +11,7 @@
           </div>
           <div class="header-actions">
             <el-button @click="router.push('/ui-inspector-import')">Inspector 导入</el-button>
+            <el-button @click="shotVisible = true">Inspector 截图识别</el-button>
             <el-button @click="inspectorVisible = true">真机点选</el-button>
             <el-button type="primary" @click="openNewPage">
               <el-icon><Plus /></el-icon>
@@ -486,6 +487,89 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="shotVisible" title="Inspector 截图识别" width="880px" destroy-on-close>
+      <el-alert type="info" :closable="false" class="shot-tip">
+        <template #title>截 Appium Inspector 的整个窗口，要能看清右边的属性面板</template>
+        <div class="shot-tip-body">
+          定位器（resource-id / xpath）就在属性面板里，模型是<strong>照着认字</strong>，看不清就认不对。<br />
+          <strong>识别结果不会直接入库</strong>——认错一个字符的定位器不会报错，只会在跑流程时超时说
+          「找不到元素」，那时候离录入已经很远了。所以下面每条都要你核一眼再存。
+        </div>
+      </el-alert>
+
+      <el-upload
+        drag
+        multiple
+        accept="image/*"
+        :auto-upload="false"
+        :file-list="shotFiles"
+        :on-change="onShotChange"
+        :on-remove="onShotChange"
+        class="shot-upload"
+      >
+        <el-icon class="el-icon--upload"><Plus /></el-icon>
+        <div class="el-upload__text">把截图拖进来，或点击选择（一次最多 8 张）</div>
+      </el-upload>
+
+      <div class="shot-actions">
+        <el-button type="primary" :loading="shotReading" :disabled="!shotFiles.length" @click="runShotRead">
+          开始识别
+        </el-button>
+        <span v-if="shotDrafts.length" class="shot-count">识别出 {{ shotDrafts.length }} 个元素</span>
+      </div>
+
+      <el-table v-if="shotDrafts.length" :data="shotDrafts" size="small" class="shot-table">
+        <el-table-column label="把握" width="76">
+          <template #default="{ row }">
+            <!-- 低把握的必须显眼：这条正是最需要人核对的 -->
+            <el-tag size="small" :type="row.confidence === 'HIGH' ? 'success'
+              : row.confidence === 'MEDIUM' ? 'warning' : 'danger'">
+              {{ row.confidence === 'HIGH' ? '高' : row.confidence === 'MEDIUM' ? '中' : '低' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="中文名" width="150">
+          <template #default="{ row }"><el-input v-model="row.nameZh" size="small" /></template>
+        </el-table-column>
+        <el-table-column label="英文键" width="170">
+          <template #default="{ row }"><el-input v-model="row.nameEn" size="small" /></template>
+        </el-table-column>
+        <el-table-column label="定位方式" width="130">
+          <template #default="{ row }">
+            <el-select v-model="row.locatorType" size="small">
+              <el-option v-for="t in LOCATOR_TYPES" :key="t" :label="t" :value="t" />
+            </el-select>
+          </template>
+        </el-table-column>
+        <el-table-column label="定位值" min-width="240">
+          <template #default="{ row }">
+            <el-input v-model="row.locatorValue" size="small" />
+            <div v-if="row.note" class="shot-note">{{ row.note }}</div>
+            <div v-if="row.visualHint" class="shot-hint">界面文案：{{ row.visualHint }}</div>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="70" align="right">
+          <template #default="{ $index }">
+            <el-button link type="danger" size="small" @click="shotDrafts.splice($index, 1)">删</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <template #footer>
+        <span class="shot-footer-hint">
+          将挂到：{{ appLabel(filterAppId) || '（未选应用）' }} · {{ filterPlatform || '（未选平台）' }}
+          · {{ shotPageId ? pageTitle(shotPageId) : '未归属' }}
+        </span>
+        <el-select v-model="shotPageId" size="small" clearable placeholder="归属页面" style="width: 200px">
+          <el-option v-for="p in pageOptions" :key="p.pageId" :label="p.nameZh" :value="p.pageId" />
+        </el-select>
+        <el-button @click="shotVisible = false">取消</el-button>
+        <el-button type="primary" :loading="shotSaving" :disabled="!shotDrafts.length" @click="saveShotDrafts">
+          核对无误，保存 {{ shotDrafts.length }} 个
+        </el-button>
+      </template>
+    </el-dialog>
+
     <DeviceInspectDrawer
       v-model="inspectorVisible"
       :app-id="filterAppId"
@@ -805,6 +889,83 @@ watch(newPageNameZh, (n) => {
 })
 
 const suggestingCode = ref(false)
+
+// ---------- Inspector 截图识别 ----------
+
+const LOCATOR_TYPES = ['ID', 'XPATH', 'ACCESSIBILITY_ID', 'TEXT', 'CLASS_NAME']
+const shotVisible = ref(false)
+const shotFiles = ref<any[]>([])
+const shotDrafts = ref<any[]>([])
+const shotPageId = ref('')
+const shotReading = ref(false)
+const shotSaving = ref(false)
+
+function onShotChange(_file: any, fileList: any[]) {
+  shotFiles.value = fileList.slice(0, 8)
+}
+
+async function runShotRead() {
+  const files = shotFiles.value.map((f) => f.raw).filter(Boolean)
+  if (!files.length) return
+  shotReading.value = true
+  try {
+    const res = await apiClient.readInspectorShots(files)
+    shotDrafts.value = res.drafts || []
+    if (!shotDrafts.value.length) {
+      ElMessage.warning('没认出元素。确认截图里能看清右侧属性面板（resource-id / xpath 那几行）')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '识别失败')
+  } finally {
+    shotReading.value = false
+  }
+}
+
+/**
+ * 逐条保存。
+ *
+ * 不用批量接口，是为了让部分失败可见：8 条里第 3 条重名失败，
+ * 整批回滚的话前两条也白录了；而只说「保存失败」你不知道是哪条。
+ */
+async function saveShotDrafts() {
+  if (!filterAppId.value || !filterPlatform.value) {
+    ElMessage.warning('请先在上方选好应用和平台——元素是按「应用 + 平台」存的')
+    return
+  }
+  shotSaving.value = true
+  let ok = 0
+  const failed: string[] = []
+  for (const d of shotDrafts.value) {
+    try {
+      await apiClient.createUiElement({
+        appId: filterAppId.value,
+        platform: filterPlatform.value,
+        nameZh: d.nameZh,
+        nameEn: d.nameEn,
+        locatorType: d.locatorType,
+        locatorValue: d.locatorValue,
+        locatorFallbacks: d.fallbacks?.length ? JSON.stringify(d.fallbacks) : undefined,
+        visualHint: d.visualHint,
+        pageId: shotPageId.value || undefined,
+        source: 'AI_INSPECTOR_SHOT',
+        status: 'ACTIVE'
+      })
+      ok++
+    } catch (e: any) {
+      failed.push(`${d.nameZh || d.nameEn}：${e?.message || '保存失败'}`)
+    }
+  }
+  shotSaving.value = false
+  if (ok) ElMessage.success(`已保存 ${ok} 个元素`)
+  if (failed.length) {
+    ElMessage.error(`${failed.length} 个没存上 —— ${failed[0]}`)
+  } else {
+    shotVisible.value = false
+    shotDrafts.value = []
+    shotFiles.value = []
+  }
+  loadList()
+}
 
 /**
  * 中文名翻译成英文编码。
@@ -1515,6 +1676,48 @@ onMounted(async () => {
 }
 .page-name {
   font-weight: 600;
+}
+.shot-tip {
+  margin-bottom: 14px;
+}
+.shot-tip-body {
+  font-size: 13px;
+  line-height: 1.7;
+  margin-top: 4px;
+}
+.shot-upload {
+  margin-bottom: 12px;
+}
+.shot-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.shot-count {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+.shot-table {
+  max-height: 420px;
+  overflow: auto;
+}
+.shot-note {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--el-color-danger);
+  line-height: 1.5;
+}
+.shot-hint {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.shot-footer-hint {
+  float: left;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  line-height: 32px;
 }
 .page-edit-hint {
   margin: 4px 0 0;

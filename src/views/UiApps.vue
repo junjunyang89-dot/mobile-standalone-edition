@@ -41,8 +41,8 @@
       <el-empty v-if="!loading && list.length === 0" description="暂无应用（请先执行 migration_ui_apps.sql 并重启后端）" />
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="editingId ? '编辑应用' : '新增应用'" width="560px" destroy-on-close>
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="120px">
+    <el-dialog v-model="dialogVisible" :title="editingId ? '编辑应用' : '新增应用'" width="580px" destroy-on-close>
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="140px">
         <el-form-item label="应用编码" prop="id">
           <el-input
             v-model="form.id"
@@ -58,14 +58,14 @@
         <el-form-item label="iOS Bundle ID">
           <el-input v-model="form.iosBundleId" placeholder="如 com.wmzq.esportapp" />
         </el-form-item>
-        <el-form-item label="蒲公英 appKey（Android）">
-          <el-input v-model="form.pgyerAppKeyAndroid" placeholder="应用短链里那一段，如 pwesports" />
+        <el-form-item label="Android 蒲公英 Key">
+          <el-input v-model="form.pgyerAppKeyAndroid" placeholder="Android 包在蒲公英的 appKey" />
         </el-form-item>
-        <el-form-item label="蒲公英 appKey（iOS）">
-          <el-input v-model="form.pgyerAppKeyIos" placeholder="iOS 包的 appKey" />
+        <el-form-item label="iOS 蒲公英 Key">
+          <el-input v-model="form.pgyerAppKeyIos" placeholder="iOS 包在蒲公英的 appKey（可与 Android 不同）" />
           <div class="pgyer-hint">
-            配了之后，流程里的「安装应用」不用再填 buildKey 或下载 URL——
-            按应用 + 平台自动装最新版，每次发版不用改流程
+            两套 Key 按平台分开配。流程「安装应用」不用再填 buildKey / 下载 URL——
+            执行时按应用 + 设备平台自动取对应 Key 装最新版
           </div>
         </el-form-item>
         <el-form-item label="渠道页 URL">
