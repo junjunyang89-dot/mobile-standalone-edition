@@ -52,23 +52,13 @@
       </el-select>
 
       <!-- 次级元素（如「不符时点哪个元素」）：主元素由外层步骤表单渲染，这里只管额外的 -->
-      <el-select
+      <ElementKeySelect
         v-else-if="def.type === 'element'"
         v-model="params[def.name]"
-        filterable
-        allow-create
-        default-first-option
-        clearable
-        placeholder="按中文名搜索选择元素（留空则点自己）"
-        style="width: 100%"
-      >
-        <el-option
-          v-for="el in elementOptions || []"
-          :key="el.nameEn"
-          :label="el.nameZh ? `${el.nameZh}（${el.nameEn}）` : el.nameEn"
-          :value="el.nameEn"
-        />
-      </el-select>
+        :elements="elementOptions || []"
+        :pages="pageOptions || []"
+        placeholder="先选页面，再选元素（留空则点自己）"
+      />
 
       <el-input v-else v-model="params[def.name]" />
 
@@ -82,6 +72,7 @@
 
 <script setup lang="ts">
 import { computed, watch } from 'vue'
+import ElementKeySelect from './ElementKeySelect.vue'
 
 /**
  * 按后端 ui_keywords.param_schema 渲染步骤参数表单。
@@ -108,7 +99,9 @@ const props = defineProps<{
   /** 步骤的 params 对象，直接双向绑定 */
   params: Record<string, any>
   /** 供次级元素参数（如「不符时点哪个元素」）下拉用；主元素由外层渲染 */
-  elementOptions?: Array<{ nameEn: string; nameZh?: string }>
+  elementOptions?: Array<{ nameEn: string; nameZh?: string; pageId?: string | null }>
+  /** 页面字典：级联「页面 → 元素」展示中文页名 */
+  pageOptions?: Array<{ pageId?: string; nameZh?: string }>
 }>()
 
 /**

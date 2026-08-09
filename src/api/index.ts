@@ -192,6 +192,62 @@ class ApiClient {
     }>(`/devices/${encodeURIComponent(deviceId)}/installed-apps`)
   }
 
+  /** iOS 接新机体检 */
+  async getIosReadiness(udid: string) {
+    return this.request<{
+      udid?: string
+      ready?: boolean
+      summary?: string
+      checks?: Array<{ status?: string; name?: string; detail?: string; howToFix?: string }>
+    }>(`/devices/${encodeURIComponent(udid)}/ios-readiness`)
+  }
+
+  /** iOS WDA / 签名修复工具箱：分步体检 */
+  async getIosWdaToolkit(udid: string) {
+    return this.request<{
+      udid?: string
+      healthy?: boolean
+      summary?: string
+      nextTip?: string
+      config?: Record<string, unknown>
+      runtime?: Record<string, unknown>
+      steps?: Array<{
+        id?: string
+        order?: number
+        status?: string
+        title?: string
+        detail?: string
+        tip?: string
+        actionId?: string
+        actionLabel?: string
+        confirmRequired?: boolean
+      }>
+      actions?: Array<{
+        id?: string
+        label?: string
+        description?: string
+        confirmRequired?: boolean
+        longRunning?: boolean
+      }>
+    }>(`/devices/${encodeURIComponent(udid)}/ios-wda-toolkit`)
+  }
+
+  /** 执行 WDA 工具箱动作 */
+  async postIosWdaToolkitAction(
+    udid: string,
+    body: { action: string; confirm?: boolean }
+  ) {
+    return this.request<{
+      ok?: boolean
+      action?: string
+      message?: string
+      reportAfter?: any
+    }>(`/devices/${encodeURIComponent(udid)}/ios-wda-toolkit/actions`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
   async connectDevice(deviceId: string) {
     return this.request<any>(`/devices/${deviceId}/connect`, {
       method: 'POST'

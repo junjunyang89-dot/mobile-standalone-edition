@@ -1,5 +1,5 @@
 <template>
-  <el-form label-width="132px" class="step-form">
+  <el-form label-position="top" class="step-form">
     <el-form-item label="描述">
       <el-input
         v-model="step.description"
@@ -17,21 +17,12 @@
       />
     </el-form-item>
     <el-form-item v-if="needsElement" :label="elementFieldLabel">
-      <el-select
+      <ElementKeySelect
         v-model="step.elementKey"
-        filterable
-        allow-create
-        default-first-option
-        clearable
-        placeholder="按中文名搜索选择元素"
-        style="width: 100%"
-      >
-        <el-option
-          v-for="el in elementOptions"
-          :key="el.nameEn"
-          :label="elementOptionLabel(el)"
-          :value="el.nameEn" />
-      </el-select>
+        :elements="elementOptions"
+        :pages="pageOptions"
+        placeholder="先选页面，再选该页下的元素"
+      />
       <div class="element-pick-actions">
         <el-button link type="primary" @click="emit('inspect', step)">记不住？真机点选</el-button>
         <el-button link @click="emit('refresh-elements')">刷新列表</el-button>
@@ -55,12 +46,14 @@
       :schema="schema"
       :params="step.params"
       :element-options="elementOptions"
+      :page-options="pageOptions"
     />
 
     <DismissPopupsEditor
       v-if="step.keywordCode === 'DISMISS_POPUPS'"
       :step="step"
       :element-options="elementOptions"
+      :page-options="pageOptions"
       @refresh-elements="emit('refresh-elements')"
     />
 
@@ -69,6 +62,7 @@
       :step="step"
       :path-prefix="pathPrefix || '1'"
       :element-options="elementOptions"
+      :page-options="pageOptions"
       :keyword-options="keywordOptions"
       :create-step="createStep!"
       :keyword-name="keywordName!"
@@ -87,6 +81,7 @@
       :step="step"
       :path-prefix="pathPrefix || '1'"
       :element-options="elementOptions"
+      :page-options="pageOptions"
       :keyword-options="keywordOptions"
       :create-step="createStep!"
       :keyword-name="keywordName!"
@@ -111,6 +106,7 @@ import IfBranchEditor from './IfBranchEditor.vue'
 import WaitAnyBranchEditor from './WaitAnyBranchEditor.vue'
 import DismissPopupsEditor from './DismissPopupsEditor.vue'
 import KeywordParamFields from '../components/KeywordParamFields.vue'
+import ElementKeySelect from '../components/ElementKeySelect.vue'
 import LaunchStepFields from './LaunchStepFields.vue'
 
 type FlowStep = {
@@ -124,6 +120,7 @@ type FlowStep = {
 const props = withDefaults(defineProps<{
   step: FlowStep
   elementOptions: any[]
+  pageOptions?: any[]
   needsElement: boolean
   /** 当前步骤大纲号，如 "1.2"；嵌套 IF 子步骤会变成 1.2.1 */
   pathPrefix?: string
@@ -145,7 +142,8 @@ const props = withDefaults(defineProps<{
   pathPrefix: '',
   keywordOptions: () => [],
   nestLevel: 0,
-  appOptions: () => []
+  appOptions: () => [],
+  pageOptions: () => []
 })
 
 function isLaunchLikeStep(code: string) {
@@ -174,17 +172,21 @@ function isScrollUntilStep(code: string) {
   return code === 'SCROLL_UNTIL' || code === 'SCROLL_UNTIL_IOS'
 }
 
-function elementOptionLabel(el: any) {
-  const zh = String(el?.nameZh || '').trim()
-  const en = String(el?.nameEn || '').trim()
-  if (zh && en) return `${zh}（${en}）`
-  return zh || en || '—'
-}
 </script>
 
 <style scoped>
 .step-form {
   margin-top: 4px;
+}
+.step-form :deep(.el-form-item) {
+  margin-bottom: 12px;
+}
+.step-form :deep(.el-form-item__label) {
+  margin-bottom: 4px;
+  line-height: 1.3;
+  color: #909399;
+  font-size: 12px;
+  font-weight: 500;
 }
 .element-pick-actions {
   margin-top: 4px;

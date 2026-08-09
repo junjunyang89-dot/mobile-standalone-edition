@@ -163,12 +163,12 @@
                 :image-size="48"
               />
               <div v-if="androidOrderedPreview.length" class="order-preview order-preview-android">
-                <div class="order-label">Android 执行顺序：</div>
+                <div class="order-label">Android 执行顺序（点芯片可编辑流程）：</div>
                 <div class="order-chips">
                   <el-tooltip
                     v-for="(s, i) in androidOrderedPreview"
                     :key="`a-${s.id}`"
-                    :content="`${i + 1}. ${s.label}`"
+                    :content="`打开编辑：${i + 1}. ${s.label}`"
                     placement="top"
                     :show-after="200"
                   >
@@ -176,7 +176,8 @@
                       size="small"
                       type="success"
                       effect="light"
-                      class="order-chip order-chip-android"
+                      class="order-chip order-chip-android is-link"
+                      @click="openFlowEditor(s.id, s.label)"
                     >
                       {{ i + 1 }}. {{ s.label }}
                     </el-tag>
@@ -233,12 +234,12 @@
                 :image-size="48"
               />
               <div v-if="iosOrderedPreview.length" class="order-preview order-preview-ios">
-                <div class="order-label">iOS 执行顺序：</div>
+                <div class="order-label">iOS 执行顺序（点芯片可编辑流程）：</div>
                 <div class="order-chips">
                   <el-tooltip
                     v-for="(s, i) in iosOrderedPreview"
                     :key="`i-${s.id}`"
-                    :content="`${i + 1}. ${s.label}`"
+                    :content="`打开编辑：${i + 1}. ${s.label}`"
                     placement="top"
                     :show-after="200"
                   >
@@ -246,7 +247,8 @@
                       size="small"
                       type="primary"
                       effect="light"
-                      class="order-chip order-chip-ios"
+                      class="order-chip order-chip-ios is-link"
+                      @click="openFlowEditor(s.id, s.label)"
                     >
                       {{ i + 1 }}. {{ s.label }}
                     </el-tag>
@@ -882,6 +884,16 @@ function catalogLabel(c?: string) {
   if (c === 'ONLINE') return '仅线上'
   if (c === 'SHARED') return '共用'
   return c || '—'
+}
+
+/** 跳到流程编排并直接打开该流程的编辑抽屉（带流程名，标题一眼能认） */
+function openFlowEditor(flowId: string, flowName?: string) {
+  const id = String(flowId || '').trim()
+  if (!id) return
+  const query: Record<string, string> = { edit: id }
+  const name = String(flowName || '').trim()
+  if (name) query.name = name
+  void router.push({ name: 'UiFlows', query })
 }
 
 function mapFlowRow(row: any): RegressionFlowOption {
@@ -1954,6 +1966,16 @@ onUnmounted(() => {
   --el-tag-bg-color: #f0f9eb;
   --el-tag-border-color: #b3e19d;
   --el-tag-text-color: #529b2e;
+}
+
+.order-chip.is-link {
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.order-chip.is-link:hover {
+  filter: brightness(0.96);
+  box-shadow: 0 0 0 1px currentColor inset;
 }
 
 .dual-accounts {

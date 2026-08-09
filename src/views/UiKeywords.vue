@@ -17,12 +17,12 @@
       <div class="filter-bar">
         <el-form :inline="true">
           <el-form-item label="分类">
-            <el-select v-model="filterCategory" clearable placeholder="全部分类" style="width: 140px" @change="loadList">
+            <el-select v-model="filterCategory" clearable placeholder="全部分类" style="width: 140px" @change="onFilterChange">
               <el-option v-for="c in categories" :key="c" :label="c" :value="c" />
             </el-select>
           </el-form-item>
           <el-form-item label="仅启用">
-            <el-switch v-model="enabledOnly" @change="loadList" />
+            <el-switch v-model="enabledOnly" @change="onFilterChange" />
           </el-form-item>
           <el-form-item>
             <el-button type="primary" @click="loadList">刷新</el-button>
@@ -30,7 +30,7 @@
         </el-form>
       </div>
 
-      <el-table v-loading="loading" :data="list" stripe style="width: 100%" :header-cell-style="{ background: '#f5f7fa' }">
+      <el-table v-loading="loading" :data="pageList" stripe style="width: 100%" :header-cell-style="{ background: '#f5f7fa' }">
         <el-table-column prop="code" label="编码" width="140" />
         <el-table-column prop="nameZh" label="中文名" width="120" />
         <el-table-column prop="category" label="分类" width="100">
@@ -70,6 +70,16 @@
           </template>
         </el-table-column>
       </el-table>
+      <div class="pagination-wrap">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 15, 20, 50]"
+          :total="list.length"
+          layout="total, sizes, prev, pager, next, jumper"
+          @size-change="onSizeChange"
+        />
+      </div>
       <el-empty v-if="!loading && list.length === 0" description="暂无关键字（启动后端会自动种子 CLICK/WAIT 等）" />
     </el-card>
 
@@ -115,7 +125,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { apiClient } from '@/api'
@@ -125,6 +135,13 @@ const filterCategory = ref('')
 const enabledOnly = ref(false)
 const loading = ref(false)
 const list = ref<any[]>([])
+const currentPage = ref(1)
+const pageSize = ref(10)
+
+const pageList = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return list.value.slice(start, start + pageSize.value)
+})
 
 function categoryTag(c: string) {
   if (c === 'WAIT') return 'warning'
@@ -134,6 +151,15 @@ function categoryTag(c: string) {
   return ''
 }
 
+function onSizeChange() {
+  currentPage.value = 1
+}
+
+function onFilterChange() {
+  currentPage.value = 1
+  void loadList()
+}
+
 async function loadList() {
   loading.value = true
   try {
@@ -141,6 +167,8 @@ async function loadList() {
       category: filterCategory.value || undefined,
       enabledOnly: enabledOnly.value || undefined
     })
+    const maxPage = Math.max(1, Math.ceil(list.value.length / pageSize.value) || 1)
+    if (currentPage.value > maxPage) currentPage.value = maxPage
   } catch (e: any) {
     ElMessage.error(e?.message || '加载失败（请确认已执行 schema_ui_assets.sql）')
     list.value = []
@@ -263,5 +291,10 @@ onMounted(loadList)
 }
 .filter-bar {
   margin-bottom: 12px;
+}
+.pagination-wrap {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
 }
 </style>

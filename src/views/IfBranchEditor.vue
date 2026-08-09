@@ -11,33 +11,37 @@
             :label="`${k.nameZh} (${k.code})`"
             :value="k.code" />
         </el-select>
-        <el-button size="small" type="primary" @click="add('thenSteps')">添加</el-button>
+        <el-button size="small" type="success" @click="add('thenSteps')">添加</el-button>
       </div>
       <div v-if="!(step.params.thenSteps || []).length" class="branch-empty">暂无步骤</div>
       <div
         v-for="(bs, bi) in step.params.thenSteps || []"
         :key="bs._key || 't-' + bi"
         class="branch-step"
+        :style="stepColorStyle(bs.keywordCode)"
       >
         <div class="branch-step-head">
           <span class="branch-idx">{{ childNo(bi) }}</span>
-          <el-tag size="small" type="primary">{{ nameOf(bs.keywordCode) }}</el-tag>
+          <span class="branch-step-name">{{ nameOf(bs.keywordCode) }}</span>
+          <span class="step-cat-tag">{{ stepColorByCode(bs.keywordCode).categoryLabel }}</span>
           <el-tag size="small" type="info" effect="plain">{{ bs.keywordCode }}</el-tag>
           <span v-if="bs.description" class="step-desc-inline" :title="bs.description">{{ bs.description }}</span>
           <span class="step-spacer" />
-          <el-button link size="small" :disabled="bi === 0" @click="move('thenSteps', bi, -1)">上移</el-button>
+          <el-button link size="small" class="step-action-btn" :disabled="bi === 0" @click="move('thenSteps', bi, -1)">上移</el-button>
           <el-button
             link
             size="small"
+            class="step-action-btn"
             :disabled="bi === (step.params.thenSteps || []).length - 1"
             @click="move('thenSteps', bi, 1)"
           >下移</el-button>
-          <el-button type="danger" link size="small" @click="remove('thenSteps', bi)">删除</el-button>
+          <el-button link size="small" class="step-delete-btn" @click="remove('thenSteps', bi)">删除</el-button>
         </div>
         <BranchStepFields
           :step="bs"
           :path-prefix="childNo(bi)"
           :element-options="elementOptions"
+          :page-options="pageOptions"
           :needs-element="needsElement(bs.keywordCode)"
           :keyword-options="keywordOptions"
           :create-step="createStep"
@@ -90,26 +94,30 @@
         v-for="(bs, bi) in step.params.elseSteps || []"
         :key="bs._key || 'e-' + bi"
         class="branch-step"
+        :style="stepColorStyle(bs.keywordCode)"
       >
         <div class="branch-step-head">
-          <span class="branch-idx branch-idx-else">{{ childNo(bi) }}</span>
-          <el-tag size="small" type="primary">{{ nameOf(bs.keywordCode) }}</el-tag>
+          <span class="branch-idx">{{ childNo(bi) }}</span>
+          <span class="branch-step-name">{{ nameOf(bs.keywordCode) }}</span>
+          <span class="step-cat-tag">{{ stepColorByCode(bs.keywordCode).categoryLabel }}</span>
           <el-tag size="small" type="info" effect="plain">{{ bs.keywordCode }}</el-tag>
           <span v-if="bs.description" class="step-desc-inline" :title="bs.description">{{ bs.description }}</span>
           <span class="step-spacer" />
-          <el-button link size="small" :disabled="bi === 0" @click="move('elseSteps', bi, -1)">上移</el-button>
+          <el-button link size="small" class="step-action-btn" :disabled="bi === 0" @click="move('elseSteps', bi, -1)">上移</el-button>
           <el-button
             link
             size="small"
+            class="step-action-btn"
             :disabled="bi === (step.params.elseSteps || []).length - 1"
             @click="move('elseSteps', bi, 1)"
           >下移</el-button>
-          <el-button type="danger" link size="small" @click="remove('elseSteps', bi)">删除</el-button>
+          <el-button link size="small" class="step-delete-btn" @click="remove('elseSteps', bi)">删除</el-button>
         </div>
         <BranchStepFields
           :step="bs"
           :path-prefix="childNo(bi)"
           :element-options="elementOptions"
+          :page-options="pageOptions"
           :needs-element="needsElement(bs.keywordCode)"
           :keyword-options="keywordOptions"
           :create-step="createStep"
@@ -131,6 +139,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { stepColorByCode, stepColorStyle } from '@/utils/stepKeywordColor'
 import BranchStepFields from './BranchStepFields.vue'
 
 export type FlowStep = {
@@ -148,6 +157,7 @@ const props = withDefaults(defineProps<{
   /** 父步骤编号，如 "1" 或 "2.1"；子步骤显示为 1.1 / 2.1.1 */
   pathPrefix?: string
   elementOptions: any[]
+  pageOptions?: any[]
   keywordOptions: Array<{ code: string; nameZh: string }>
   createStep: (code: string) => FlowStep
   keywordName: (code: string) => string
@@ -162,7 +172,9 @@ const props = withDefaults(defineProps<{
   nestLevel?: number
 }>(), {
   pathPrefix: '1',
-  nestLevel: 0
+  nestLevel: 0,
+  pageOptions: () => [],
+  appOptions: () => []
 })
 
 const emit = defineEmits<{
@@ -264,6 +276,31 @@ function remove(which: 'thenSteps' | 'elseSteps', idx: number) {
 .branch-title {
   font-weight: 600;
   margin-bottom: 4px;
+  color: #303133;
+}
+.branch-box.then .branch-title {
+  color: #67c23a;
+}
+.branch-box.then .branch-tip {
+  color: #85ce61;
+}
+.branch-step-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+}
+.step-action-btn {
+  color: #909399 !important;
+}
+.step-action-btn:hover:not(.is-disabled) {
+  color: var(--el-color-primary) !important;
+}
+.step-delete-btn {
+  color: #909399 !important;
+  font-weight: 400 !important;
+}
+.step-delete-btn:hover {
+  color: #f56c6c !important;
 }
 .branch-tip {
   margin: 0 0 8px;
@@ -312,17 +349,22 @@ function remove(which: 'thenSteps' | 'elseSteps', idx: number) {
   padding: 6px 0;
 }
 .branch-step {
-  border: 1px solid var(--app-border);
-  border-radius: 6px;
-  padding: 8px;
+  border: 1px solid var(--step-soft-border, var(--app-border));
+  border-radius: 8px;
+  padding: 0;
   margin-bottom: 8px;
   background: #fff;
+  overflow: hidden;
+  border-top: 3px solid var(--step-color, #67c23a);
 }
 .branch-step-head {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 4px;
+  margin-bottom: 0;
+  padding: 8px 10px;
+  background: var(--step-soft-bg, #f8fafc);
+  border-bottom: 1px solid var(--step-soft-border, #ebeef5);
 }
 .branch-idx {
   display: inline-flex;
@@ -334,13 +376,29 @@ function remove(which: 'thenSteps' | 'elseSteps', idx: number) {
   justify-content: center;
   font-size: 12px;
   font-weight: 600;
-  background: var(--app-primary);
+  background: var(--step-color, #67c23a);
   color: #fff;
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
 }
 .branch-idx-else {
-  background: var(--app-warning);
+  background: var(--step-color, #e6a23c);
+}
+.step-cat-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--step-color, #606266);
+  background: #fff;
+  border: 1px solid var(--step-soft-border, #ebeef5);
+}
+.branch-step :deep(.step-form) {
+  padding: 8px 10px 2px;
 }
 .step-spacer {
   flex: 1;

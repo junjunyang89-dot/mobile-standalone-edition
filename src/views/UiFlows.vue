@@ -65,6 +65,7 @@
         style="width: 100%"
         :header-cell-style="{ background: '#f5f7fa', color: '#1f2329' }"
         row-key="id"
+        :row-class-name="flowRowClassName"
         @selection-change="batchSelection = $event"
       >
         <el-table-column type="selection" width="46" :selectable="(row: any) => !row.isComponent" />
@@ -134,24 +135,49 @@
       <el-empty v-if="!loading && list.length === 0" description="暂无流程，可新建一条「登录」试编排" />
     </el-card>
 
-    <el-dialog v-model="execVisible" title="执行流程" width="580px" destroy-on-close class="exec-flow-dialog">
-      <el-form label-width="88px">
-        <el-form-item label="流程">
-          <span>{{ execFlow?.name || '—' }}</span>
-        </el-form-item>
-        <el-form-item label="启动配置">
-          <div class="exec-launch-summary">
-            <div>{{ execLaunchSummary.appLabel }}</div>
-            <div class="exec-mono">{{ execLaunchSummary.packageName || '—' }}</div>
-            <div v-if="execLaunchSummary.activity" class="exec-mono muted">{{ execLaunchSummary.activity }}</div>
+    <el-dialog
+      v-model="execVisible"
+      width="520px"
+      destroy-on-close
+      align-center
+      class="exec-flow-dialog"
+      :show-close="false"
+    >
+      <template #header>
+        <div class="exec-dlg-header">
+          <div class="exec-dlg-title">
+            <span class="exec-dlg-icon"><el-icon><VideoPlay /></el-icon></span>
+            <span>执行流程</span>
           </div>
-        </el-form-item>
-        <el-form-item label="设备" required>
+          <button type="button" class="exec-dlg-close" aria-label="关闭" @click="execVisible = false">
+            <el-icon><Close /></el-icon>
+          </button>
+        </div>
+      </template>
+
+      <div v-loading="execLoading" element-loading-text="正在读取设备与安装包…" class="exec-dlg-body">
+        <div class="exec-info-card">
+          <div class="exec-info-row">
+            <div class="exec-info-label">流程</div>
+            <div class="exec-info-value">{{ execFlow?.name || '—' }}</div>
+          </div>
+          <div class="exec-info-row">
+            <div class="exec-info-label">启动配置</div>
+            <div class="exec-info-value">
+              <div>{{ execLaunchSummary.appLabel }}</div>
+              <div class="exec-mono">{{ execLaunchSummary.packageName || '—' }}</div>
+              <div v-if="execLaunchSummary.activity" class="exec-mono muted">{{ execLaunchSummary.activity }}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="exec-field">
+          <div class="exec-field-label"><span class="req">*</span>设备</div>
           <el-select
             v-model="execForm.deviceId"
             filterable
             placeholder="选择已连接设备"
-            style="width: 100%"
+            class="exec-field-control"
             @change="onExecDeviceChange"
           >
             <el-option
@@ -160,13 +186,11 @@
               :label="`${d.name || d.id} (${d.platform || ''})`"
               :value="d.id" />
           </el-select>
-          <div v-if="deviceOptions.length === 0" class="exec-hint" style="margin-top: 6px">暂无已连接设备，请先在设备管理中连接</div>
-        </el-form-item>
-        <!--
-          版本选择仅当流程安装方式为「蒲公英」时出现。
-          本地 APK / 渠道页等在流程里已配好，执行弹窗只展示说明，不再拉蒲公英列表。
-        -->
-        <el-form-item v-if="execInstallSummary.mode === 'LOCAL_APK'" label="安装包">
+          <div v-if="deviceOptions.length === 0" class="exec-hint">暂无已连接设备，请先在设备管理中连接</div>
+        </div>
+
+        <div v-if="execInstallSummary.mode === 'LOCAL_APK'" class="exec-field">
+          <div class="exec-field-label">安装包</div>
           <div class="exec-install-box">
             <div v-if="execInstallSummary.apkPath" class="exec-apk-path">
               <span v-if="apkPathDir(execInstallSummary.apkPath)" class="apk-dir">
@@ -177,67 +201,91 @@
             <div v-if="execInstallSummary.apkArtifactId" class="exec-mono muted">
               applications ID: {{ execInstallSummary.apkArtifactId }}
             </div>
-            <div v-if="execInstallSummary.hint" class="exec-hint warn" style="margin-top: 6px">
-              {{ execInstallSummary.hint }}
-            </div>
+            <div v-if="execInstallSummary.hint" class="exec-hint warn">{{ execInstallSummary.hint }}</div>
           </div>
-        </el-form-item>
-        <el-form-item v-else-if="execInstallSummary.mode === 'CHANNEL_PAGE'" label="安装方式">
+        </div>
+        <div v-else-if="execInstallSummary.mode === 'CHANNEL_PAGE'" class="exec-field">
+          <div class="exec-field-label">安装方式</div>
           <div class="exec-hint">{{ execInstallSummary.hint || '渠道页 / 应用商店（流程内已配置）' }}</div>
-        </el-form-item>
-        <el-form-item v-else-if="execInstallSummary.mode === 'QR_ASSIST'" label="安装方式">
+        </div>
+        <div v-else-if="execInstallSummary.mode === 'QR_ASSIST'" class="exec-field">
+          <div class="exec-field-label">安装方式</div>
           <div class="exec-hint">扫码辅助安装（执行日志会展示二维码）</div>
-        </el-form-item>
-        <el-form-item v-if="pgyerBuilds.length" label="安装版本">
-          <el-select v-model="execForm.pgyerBuildKey" style="width: 100%" placeholder="选择要安装的版本">
+        </div>
+
+        <div v-if="pgyerBuilds.length" class="exec-field">
+          <div class="exec-field-label">安装版本</div>
+          <el-select v-model="execForm.pgyerBuildKey" class="exec-field-control" placeholder="选择要安装的版本">
             <el-option
               v-for="(b, i) in pgyerBuilds"
               :key="b.buildKey"
               :label="`${b.buildVersion} (build ${b.buildBuildVersion})  ${b.buildCreated}${i === 0 ? '  ← 最新' : ''}`"
               :value="b.buildKey" />
           </el-select>
-          <div class="exec-hint" style="margin-top: 6px">
-            默认选中最新一个。装完日志里会写清实际装的是哪个版本
-          </div>
-        </el-form-item>
-        <el-form-item v-else-if="pgyerLoadError" label="安装版本">
+          <div class="exec-hint">默认选中最新一个。装完日志里会写清实际装的是哪个版本</div>
+        </div>
+        <div v-else-if="pgyerLoadError" class="exec-field">
+          <div class="exec-field-label">安装版本</div>
           <div class="exec-hint">{{ pgyerLoadError }}</div>
-        </el-form-item>
-        <el-form-item label="执行环境">
-          <el-radio-group v-model="execForm.environment">
-            <el-radio-button label="PROD">生产环境</el-radio-button>
-            <el-radio-button label="TEST">测试环境</el-radio-button>
-          </el-radio-group>
+        </div>
+
+        <div class="exec-field">
+          <div class="exec-field-label">执行环境</div>
+          <div class="exec-env-toggle">
+            <button
+              type="button"
+              class="exec-env-btn"
+              :class="{ active: execForm.environment === 'PROD' }"
+              @click="execForm.environment = 'PROD'"
+            >生产环境</button>
+            <button
+              type="button"
+              class="exec-env-btn"
+              :class="{ active: execForm.environment === 'TEST' }"
+              @click="execForm.environment = 'TEST'"
+            >测试环境</button>
+          </div>
+          <!--
+            自动化流程本来就不绑环境（同一条流程既跑线上包也跑测试包，差别只在数据），
+            对它提示「登记的环境不一致」是错的——那个 environment 字段对自动化流程根本不参与筛选，
+            提示只会让人以为自己选错了。只有回归流程才谈环境一致。
+          -->
           <div
-            v-if="execFlow && execForm.environment !== (execFlow.environment === 'TEST' ? 'TEST' : 'PROD')"
-            class="exec-hint"
-            style="margin-top: 6px; color: #faad14"
+            v-if="execEnvMismatch"
+            class="exec-hint warn"
           >
             这条流程登记的环境是「{{ execFlow.environment === 'TEST' ? '测试环境' : '生产环境' }}」，
             本次要跑另一个环境。确认元素定位和账号在那边也成立再执行。
           </div>
-        </el-form-item>
-        <!--
-          流程用到的元素定位里若含 ${变量}，这里自动列出来。
-          不填就直接报错，不会拿字面量去页面上找——那会得到一句「元素未找到」，
-          看着像页面改了，实际是忘了填参数，最误导排查。
-        -->
-        <el-form-item v-if="execVars.length" label="定位变量" required>
-          <div style="width: 100%">
+        </div>
+
+        <div v-if="execVars.length" class="exec-field">
+          <div class="exec-field-label"><span class="req">*</span>定位变量</div>
+          <div class="exec-vars-box">
             <div v-for="v in execVars" :key="v" class="exec-var-row">
               <span class="exec-var-name">{{ v }}</span>
-              <el-input v-model="execForm.params[v]" size="small" :placeholder="`填入 ${v} 的值`" />
+              <el-input v-model="execForm.params[v]" size="default" :placeholder="`填入 ${v} 的值`" />
             </div>
             <div class="exec-hint">这些是流程里写成 ${'{'}变量{'}'} 的定位片段，每次执行按当前数据填</div>
           </div>
-        </el-form-item>
-        <el-form-item label="立即执行">
+        </div>
+
+        <div class="exec-runnow-card">
+          <div class="exec-runnow-text">
+            <div class="exec-runnow-title">立即执行</div>
+            <div class="exec-runnow-sub">开启后创建任务并马上开始跑；关闭则只创建待执行任务</div>
+          </div>
           <el-switch v-model="execForm.runNow" />
-        </el-form-item>
-      </el-form>
+        </div>
+      </div>
+
       <template #footer>
-        <el-button @click="execVisible = false">取消</el-button>
-        <el-button type="primary" :loading="executing" @click="submitExecute">开始执行</el-button>
+        <div class="exec-dlg-footer">
+          <el-button class="exec-btn-cancel" @click="execVisible = false">取消</el-button>
+          <el-button type="primary" class="exec-btn-primary" :loading="executing" @click="submitExecute">
+            开始执行
+          </el-button>
+        </div>
       </template>
     </el-dialog>
 
@@ -333,7 +381,7 @@
     <el-drawer
       v-model="drawerVisible"
       class="ui-flow-drawer"
-      size="920px"
+      size="92%"
       destroy-on-close
       append-to-body
       :close-on-click-modal="false"
@@ -341,84 +389,162 @@
     >
       <template #header>
         <div class="drawer-header-row">
-          <span class="drawer-title">{{ editingId ? '编辑流程' : '新建流程' }}</span>
-          <el-button type="primary" plain size="small" class="flow-chart-btn" @click="openFlowChart">
+          <span class="drawer-title">
+            <template v-if="editingId">
+              编辑流程
+              <span v-if="form.name" class="drawer-flow-name">· {{ form.name }}</span>
+            </template>
+            <template v-else>新建流程</template>
+          </span>
+          <el-button type="primary" link class="flow-chart-btn" @click="openFlowChart">
             查看流程图
           </el-button>
         </div>
       </template>
       <!-- 元信息单独一张 form，避免包住步骤区造成 form 嵌套，浏览器会拆 DOM 导致抽屉关不掉 -->
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px" @submit.prevent>
+      <el-form
+        ref="formRef"
+        class="flow-meta-form"
+        :model="form"
+        :rules="rules"
+        label-position="top"
+        require-asterisk-position="left"
+        @submit.prevent
+      >
+        <el-divider content-position="left">基本信息</el-divider>
         <el-form-item label="名称" prop="name">
           <el-input v-model="form.name" placeholder="如 登录" />
         </el-form-item>
         <el-form-item label="描述">
-          <el-input v-model="form.description" type="textarea" :rows="2" />
+          <el-input v-model="form.description" type="textarea" :rows="2" placeholder="可选，说明这条流程做什么" />
         </el-form-item>
-        <el-form-item label="运行应用">
-          <el-select
-            v-model="form.appId"
-            clearable
-            filterable
-            placeholder="不选 = 通用（各 APP 回归可用）；选则仅该 APP"
-            style="width: 100%"
-            @change="onFormAppChange"
-          >
-            <el-option
-              v-for="a in appOptions"
-              :key="a.id"
-              :label="appExecLabel(a)"
-              :value="a.id" />
-          </el-select>
-          <div class="exec-hint" style="margin-top: 6px">
-            <strong>清空</strong>表示通用流程：回归选电竞/Pog 等都会列出；卸装/启动跟当次所选 APP（应用字典包名）。用途为「仅自动化」的流程必须绑定应用，别留空。
-            选具体应用后，点击/输入等步骤可下拉该应用下已「选用」的元素。
-          </div>
-        </el-form-item>
-        <el-form-item label="平台">
-          <el-select
-            v-model="form.platform"
-            clearable
-            placeholder="如 Android"
-            style="width: 100%"
-            @change="loadElementsForFlow"
-          >
-            <el-option v-for="p in platforms" :key="p.value" :label="p.label" :value="p.value" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="环境">
-          <el-radio-group v-model="form.environment">
-            <el-radio-button label="PROD">生产环境</el-radio-button>
-            <el-radio-button label="TEST">测试环境</el-radio-button>
-          </el-radio-group>
-          <div class="exec-hint" style="margin-top: 6px">
-            <template v-if="linksCases">
-              <strong>自动化流程不绑环境</strong>——同一条流程既能跑线上包也能跑测试包，
-              差别只在装哪个包、用哪套数据（数据在「环境变量」里按环境配，流程里写
-              <code v-pre>${phone}</code> 即可）。这里选的值不参与筛选，执行时再选环境。
+        <div class="flow-form-row">
+          <el-form-item>
+            <template #label>
+              <span class="form-label-with-help">
+                运行应用
+                <el-popover placement="top" :width="340" trigger="click">
+                  <template #reference>
+                    <el-icon class="form-help-icon" @click.stop><QuestionFilled /></el-icon>
+                  </template>
+                  <div class="form-help-pop">
+                    <p><strong>清空</strong>表示通用流程：回归选电竞/Pog 等都会列出；卸装/启动跟当次所选 APP（应用字典包名）。</p>
+                    <p>用途为「仅自动化」的流程必须绑定应用，别留空。</p>
+                    <p>选具体应用后，点击/输入等步骤可下拉该应用下已「选用」的元素。</p>
+                  </div>
+                </el-popover>
+              </span>
             </template>
-            <template v-else>
-              这条流程属于哪个环境的用例。<strong>环境和用途是两回事</strong>：环境说的是「验哪个包」，
-              用途说的是「哪个入口用」。两个环境跑的是两批不同的流程，不会互相串。
+            <el-select
+              v-model="form.appId"
+              clearable
+              filterable
+              placeholder="不选 = 通用；选则仅该 APP"
+              style="width: 100%"
+              @change="onFormAppChange"
+            >
+              <el-option
+                v-for="a in appOptions"
+                :key="a.id"
+                :label="appExecLabel(a)"
+                :value="a.id" />
+            </el-select>
+            <button
+              type="button"
+              class="form-help-toggle"
+              :class="{ open: helpOpen.app }"
+              @click="helpOpen.app = !helpOpen.app"
+            >
+              ▸ 清空表示通用流程 · 点击了解更多
+            </button>
+            <div v-if="helpOpen.app" class="form-help-body">
+              <strong>清空</strong>表示通用流程：回归选电竞/Pog 等都会列出；卸装/启动跟当次所选 APP（应用字典包名）。
+              用途为「仅自动化」的流程必须绑定应用，别留空。选具体应用后，点击/输入等步骤可下拉该应用下已「选用」的元素。
+            </div>
+          </el-form-item>
+          <el-form-item label="平台">
+            <el-select
+              v-model="form.platform"
+              clearable
+              placeholder="如 Android"
+              style="width: 100%"
+              @change="loadElementsForFlow"
+            >
+              <el-option v-for="p in platforms" :key="p.value" :label="p.label" :value="p.value" />
+            </el-select>
+          </el-form-item>
+        </div>
+
+        <el-divider content-position="left">执行配置</el-divider>
+        <div class="flow-form-row">
+          <el-form-item>
+            <template #label>
+              <span class="form-label-with-help">
+                环境
+                <el-popover placement="top" :width="340" trigger="click">
+                  <template #reference>
+                    <el-icon class="form-help-icon" @click.stop><QuestionFilled /></el-icon>
+                  </template>
+                  <div class="form-help-pop">
+                    <template v-if="linksCases">
+                      <p><strong>自动化流程不绑环境</strong>——同一条流程既能跑线上包也能跑测试包，差别只在装哪个包、用哪套数据（数据在「环境变量」里按环境配，流程里写 <code v-pre>${phone}</code> 即可）。</p>
+                      <p>这里选的值不参与筛选，执行时再选环境。</p>
+                    </template>
+                    <template v-else>
+                      <p>这条流程属于哪个环境的用例。<strong>环境和用途是两回事</strong>：环境说的是「验哪个包」，用途说的是「哪个入口用」。</p>
+                      <p>两个环境跑的是两批不同的流程，不会互相串。</p>
+                    </template>
+                  </div>
+                </el-popover>
+              </span>
             </template>
-          </div>
-        </el-form-item>
-        <el-form-item label="用途">
-          <el-select v-model="form.catalog" style="width: 100%">
-            <el-option label="回归 + 自动化编排" value="SHARED" />
-            <el-option label="仅自动化编排" value="AUTOMATION" />
-            <el-option label="仅回归" value="ONLINE" />
-            <el-option label="仅性能测试" value="PERFORMANCE" />
-          </el-select>
-          <div class="exec-hint" style="margin-top: 6px">
-            决定这条流程出现在哪个入口，<strong>不区分环境</strong>（环境在上面单独选）：<br />
-            <strong>回归 + 自动化编排</strong>：既进「APP 回归」的批次，也能在本页单跑调试——大多数用例选这个。<br />
-            <strong>仅自动化编排</strong>：只在本页单跑，不进回归批次。<u>只有这一类能关联测试用例</u>——
-            它替代的是「人工执行某条用例」，而回归验的是「这个包能不能用」，两条轨互不相干。<br />
-            <strong>仅回归</strong>：只进回归批次。<br />
-            <strong>仅性能测试</strong>：只出现在安卓性能测试。性能流程请单独建，别和回归用例混。
-          </div>
-        </el-form-item>
+            <el-radio-group v-model="form.environment">
+              <el-radio-button label="PROD">生产</el-radio-button>
+              <el-radio-button label="TEST">测试</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item>
+            <template #label>
+              <span class="form-label-with-help">
+                用途
+                <el-popover placement="top" :width="360" trigger="click">
+                  <template #reference>
+                    <el-icon class="form-help-icon" @click.stop><QuestionFilled /></el-icon>
+                  </template>
+                  <div class="form-help-pop">
+                    <p>决定这条流程出现在哪个入口，<strong>不区分环境</strong>（环境单独选）：</p>
+                    <p><strong>回归 + 自动化编排</strong>：既进「APP 回归」批次，也能在本页单跑——大多数用例选这个。</p>
+                    <p><strong>仅自动化编排</strong>：只在本页单跑，不进回归。<u>只有这一类能关联测试用例</u>。</p>
+                    <p><strong>仅回归</strong>：只进回归批次。</p>
+                    <p><strong>仅性能测试</strong>：只出现在安卓性能测试。请单独建，别和回归混。</p>
+                  </div>
+                </el-popover>
+              </span>
+            </template>
+            <el-select v-model="form.catalog" style="width: 100%">
+              <el-option label="回归 + 自动化编排" value="SHARED" />
+              <el-option label="仅自动化编排" value="AUTOMATION" />
+              <el-option label="仅回归" value="ONLINE" />
+              <el-option label="仅性能测试" value="PERFORMANCE" />
+            </el-select>
+            <button
+              type="button"
+              class="form-help-toggle"
+              :class="{ open: helpOpen.catalog }"
+              @click="helpOpen.catalog = !helpOpen.catalog"
+            >
+              ▸ 了解各选项区别
+            </button>
+            <div v-if="helpOpen.catalog" class="form-help-body">
+              决定这条流程出现在哪个入口，<strong>不区分环境</strong>（环境单独选）：<br />
+              <strong>回归 + 自动化编排</strong>：既进「APP 回归」的批次，也能在本页单跑调试——大多数用例选这个。<br />
+              <strong>仅自动化编排</strong>：只在本页单跑，不进回归批次。<u>只有这一类能关联测试用例</u>——
+              它替代的是「人工执行某条用例」，而回归验的是「这个包能不能用」，两条轨互不相干。<br />
+              <strong>仅回归</strong>：只进回归批次。<br />
+              <strong>仅性能测试</strong>：只出现在安卓性能测试。性能流程请单独建，别和回归用例混。
+            </div>
+          </el-form-item>
+        </div>
         <!--
           只在用途包含「自动化编排」时显示。回归流程在验「这个包能不能用」，
           不对应任何用例——「安装+启动」硬要挂就得造一条假用例，
@@ -441,7 +567,15 @@
               :value="c.id"
             />
           </el-select>
-          <div class="exec-hint" style="margin-top: 6px">
+          <button
+            type="button"
+            class="form-help-toggle"
+            :class="{ open: helpOpen.cases }"
+            @click="helpOpen.cases = !helpOpen.cases"
+          >
+            ▸ 了解覆盖规则
+          </button>
+          <div v-if="helpOpen.cases" class="form-help-body">
             <strong>一条流程覆盖多条用例是常态</strong>——跑一遍登录流程，顺带把手机号登录、区号选择都验了。<br />
             勾上之后那几条用例的「是否已实现自动化」就变成已覆盖，执行状态也跟着这条流程走。<br />
             列表里只有<strong>同平台、且没被别的流程占用</strong>的用例：两端用例是分开的两套，
@@ -467,26 +601,49 @@
               :value="f.id"
             />
           </el-select>
-          <div class="exec-hint" style="margin-top: 6px">
+          <button
+            type="button"
+            class="form-help-toggle"
+            :class="{ open: helpOpen.deps }"
+            @click="helpOpen.deps = !helpOpen.deps"
+          >
+            ▸ 前置与「调用组件」的区别
+          </button>
+          <div v-if="helpOpen.deps" class="form-help-body">
             批量执行时，前置会自动排到本流程之前；<strong>多条用例依赖同一个前置，一批里只跑一次</strong>。
             没勾的前置也会被自动补进来。<br />
             跟「调用组件」的区别：调用组件是<strong>本流程的一部分</strong>，每次执行都跑（清弹窗、切 tab）；
             前置流程是<strong>执行前提</strong>，一批里满足一次就够（装包、登录）。
           </div>
         </el-form-item>
-        <el-form-item label="存为组件">
-          <el-switch v-model="form.isComponent" />
-        </el-form-item>
-        <el-form-item label="启用">
-          <el-switch v-model="form.enabled" />
-        </el-form-item>
-        <el-form-item label="排序">
+        <div class="flow-form-row flow-form-row-switches">
+          <el-form-item label="存为组件">
+            <el-switch v-model="form.isComponent" />
+          </el-form-item>
+          <el-form-item label="启用">
+            <el-switch v-model="form.enabled" />
+          </el-form-item>
+        </div>
+        <el-form-item>
+          <template #label>
+            <span class="form-label-with-help">
+              排序
+              <el-popover placement="top" :width="300" trigger="click">
+                <template #reference>
+                  <el-icon class="form-help-icon" @click.stop><QuestionFilled /></el-icon>
+                </template>
+                <div class="form-help-pop">
+                  回归批次里的列表与执行顺序，数字越小越靠前（默认 100）。装包、登录这类前置流程排最前，后面的流程直接复用设备上的状态。
+                </div>
+              </el-popover>
+            </span>
+          </template>
           <el-input-number v-model="form.sortOrder" :min="0" :max="9999" />
-          <div class="exec-hint" style="margin-top: 4px">回归批次里的列表与执行顺序，数字越小越靠前（默认 100）。装包、登录这类前置流程排最前，后面的流程直接复用设备上的状态</div>
         </el-form-item>
       </el-form>
 
-      <el-divider content-position="left">步骤（从上到下执行 · 编号 1 / 1.1 / 1.1.1 表示归属）</el-divider>
+      <el-divider content-position="left">步骤</el-divider>
+      <p class="steps-section-hint">从上到下执行 · 编号 1 / 1.1 / 1.1.1 表示归属</p>
 
         <div class="steps-toolbar">
           <el-select v-model="addKeywordCode" placeholder="选择关键字" filterable style="width: 320px">
@@ -549,20 +706,44 @@
           </el-dropdown>
         </div>
         <div class="keyword-quick">
-          <span class="keyword-quick-label">常用：</span>
+          <span class="keyword-quick-label">常用</span>
           <el-button
-            v-for="k in quickKeywords"
+            v-for="k in quickKeywordsPrimary"
             :key="k.code"
             size="small"
             round
+            :title="`${k.nameZh} (${k.code})`"
             @click="quickAdd(k.code)"
           >
-            {{ k.nameZh }}
+            {{ quickKeywordLabel(k) }}
           </el-button>
+          <template v-if="quickKeywordsMore.length">
+            <el-button
+              v-if="!quickMoreOpen"
+              size="small"
+              round
+              class="keyword-more-btn"
+              @click="quickMoreOpen = true"
+            >
+              更多…
+            </el-button>
+            <template v-else>
+              <el-button
+                v-for="k in quickKeywordsMore"
+                :key="k.code"
+                size="small"
+                round
+                :title="`${k.nameZh} (${k.code})`"
+                @click="quickAdd(k.code)"
+              >
+                {{ quickKeywordLabel(k) }}
+              </el-button>
+              <el-button size="small" round class="keyword-more-btn" @click="quickMoreOpen = false">
+                收起
+              </el-button>
+            </template>
+          </template>
         </div>
-        <p class="exec-hint" style="margin: 0 0 8px">
-          「插入模板」会展开成可编辑步骤骨架；手机号/验证码请自行改成真实值。描述与期望仅供速览，不驱动执行。
-        </p>
 
         <div v-if="steps.length === 0" class="steps-empty">暂无步骤，请从上方添加关键字或插入模板</div>
 
@@ -570,23 +751,23 @@
           v-for="(step, idx) in steps"
           :key="step._key || 'step-' + idx"
           class="step-card"
-          :class="{ 'step-card-if': step.keywordCode === 'IF_ELEMENT_EXISTS' }"
+          :class="`step-card-${stepTone(step.keywordCode).category.toLowerCase()}`"
+          :style="stepToneStyle(step.keywordCode)"
         >
           <div class="step-head">
             <span class="step-idx">{{ idx + 1 }}</span>
-            <el-tag size="small" :type="step.keywordCode === 'IF_ELEMENT_EXISTS' ? 'warning' : 'primary'">
-              {{ keywordName(step.keywordCode) }}
-            </el-tag>
-            <el-tag size="small" type="info" effect="plain">{{ step.keywordCode }}</el-tag>
+            <span class="step-name">{{ keywordName(step.keywordCode) }}</span>
+            <span class="step-cat-tag">{{ stepTone(step.keywordCode).categoryLabel }}</span>
+            <el-tag size="small" type="info" effect="plain" class="step-code-tag">{{ step.keywordCode }}</el-tag>
             <span v-if="step.description" class="step-desc-inline" :title="step.description">{{ step.description }}</span>
             <span class="step-spacer" />
-            <el-button link size="small" @click="setInsertAfter(step)">在此后插入</el-button>
-            <el-button link size="small" :disabled="idx === 0" @click="moveStep(idx, -1)">上移</el-button>
-            <el-button link size="small" :disabled="idx === steps.length - 1" @click="moveStep(idx, 1)">下移</el-button>
-            <el-button type="danger" link size="small" @click="removeStep(idx)">删除</el-button>
+            <el-button link size="small" class="step-action-btn" @click="setInsertAfter(step)">在此后插入</el-button>
+            <el-button link size="small" class="step-action-btn" :disabled="idx === 0" @click="moveStep(idx, -1)">上移</el-button>
+            <el-button link size="small" class="step-action-btn" :disabled="idx === steps.length - 1" @click="moveStep(idx, 1)">下移</el-button>
+            <el-button link size="small" class="step-delete-btn" @click="removeStep(idx)">删除</el-button>
           </div>
 
-          <el-form label-width="120px" class="step-form">
+          <el-form label-position="top" class="step-form">
             <el-form-item label="描述">
               <el-input
                 v-model="step.description"
@@ -604,27 +785,24 @@
               />
             </el-form-item>
             <el-form-item v-if="needsElement(step.keywordCode)" :label="elementFieldLabel(step.keywordCode)">
-              <el-select
+              <ElementKeySelect
                 v-model="step.elementKey"
-                filterable
-                allow-create
-                default-first-option
-                clearable
+                :elements="elementOptions"
+                :pages="flowPageOptions"
                 :placeholder="elementSelectPlaceholder"
-                style="width: 100%"
-              >
-                <el-option
-                  v-for="el in elementOptions"
-                  :key="el.nameEn"
-                  :label="elementOptionLabel(el)"
-                  :value="el.nameEn" />
-              </el-select>
+              />
               <div class="element-pick-actions">
+                <!--
+                  两端会有同名元素（warm_tip 安卓一个、iOS 一个），
+                  光看名字分不出这条是哪端的。列表本来就按流程平台筛过了，
+                  但不写出来人没法确认——只能凭感觉，而凭感觉迟早会挂错端。
+                -->
+                <span class="element-scope">{{ elementScopeHint }}</span>
                 <el-button link type="primary" @click="goDeviceInspect(step)">记不住？真机点选</el-button>
                 <el-button link @click="loadElementsForFlow">刷新列表</el-button>
               </div>
               <div v-if="!form.appId || !form.platform" class="exec-hint" style="margin-top: 6px">
-                请先选择「运行应用」和「平台」，再按下拉选对应元素（展示中文名，保存用英文 key）。
+                请先选择「运行应用」和「平台」，再按「页面 → 元素」选择（展示中文名，保存用英文 key）。
               </div>
             </el-form-item>
             <el-form-item v-if="step.keywordCode === 'IF_ELEMENT_EXISTS'" label="探测超时">
@@ -726,6 +904,7 @@
               :schema="keywordSchema(step.keywordCode)"
               :params="step.params"
               :element-options="elementOptions"
+              :page-options="flowPageOptions"
             />
           </el-form>
 
@@ -734,6 +913,7 @@
             v-if="step.keywordCode === 'DISMISS_POPUPS'"
             :step="step"
             :element-options="elementOptions"
+            :page-options="flowPageOptions"
             @refresh-elements="loadElementsForFlow"
           />
 
@@ -743,6 +923,7 @@
             :step="step"
             :path-prefix="String(idx + 1)"
             :element-options="elementOptions"
+            :page-options="flowPageOptions"
             :keyword-options="keywords"
             :create-step="createStep"
             :keyword-name="keywordName"
@@ -762,6 +943,7 @@
             :step="step"
             :path-prefix="String(idx + 1)"
             :element-options="elementOptions"
+            :page-options="flowPageOptions"
             :keyword-options="keywords"
             :create-step="createStep"
             :keyword-name="keywordName"
@@ -793,14 +975,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import KeywordParamFields from '../components/KeywordParamFields.vue'
+import ElementKeySelect from '../components/ElementKeySelect.vue'
 import WaitAnyBranchEditor from './WaitAnyBranchEditor.vue'
 import DismissPopupsEditor from './DismissPopupsEditor.vue'
 import LaunchStepFields from './LaunchStepFields.vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { ArrowDown, Plus } from '@element-plus/icons-vue'
+import { ArrowDown, Close, Plus, QuestionFilled, VideoPlay } from '@element-plus/icons-vue'
 import { apiClient } from '@/api'
+import { stepColorByCode, stepColorStyle } from '@/utils/stepKeywordColor'
 import IfBranchEditor from './IfBranchEditor.vue'
 import DeviceInspectDrawer from '@/components/DeviceInspectDrawer.vue'
 import FlowChartDialog from '@/components/FlowChartDialog.vue'
@@ -822,27 +1007,43 @@ interface FlowStep {
 const DEFAULT_LAUNCH_APP_PACKAGE = 'com.pwrd.steam.esports'
 const DEFAULT_LAUNCH_APP_ACTIVITY = '.ui.activity.launcher.LauncherActivity'
 
-/** 关键字已按平台合并，编排时不用再选端——平台由任务/设备决定 */
+/** 关键字已按平台合并，编排时不用再选端——平台由任务/设备决定。前 10 个常显，其余进「更多…」 */
 const QUICK_CODES = [
   'COLD_START',
   'HOT_START',
   'LAUNCH_APP',
+  'CLICK',
+  'INPUT',
+  'WAIT_ELEMENT',
+  'SWIPE',
+  'SCREENSHOT',
+  'IF_ELEMENT_EXISTS',
+  'WAIT',
   'UNINSTALL_APP',
   'INSTALL_APP',
   'DISMISS_POPUPS',
   'WAIT_ANY',
-  'IF_ELEMENT_EXISTS',
   'RETURN_MESSAGE',
-  'CLICK',
-  'INPUT',
-  'WAIT',
-  'WAIT_ELEMENT',
-  'SWIPE',
   'SCROLL_UNTIL',
   'BACK',
-  'SCREENSHOT',
+  'GO_HOME',
   'ASSERT_NO_ERROR'
 ]
+const QUICK_PRIMARY_COUNT = 10
+
+/** 常用条太挤时用短名，悬停仍看完整中文+code */
+const QUICK_SHORT_LABEL: Record<string, string> = {
+  GO_HOME: '回主屏',
+  IF_ELEMENT_EXISTS: '元素存在判断',
+  DISMISS_POPUPS: '清弹窗',
+  WAIT_ANY: '竞速等待',
+  ASSERT_NO_ERROR: '无报错'
+}
+
+function quickKeywordLabel(k: { code?: string; nameZh?: string }) {
+  const code = String(k.code || '')
+  return QUICK_SHORT_LABEL[code] || k.nameZh || code
+}
 
 function isScrollUntilStep(code: string) {
   return code === 'SCROLL_UNTIL' || code === 'SCROLL_UNTIL_IOS'
@@ -910,6 +1111,20 @@ const loading = ref(false)
 const list = ref<any[]>([])
 const deviceOptions = ref<any[]>([])
 const execVisible = ref(false)
+/** 弹窗先开、内容后到时的骨架态：设备枚举走 adb/idevice_id，蒲公英列表要发网络请求 */
+const execLoading = ref(false)
+
+/**
+ * 执行环境和流程登记的环境对不上——只对<b>回归流程</b>成立。
+ * 自动化流程（仅自动化编排）不绑环境，它的 environment 字段不参与任何筛选，
+ * 拿它来提示不一致纯属误导。
+ */
+const execEnvMismatch = computed(() => {
+  const f = execFlow.value
+  if (!f) return false
+  if (f.catalog === 'AUTOMATION') return false
+  return execForm.environment !== (f.environment === 'TEST' ? 'TEST' : 'PROD')
+})
 const executing = ref(false)
 const execFlow = ref<any>(null)
 const execForm = reactive({
@@ -940,11 +1155,22 @@ const execLaunchSummary = reactive({
 })
 const keywords = ref<any[]>([])
 const elementOptions = ref<any[]>([])
+/** 页面字典，只为把元素下拉里的 pageId 显示成中文名 */
+const flowPageOptions = ref<any[]>([])
 const appOptions = ref<any[]>([])
 
 const quickKeywords = computed(() => {
   const map = new Map(keywords.value.map((k) => [k.code, k]))
   return QUICK_CODES.map((code) => map.get(code)).filter(Boolean) as any[]
+})
+const quickKeywordsPrimary = computed(() => quickKeywords.value.slice(0, QUICK_PRIMARY_COUNT))
+const quickKeywordsMore = computed(() => quickKeywords.value.slice(QUICK_PRIMARY_COUNT))
+const quickMoreOpen = ref(false)
+const helpOpen = reactive({
+  app: false,
+  catalog: false,
+  cases: false,
+  deps: false
 })
 
 /** 关键字下拉：关键字已按平台合并，直接按 sortOrder 排即可 */
@@ -956,8 +1182,10 @@ const keywordsForPicker = computed(() =>
   )
 )
 
-function keywordPickerLabel(k: { nameZh?: string; code?: string }) {
-  return `${k.nameZh || k.code} (${k.code})`
+function keywordPickerLabel(k: { nameZh?: string; code?: string; category?: string }) {
+  const cat = k.category === 'DEVICE' ? '设备' : k.category === 'ACTION' ? '操作' : ''
+  const head = cat ? `[${cat}] ` : ''
+  return `${head}${k.nameZh || k.code} (${k.code})`
 }
 
 function appLabel(id: string) {
@@ -1171,22 +1399,24 @@ function onFormAppChange(appId: string) {
   loadElementsForFlow()
 }
 
-function elementOptionLabel(el: any) {
-  const zh = String(el?.nameZh || '').trim()
-  const en = String(el?.nameEn || '').trim()
-  if (zh && en) return `${zh}（${en}）`
-  return zh || en || '—'
-}
-
 const elementSelectPlaceholder = computed(() => {
   if (!form.appId || !form.platform) return '请先选择运行应用和平台'
   if (!elementOptions.value.length) return '暂无选用元素，请先在元素管理中标记并选用'
-  return '按中文名搜索选择元素'
+  return '先选页面，再选该页下的元素'
+})
+
+/** 当前下拉里列的是哪一端的元素——两端同名元素很常见，必须写出来 */
+const elementScopeHint = computed(() => {
+  if (!form.appId || !form.platform) return '选好运行应用和平台后才会列元素'
+  const label =
+    form.platform === 'IOS' ? 'iOS' : form.platform === 'HARMONYOS' ? '鸿蒙' : 'Android'
+  return `只列 ${label} 元素（${elementOptions.value.length} 个）`
 })
 
 async function loadElementsForFlow() {
   if (!form.appId || !form.platform) {
     elementOptions.value = []
+    flowPageOptions.value = []
     return
   }
   try {
@@ -1197,8 +1427,15 @@ async function loadElementsForFlow() {
       status: 'ACTIVE'
     })
     elementOptions.value = Array.isArray(list) ? list : []
+    // 页面字典只用来把 pageId 显示成中文名；拉不到就退回显示 pageId 本身，不影响选元素
+    try {
+      flowPageOptions.value = await apiClient.getUiPages({ appId: form.appId })
+    } catch {
+      flowPageOptions.value = []
+    }
   } catch {
     elementOptions.value = []
+    flowPageOptions.value = []
   }
 }
 
@@ -1263,6 +1500,19 @@ function stepCount(stepsRaw: string | any[]) {
 function keywordName(code: string) {
   const k = keywords.value.find((x) => x.code === code)
   return k?.nameZh || code
+}
+
+function keywordCategory(code: string) {
+  const k = keywords.value.find((x) => x.code === code)
+  return k?.category as string | undefined
+}
+
+function stepTone(code: string) {
+  return stepColorByCode(code, keywordCategory(code))
+}
+
+function stepToneStyle(code: string) {
+  return stepColorStyle(code, keywordCategory(code))
 }
 
 function needsElement(code: string) {
@@ -1417,11 +1667,12 @@ async function loadMeta() {
     keywords.value = []
   }
   // 后端未种子时本地兜底，便于调试立刻用上
-  const fallbacks: Array<{ code: string; nameZh: string; needsElement?: boolean }> = [
+  const fallbacks: Array<{ code: string; nameZh: string; needsElement?: boolean; category?: string }> = [
     { code: 'SWIPE', nameZh: '滑动 · Android' },
     { code: 'SWIPE_IOS', nameZh: '滑动 · iOS' },
     { code: 'SCROLL_UNTIL', nameZh: '滑动直到元素 · Android', needsElement: true },
-    { code: 'SCROLL_UNTIL_IOS', nameZh: '滑动直到元素 · iOS', needsElement: true }
+    { code: 'SCROLL_UNTIL_IOS', nameZh: '滑动直到元素 · iOS', needsElement: true },
+    { code: 'GO_HOME', nameZh: '回主屏幕', category: 'DEVICE' }
   ]
   for (const fb of fallbacks) {
     if (!keywords.value.some((k) => k.code === fb.code)) {
@@ -1430,7 +1681,8 @@ async function loadMeta() {
         nameZh: fb.nameZh,
         needsElement: !!fb.needsElement,
         enabled: true,
-        category: 'ACTION'
+        category: fb.category || 'ACTION',
+        sortOrder: fb.code === 'GO_HOME' ? 71 : 100
       })
     }
   }
@@ -1453,6 +1705,12 @@ function onDrawerClosed() {
   // destroy-on-close 后清理，避免残留状态影响下次打开
   saving.value = false
   flowChartVisible.value = false
+  quickMoreOpen.value = false
+  helpOpen.app = false
+  helpOpen.catalog = false
+  helpOpen.cases = false
+  helpOpen.deps = false
+  highlightFlowId.value = ''
 }
 
 function openFlowChart() {
@@ -1688,7 +1946,7 @@ async function onInsertTemplate(cmd: string) {
   ElMessage.success('已插入「验证码登录骨架」，请改手机号/验证码后保存')
 }
 
-function openAdd() {
+async function openAdd() {
   editingId.value = ''
   Object.assign(form, {
     name: '',
@@ -1705,16 +1963,17 @@ function openAdd() {
   })
   steps.value = []
   insertAfterStep.value = null
+  // 关键字目录会随后端重启新增（如 GO_HOME）；抽屉打开时再拉一次，避免整页不刷新就看不到
+  await loadMeta()
   addKeywordCode.value =
     keywords.value.find((k) => k.code === 'IF_ELEMENT_EXISTS')?.code ||
     keywords.value.find((k) => k.code === 'LAUNCH_APP')?.code ||
     keywords.value[0]?.code ||
     'CLICK'
   drawerVisible.value = true
-  loadElementsForFlow()
 }
 
-function openEdit(row: any) {
+async function openEdit(row: any) {
   editingId.value = row.id
   Object.assign(form, {
     name: row.name || '',
@@ -1729,6 +1988,7 @@ function openEdit(row: any) {
     sortOrder: row.sortOrder ?? 100,
     caseIds: []
   })
+  await loadMeta()
   loadLinkableCases()
   steps.value = parseSteps(row.steps)
   insertAfterStep.value = null
@@ -1742,7 +2002,6 @@ function openEdit(row: any) {
   }
   if (!form.platform && form.appId) form.platform = 'ANDROID'
   drawerVisible.value = true
-  loadElementsForFlow()
 }
 
 /**
@@ -2062,18 +2321,14 @@ async function openExecute(row: any) {
   execInstallSummary.apkPath = ''
   execInstallSummary.apkArtifactId = ''
   execInstallSummary.hint = ''
-  try {
-    execVars.value = await apiClient.getFlowLocatorVariables(row.id)
-  } catch {
-    // 取不到变量清单不该挡住执行；真缺变量时后端会明确报出缺哪个
-  }
-  if (!appOptions.value.length) {
-    try {
-      appOptions.value = await apiClient.getUiApps({ enabledOnly: true })
-    } catch {
-      /* ignore */
-    }
-  }
+
+  // 先把弹窗打开，再去加载。
+  // 原来是等 4 个串行请求全跑完才 execVisible=true——其中枚举设备要走 adb / idevice_id，
+  // 蒲公英列表还要发网络请求，加起来好几秒。这几秒里按钮毫无反应，
+  // 人会以为没点上，于是再点一次，又排一轮
+  execLoading.value = true
+  execVisible.value = true
+
   const fromStep = extractLaunchAppFromFlow(row)
   const appId = row.appId || fromStep.appId || matchAppIdByPackage(fromStep.packageName || '') || ''
   const platform = row.platform || 'ANDROID'
@@ -2086,16 +2341,35 @@ async function openExecute(row: any) {
   execLaunchSummary.activity = activity
   execLaunchSummary.platform = platform
   applyExecInstallSummary(row)
-  // 先拉设备；若已有默认选中再按设备平台刷包名/蒲公英列表
-  await loadConnectedDevices()
-  if (deviceOptions.value.length === 1) {
-    execForm.deviceId = deviceOptions.value[0].id
-    await refreshExecForDevice()
-  } else if (flowUsesPgyerInstall(row) && appId) {
-    // 尚未选设备时，先按流程平台预拉（选设备后会再按设备平台刷新）
-    await loadPgyerBuildsForExec(appId, platform)
+
+  try {
+    // 三个互不依赖，并行拉。串行的话是三者耗时相加，而最慢那个（枚举设备）本来就要好几秒
+    await Promise.all([
+      apiClient
+        .getFlowLocatorVariables(row.id)
+        .then((v) => (execVars.value = v))
+        // 取不到变量清单不该挡住执行；真缺变量时后端会明确报出缺哪个
+        .catch(() => undefined),
+      appOptions.value.length
+        ? Promise.resolve()
+        : apiClient
+            .getUiApps({ enabledOnly: true })
+            .then((v) => (appOptions.value = v))
+            .catch(() => undefined),
+      loadConnectedDevices()
+    ])
+
+    // 这两步依赖设备结果，只能放在后面
+    if (deviceOptions.value.length === 1) {
+      execForm.deviceId = deviceOptions.value[0].id
+      await refreshExecForDevice()
+    } else if (flowUsesPgyerInstall(row) && appId) {
+      // 尚未选设备时，先按流程平台预拉（选设备后会再按设备平台刷新）
+      await loadPgyerBuildsForExec(appId, platform)
+    }
+  } finally {
+    execLoading.value = false
   }
-  execVisible.value = true
 }
 
 /** 选设备后：包名按平台切 Android 包名 / iOS BundleId，蒲公英列表用对应 Key */
@@ -2358,9 +2632,62 @@ async function handleDelete(row: any) {
   }
 }
 
+const route = useRoute()
+const router = useRouter()
+/** 从外链跳入编辑时高亮列表行 */
+const highlightFlowId = ref('')
+
+function flowRowClassName({ row }: { row: any }) {
+  return row?.id && row.id === highlightFlowId.value ? 'flow-row-highlight' : ''
+}
+
+/** 支持 /ui-flows?edit=<flowId>&name=xxx：从 APP 回归等入口点芯片跳进编辑 */
+async function openEditFromQuery() {
+  const editId = String(route.query.edit || '').trim()
+  if (!editId) return
+  const hintName = String(route.query.name || '').trim()
+  try {
+    let row = list.value.find((f) => f.id === editId)
+    if (!row) {
+      row = await apiClient.getUiFlow(editId)
+    }
+    if (!row?.id) {
+      ElMessage.warning(`未找到流程：${hintName || editId}`)
+      return
+    }
+    // 把筛选对齐到这条流程，列表里也能对上是哪一条
+    if (row.appId) filterAppId.value = row.appId
+    if (row.platform) filterPlatform.value = row.platform
+    if (row.environment === 'TEST' || row.environment === 'PROD') {
+      filterEnvironment.value = row.environment
+    }
+    filterCatalog.value = ''
+    componentOnly.value = false
+    await loadList()
+    highlightFlowId.value = row.id
+    await openEdit(row)
+    ElMessage.success(`正在编辑：${row.name || hintName || row.id}`)
+  } catch (e: any) {
+    ElMessage.error(e?.message || '打开流程失败')
+  } finally {
+    const q = { ...route.query }
+    delete q.edit
+    delete q.name
+    await router.replace({ query: q })
+  }
+}
+
+watch(
+  () => route.query.edit,
+  async (id) => {
+    if (id) await openEditFromQuery()
+  }
+)
+
 onMounted(async () => {
   await loadMeta()
   await loadList()
+  await openEditFromQuery()
 })
 </script>
 
@@ -2399,19 +2726,24 @@ onMounted(async () => {
   font-weight: normal;
 }
 .exec-hint {
-  margin: 0 0 12px;
+  margin-top: 6px;
   font-size: 12px;
+  line-height: 1.5;
   color: var(--el-text-color-placeholder);
+}
+.exec-hint.warn {
+  color: var(--app-warning);
+}
+.element-scope {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-right: 4px;
 }
 .element-pick-actions {
   margin-top: 4px;
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
-}
-.exec-launch-summary {
-  line-height: 1.5;
-  color: var(--app-text);
 }
 .exec-mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -2425,8 +2757,8 @@ onMounted(async () => {
 .exec-install-box {
   width: 100%;
   padding: 10px 12px;
-  background: #f0f7ff;
-  border: 1px solid var(--el-color-primary-light-7);
+  background: #f5f7fa;
+  border: 1px solid #ebeef5;
   border-radius: 8px;
 }
 .exec-apk-path {
@@ -2456,9 +2788,6 @@ onMounted(async () => {
   border: 1px solid #52c41a;
   box-shadow: 0 1px 2px rgba(82, 196, 26, 0.15);
 }
-.exec-hint.warn {
-  color: var(--app-warning);
-}
 .filter-bar {
   margin-bottom: 12px;
 }
@@ -2482,6 +2811,85 @@ onMounted(async () => {
 .keyword-quick-label {
   font-size: 12px;
   color: var(--el-text-color-placeholder);
+  margin-right: 2px;
+}
+.keyword-more-btn {
+  color: var(--el-color-primary) !important;
+  border-color: var(--el-color-primary-light-5) !important;
+  background: #ecf5ff !important;
+}
+.steps-section-hint {
+  margin: -8px 0 12px;
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+  line-height: 1.4;
+}
+.flow-meta-form :deep(.el-form-item) {
+  margin-bottom: 14px;
+}
+.flow-meta-form :deep(.el-form-item__label) {
+  margin-bottom: 6px;
+  line-height: 1.3;
+  color: #606266;
+  font-weight: 500;
+}
+.flow-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 16px;
+}
+.flow-form-row-switches :deep(.el-form-item__content) {
+  min-height: 32px;
+  align-items: center;
+}
+.form-label-with-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.form-help-icon {
+  color: #c0c4cc;
+  cursor: pointer;
+  font-size: 14px;
+  transition: color 0.15s ease;
+}
+.form-help-icon:hover {
+  color: var(--el-color-primary);
+}
+.form-help-toggle {
+  margin-top: 6px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+  text-align: left;
+}
+.form-help-toggle:hover,
+.form-help-toggle.open {
+  color: var(--el-color-primary);
+}
+.form-help-body {
+  margin-top: 6px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f5f7fa;
+  color: #606266;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.form-help-pop {
+  font-size: 12px;
+  line-height: 1.65;
+  color: #606266;
+}
+.form-help-pop p {
+  margin: 0 0 8px;
+}
+.form-help-pop p:last-child {
+  margin-bottom: 0;
 }
 .steps-empty {
   color: var(--el-text-color-placeholder);
@@ -2510,22 +2918,132 @@ onMounted(async () => {
   font-weight: 600;
   color: var(--app-text);
 }
+.drawer-flow-name {
+  color: var(--el-color-primary);
+  font-weight: 700;
+  margin-left: 2px;
+}
+.flow-list-table :deep(.flow-row-highlight > td.el-table__cell) {
+  background: #ecf5ff !important;
+}
 .flow-chart-btn {
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
 
+.exec-dlg-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.exec-info-card {
+  border-radius: 10px;
+  background: #f5f7fa;
+  overflow: hidden;
+}
+.exec-info-row {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 12px;
+  padding: 12px 14px;
+}
+.exec-info-row + .exec-info-row {
+  border-top: 1px solid #ebeef5;
+}
+.exec-info-label {
+  color: #909399;
+  font-size: 13px;
+  line-height: 1.5;
+  padding-top: 1px;
+}
+.exec-info-value {
+  color: #303133;
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+.exec-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.exec-field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+  line-height: 1.4;
+}
+.exec-field-label .req {
+  color: #f56c6c;
+  margin-right: 4px;
+}
+.exec-field-control {
+  width: 100%;
+}
+.exec-env-toggle {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 10px;
+  background: #f0f2f5;
+  gap: 2px;
+}
+.exec-env-btn {
+  border: none;
+  background: transparent;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1;
+  padding: 9px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.exec-env-btn.active {
+  background: var(--el-color-primary);
+  color: #fff;
+  font-weight: 500;
+}
+.exec-vars-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 .exec-var-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
 }
 .exec-var-name {
   flex: 0 0 110px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
   color: var(--el-text-color-regular);
+}
+.exec-runnow-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: #f5f7fa;
+}
+.exec-runnow-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  line-height: 1.4;
+}
+.exec-runnow-sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.4;
+}
+.exec-dlg-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .install-note {
@@ -2547,6 +3065,80 @@ onMounted(async () => {
 .ui-flow-drawer .flow-chart-btn {
   -webkit-app-region: no-drag !important;
   app-region: no-drag !important;
+}
+
+/* 执行流程弹窗（teleport 到 body，需非 scoped） */
+.exec-flow-dialog.el-dialog {
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.18);
+}
+.exec-flow-dialog .el-dialog__header {
+  margin: 0;
+  padding: 16px 20px 14px;
+  border-bottom: 1px solid #ebeef5;
+}
+.exec-flow-dialog .el-dialog__body {
+  padding: 18px 20px;
+}
+.exec-flow-dialog .el-dialog__footer {
+  padding: 14px 20px 18px;
+  border-top: 1px solid #ebeef5;
+}
+.exec-flow-dialog .exec-dlg-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.exec-flow-dialog .exec-dlg-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+  line-height: 1.3;
+}
+.exec-flow-dialog .exec-dlg-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #ecf5ff;
+  color: var(--el-color-primary);
+  font-size: 14px;
+}
+.exec-flow-dialog .exec-dlg-close {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: #f0f2f5;
+  color: #909399;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.exec-flow-dialog .exec-dlg-close:hover {
+  background: #e4e7ed;
+  color: #606266;
+}
+.exec-flow-dialog .exec-btn-cancel {
+  min-width: 76px;
+  border-radius: 8px;
+}
+.exec-flow-dialog .exec-btn-primary {
+  min-width: 96px;
+  border-radius: 8px;
+}
+.exec-flow-dialog .el-select .el-input__wrapper {
+  border-radius: 8px;
 }
 .insert-pos-popper .insert-opt {
   display: flex;
@@ -2573,29 +3165,33 @@ onMounted(async () => {
 
 <style scoped>
 .step-card {
-  border: 1px solid var(--app-border);
-  border-radius: 6px;
-  padding: 10px 12px;
-  margin-bottom: 10px;
-  background: #fafafa;
+  border: 1px solid #ebeef5;
+  border-radius: 10px;
+  padding: 0;
+  margin-bottom: 12px;
+  background: #fff;
+  overflow: hidden;
+  border-top: 3px solid var(--step-color, var(--el-color-primary));
 }
 .step-card-if {
   border-color: #f5dab1;
-  background: #fffaf2;
 }
 .step-head,
 .branch-step-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
+  margin-bottom: 0;
+  padding: 10px 14px;
+  background: var(--step-soft-bg, #f5f7fa);
+  border-bottom: 1px solid var(--step-soft-border, #ebeef5);
 }
 .step-idx {
   min-width: 22px;
   height: 22px;
   padding: 0 6px;
   border-radius: 11px;
-  background: var(--el-color-primary);
+  background: var(--step-color, var(--el-color-primary));
   color: #fff;
   font-size: 12px;
   font-weight: 600;
@@ -2605,21 +3201,63 @@ onMounted(async () => {
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
 }
+.step-idx-if {
+  background: #f97316;
+}
+.step-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+.step-cat-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--step-color, #606266);
+  background: #fff;
+  border: 1px solid var(--step-soft-border, #ebeef5);
+}
+.step-code-tag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.step-action-btn {
+  color: #909399 !important;
+}
+.step-action-btn:hover:not(.is-disabled) {
+  color: var(--el-color-primary) !important;
+}
+.step-delete-btn {
+  color: #909399 !important;
+  font-weight: 400 !important;
+}
+.step-delete-btn:hover {
+  color: #f56c6c !important;
+}
 .step-spacer {
   flex: 1;
 }
 .step-form {
-  margin-top: 4px;
-}
-.step-form :deep(.el-form-item__label) {
-  white-space: nowrap;
-  line-height: 32px;
-  height: auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  padding: 12px 14px 4px;
 }
 .step-form :deep(.el-form-item) {
-  margin-bottom: 16px;
+  margin-bottom: 12px;
+}
+.step-form :deep(.el-form-item__label) {
+  margin-bottom: 4px;
+  line-height: 1.3;
+  color: #909399;
+  font-size: 12px;
+  font-weight: 500;
+}
+.step-card :deep(.if-branches),
+.step-card :deep(.wait-any-branches),
+.step-card :deep(.dp-editor) {
+  padding: 0 14px 12px;
 }
 .branch-box {
   margin-top: 10px;

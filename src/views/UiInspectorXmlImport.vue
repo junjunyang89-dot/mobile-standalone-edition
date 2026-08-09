@@ -392,8 +392,13 @@ async function doParse() {
       }
     })
     candidates.value = list
-    const hinted = list.find((c: any) => c.pageId)?.pageId
-    if (hinted === 'PRIVACY_WARM_TIP') quickPrivacy()
+    // XML 里常夹带「温馨提示」文案，解析会标 pageId=PRIVACY_WARM_TIP；
+    // 绝不能覆盖用户已选的归属页（用户协议弹窗也会被改回去）。
+    // 仅在尚未选择归属页时，才用暗示帮填一次。
+    if (!pageId.value?.trim()) {
+      const hinted = list.find((c: any) => c.pageId)?.pageId
+      if (hinted === 'PRIVACY_WARM_TIP') quickPrivacy()
+    }
     await nextTick()
     selectSuggested()
     ElMessage.success(`解析完成：${list.length} 个`)
@@ -458,16 +463,29 @@ async function doImport() {
     const n = res?.createdCount ?? res?.created?.length ?? 0
     const skipped = res?.skippedCount ?? res?.skipped?.length ?? 0
     const errs = res?.errors || []
+    const created = res?.created || []
+    // 跨页同名时后端会把 cancel 写成 cancel_pw_user_agreement_popup，把实际 key 告诉用户
+    const tips = created
+      .map((el: any) => {
+        const zh = el?.nameZh || ''
+        const en = el?.nameEn || ''
+        return zh && en ? `${zh}→${en}` : en
+      })
+      .filter(Boolean)
+      .slice(0, 3)
+
     await loadPages()
     if (errs.length) {
       ElMessage.warning(`写入 ${n} 个，跳过 ${skipped} 个，失败 ${errs.length} 个：${errs[0]}`)
     } else if (skipped > 0) {
       ElMessage.success(
-        `新写入 ${n} 个；跳过 ${skipped} 个重复（同定位/同英文名已在其它页存在）`
+        `新写入 ${n} 个；跳过 ${skipped} 个（仅本页同定位才算重复）。${res?.skipped?.[0] || ''}`
       )
       if (res?.skipped?.[0]) {
         console.info('[inspector-import] skipped:', res.skipped)
       }
+    } else if (tips.length) {
+      ElMessage.success(`已写入「${pageNameZh.value}」下 ${n} 个元素（${tips.join('，')}${n > 3 ? '…' : ''}）`)
     } else {
       ElMessage.success(`已写入「${pageNameZh.value}」下 ${n} 个元素`)
     }

@@ -16,21 +16,12 @@
 
     <el-form label-width="140px" class="step-form">
       <el-form-item label="清到出现此元素">
-        <el-select
+        <ElementKeySelect
           v-model="step.params.untilElementKey"
-          filterable
-          allow-create
-          default-first-option
-          clearable
+          :elements="elementOptions"
+          :pages="pageOptions"
           placeholder="强烈建议填，如首页标志元素"
-          style="width: 100%"
-        >
-          <el-option
-            v-for="el in elementOptions"
-            :key="el.nameEn"
-            :label="elementOptionLabel(el)"
-            :value="el.nameEn" />
-        </el-select>
+        />
         <div class="dp-tip">
           <b>不填会有坑</b>：应用刚启动时弹窗往往还没渲染出来，扫一遍必然扑空，
           于是判定「没有弹窗」继续往下走，紧接着弹窗才弹出来把后面的步骤全挡掉。<br />
@@ -86,21 +77,12 @@
 
       <el-form label-width="140px" class="step-form">
         <el-form-item label="关闭它的元素" required>
-          <el-select
+          <ElementKeySelect
             v-model="p.elementKey"
-            filterable
-            allow-create
-            default-first-option
-            clearable
+            :elements="elementOptions"
+            :pages="pageOptions"
             placeholder="选「同意」「我知道了」「关闭」等按钮元素"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="el in elementOptions"
-              :key="el.nameEn"
-              :label="elementOptionLabel(el)"
-              :value="el.nameEn" />
-          </el-select>
+          />
           <div class="dp-tip">
             填的是<b>点了能关掉弹窗的那个元素</b>，不是弹窗容器——执行时探测到它就直接点它
           </div>
@@ -120,6 +102,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import ElementKeySelect from '../components/ElementKeySelect.vue'
 
 type FlowStep = {
   keywordCode: string
@@ -132,10 +115,13 @@ type PopupItem = {
   label?: string
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   step: FlowStep
   elementOptions: any[]
-}>()
+  pageOptions?: any[]
+}>(), {
+  pageOptions: () => []
+})
 
 const emit = defineEmits<{
   'refresh-elements': []
@@ -152,13 +138,6 @@ const popups = computed<PopupItem[]>(() => {
 
 function newKey() {
   return `dp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-function elementOptionLabel(el: any) {
-  const zh = String(el?.nameZh || '').trim()
-  const en = String(el?.nameEn || '').trim()
-  if (zh && en) return `${zh}（${en}）`
-  return zh || en || '—'
 }
 
 function addPopup() {

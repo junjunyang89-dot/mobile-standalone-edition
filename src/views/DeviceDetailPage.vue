@@ -69,6 +69,80 @@
           </div>
         </div>
 
+        <div v-if="isIos" class="detail-section detail-section-block wda-toolkit-section">
+          <div class="detail-section-title detail-section-title-plain">
+            iOS WDA 工具箱
+            <el-tag v-if="wdaReport" size="small" :type="wdaReport.healthy ? 'success' : 'warning'" effect="light">
+              {{ wdaReport.healthy ? '健康' : '需处理' }}
+            </el-tag>
+            <el-button size="small" :loading="wdaLoading" @click="loadWdaToolkit">刷新检查</el-button>
+          </div>
+          <p class="wda-intro">
+            证书吊销、同名歧义、装完立刻消失、冷却期内起不来——按下面步骤排查。能自动修的点按钮；必须人点的看「提示」。
+          </p>
+          <el-alert
+            v-if="wdaReport?.summary"
+            :title="wdaReport.summary"
+            :type="wdaReport.healthy ? 'success' : 'warning'"
+            :description="wdaReport.nextTip"
+            show-icon
+            :closable="false"
+            class="wda-summary"
+          />
+          <div v-if="wdaError" class="apps-error-hint">{{ wdaError }}</div>
+          <div v-loading="wdaLoading" class="wda-steps">
+            <div
+              v-for="step in (wdaReport?.steps || [])"
+              :key="step.id || step.order"
+              class="wda-step"
+              :class="'wda-step--' + (step.status || 'UNKNOWN').toLowerCase()"
+            >
+              <div class="wda-step-head">
+                <span class="wda-step-order">{{ step.order }}</span>
+                <el-tag size="small" :type="wdaStatusTag(step.status)" effect="plain">{{ step.status }}</el-tag>
+                <span class="wda-step-title">{{ step.title }}</span>
+              </div>
+              <div v-if="step.detail" class="wda-step-detail">{{ step.detail }}</div>
+              <div v-if="step.tip" class="wda-step-tip">
+                <span class="wda-tip-label">提示</span>{{ step.tip }}
+              </div>
+              <div v-if="step.actionId" class="wda-step-actions">
+                <el-button
+                  type="primary"
+                  size="small"
+                  :loading="wdaActionLoading === step.actionId"
+                  :disabled="!!wdaActionLoading && wdaActionLoading !== step.actionId"
+                  @click="runWdaAction(step.actionId!, step.confirmRequired, step.actionLabel)"
+                >{{ step.actionLabel || '执行' }}</el-button>
+              </div>
+            </div>
+          </div>
+          <div v-if="wdaReport?.actions?.length" class="wda-all-actions">
+            <div class="wda-all-actions-title">全部动作</div>
+            <div class="wda-action-cards">
+              <div v-for="act in wdaReport.actions" :key="act.id" class="wda-action-card">
+                <div class="wda-action-card-title">
+                  {{ act.label }}
+                  <el-tag v-if="act.longRunning" size="small" type="info">较久</el-tag>
+                  <el-tag v-if="act.confirmRequired" size="small" type="danger">需确认</el-tag>
+                </div>
+                <div class="wda-action-card-desc">{{ act.description }}</div>
+                <el-button
+                  size="small"
+                  :loading="wdaActionLoading === act.id"
+                  :disabled="!!wdaActionLoading && wdaActionLoading !== act.id"
+                  @click="runWdaAction(act.id!, act.confirmRequired, act.label)"
+                >执行</el-button>
+              </div>
+            </div>
+          </div>
+          <div v-if="wdaReport?.config" class="wda-meta">
+            <span>Team {{ wdaReport.config.teamId }}</span>
+            <span>Bundle {{ wdaReport.config.bundleId }}</span>
+            <span v-if="wdaReport.runtime?.localPort">端口 {{ wdaReport.runtime.localPort }}</span>
+          </div>
+        </div>
+
         <div v-if="isIos && iosDetailEntries.length" class="detail-section detail-section-block">
           <div class="detail-section-title">iOS 设备信息</div>
           <div class="ios-detail-grid">
@@ -112,6 +186,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Loading } from '@element-plus/icons-vue'
 import { apiClient } from '@/api'
 import {
@@ -121,6 +196,34 @@ import {
   platformRowClass as platformTagCssClass,
   platformUiLabel
 } from '@/utils/platform'
+
+type WdaStep = {
+  id?: string
+  order?: number
+  status?: string
+  title?: string
+  detail?: string
+  tip?: string
+  actionId?: string
+  actionLabel?: string
+  confirmRequired?: boolean
+}
+
+type WdaReport = {
+  healthy?: boolean
+  summary?: string
+  nextTip?: string
+  config?: Record<string, any>
+  runtime?: Record<string, any>
+  steps?: WdaStep[]
+  actions?: Array<{
+    id?: string
+    label?: string
+    description?: string
+    confirmRequired?: boolean
+    longRunning?: boolean
+  }>
+}
 
 type DetailData = {
   name?: string
@@ -151,6 +254,10 @@ const detailData = ref<DetailData | null>(null)
 const installedApps = ref<Array<{ name?: string; packageName?: string; version?: string }>>([])
 const appsLoading = ref(false)
 const appsError = ref('')
+const wdaReport = ref<WdaReport | null>(null)
+const wdaLoading = ref(false)
+const wdaError = ref('')
+const wdaActionLoading = ref('')
 
 const deviceId = computed(() => (route.params.id as string) || '')
 
@@ -242,6 +349,71 @@ const iosDetailEntries = computed(() => {
   }))
 })
 
+function wdaStatusTag(status?: string) {
+  const s = (status || '').toUpperCase()
+  if (s === 'PASS') return 'success'
+  if (s === 'FAIL') return 'danger'
+  if (s === 'WARN') return 'warning'
+  if (s === 'MANUAL') return 'info'
+  return 'info'
+}
+
+async function loadWdaToolkit() {
+  const id = deviceId.value
+  if (!id || !isIos.value) return
+  wdaLoading.value = true
+  wdaError.value = ''
+  try {
+    wdaReport.value = await apiClient.getIosWdaToolkit(id)
+  } catch (e: any) {
+    wdaError.value = e?.message || 'WDA 工具箱加载失败'
+  } finally {
+    wdaLoading.value = false
+  }
+}
+
+async function runWdaAction(actionId: string, confirmRequired?: boolean, label?: string) {
+  const id = deviceId.value
+  if (!id || !actionId) return
+  if (confirmRequired) {
+    const tip = actionId === 'remove_revoked_certs'
+      ? '将从本机钥匙串删除已吊销的 Apple Development 证书身份，以消除同名歧义。仅删 REVOKED，不删有效证书。是否继续？'
+      : `确认执行「${label || actionId}」？`
+    try {
+      await ElMessageBox.confirm(tip, label || '确认操作', {
+        type: 'warning',
+        confirmButtonText: '确认',
+        cancelButtonText: '取消'
+      })
+    } catch {
+      return
+    }
+  }
+  if (actionId === 'rebuild_install' || actionId === 'ensure_running') {
+    ElMessage.info(actionId === 'rebuild_install'
+      ? '正在编译并安装 WDA，约 1～3 分钟，请保持手机解锁…'
+      : '正在拉起 WDA，请稍候…')
+  }
+  wdaActionLoading.value = actionId
+  try {
+    const res = await apiClient.postIosWdaToolkitAction(id, {
+      action: actionId,
+      confirm: !!confirmRequired
+    })
+    if (res?.reportAfter) wdaReport.value = res.reportAfter
+    else await loadWdaToolkit()
+    if (res?.ok) {
+      ElMessage.success(res.message || '完成')
+    } else {
+      ElMessage.warning(res?.message || '未成功')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '执行失败')
+  } finally {
+    wdaActionLoading.value = ''
+  }
+}
+
 async function loadApps(id: string) {
   appsLoading.value = true
   appsError.value = ''
@@ -293,6 +465,9 @@ async function loadDetail() {
     // 应用列表、完整原始输出并行补齐
     void loadApps(id)
     void loadRawInBackground(id)
+    if (isIosFamilyPlatform(data?.platform || '')) {
+      void loadWdaToolkit()
+    }
   } catch (e: any) {
     if (e?.message && (e.message.includes('404') || e.message.includes('Not Found'))) {
       error.value = '设备不存在或无效'
@@ -546,5 +721,165 @@ watch(deviceId, (id) => {
   color: var(--app-text);
   border: 1px solid #c0c4cc;
   border-left: 4px solid var(--el-text-color-placeholder);
+}
+
+.wda-toolkit-section {
+  border-left-color: #e6a23c !important;
+}
+
+.wda-intro {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--app-text-secondary);
+  line-height: 1.55;
+}
+
+.wda-summary {
+  margin-bottom: 14px;
+}
+
+.wda-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 40px;
+}
+
+.wda-step {
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--app-border);
+  background: #fafbfc;
+}
+
+.wda-step--fail {
+  border-color: #fbc4c4;
+  background: #fff6f6;
+}
+
+.wda-step--warn {
+  border-color: #f5dab1;
+  background: #fdf6ec;
+}
+
+.wda-step--pass {
+  border-color: #b3e19d;
+  background: #f0f9eb;
+}
+
+.wda-step--manual {
+  border-color: #c6e2ff;
+  background: #ecf5ff;
+}
+
+.wda-step-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.wda-step-order {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--el-color-primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.wda-step-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--app-text);
+}
+
+.wda-step-detail {
+  font-size: 12px;
+  color: var(--app-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+
+.wda-step-tip {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--app-text);
+  margin-bottom: 8px;
+}
+
+.wda-tip-label {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--el-color-warning-light-7);
+  color: var(--el-color-warning-dark-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.wda-step-actions {
+  margin-top: 4px;
+}
+
+.wda-all-actions {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--app-border);
+}
+
+.wda-all-actions-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 10px;
+  color: var(--app-text);
+}
+
+.wda-action-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.wda-action-card {
+  padding: 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.wda-action-card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.wda-action-card-desc {
+  font-size: 12px;
+  color: var(--app-text-secondary);
+  line-height: 1.5;
+  margin-bottom: 10px;
+  min-height: 36px;
+}
+
+.wda-meta {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
 }
 </style>

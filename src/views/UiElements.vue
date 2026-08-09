@@ -1041,23 +1041,28 @@ function appLabel(id: string) {
  * 元素在别处时的提示。
  *
  * 页面不分平台、元素分平台，所以当前平台看着是空的很正常。
- * 关键是 <b>total > 0 就必须说点什么</b>——之前平台分布拿不到时这里返回空字符串，
- * 于是出现「三端都显示 0 个、也没有任何提示、删除按钮却是灰的」，
- * 人完全无从判断问题在哪。宁可说「共 N 个，当前视图看不到」，也不能一声不吭。
+ * 另外「按页折叠 + 顶栏关键词」也常把元素筛没，却仍显示页壳子和 total——
+ * 这时再说「平台字段为空」就误导了。
  */
 function elsewhereHint(g: any): string {
   const total = g?.total
   if (typeof total !== 'number' || total <= 0) return ''
+  if (typeof g.items?.length === 'number' && total <= g.items.length) return ''
   const map = (g?.byPlatform || {}) as Record<string, number>
   const cur = String(filterPlatform.value || '').trim().toUpperCase()
   const others = Object.entries(map).filter(([pf, n]) => n > 0 && (!cur || pf.toUpperCase() !== cur))
   if (others.length) {
     return '其他平台还有：' + others.map(([pf, n]) => `${platformLabel(pf)} ${n} 个`).join('、')
   }
-  if (total > g.items.length) {
-    return `共 ${total} 个，当前视图看不到（平台字段可能为空或属于别的应用）`
+  const kw = txt(filterKeyword.value)
+  if (kw) {
+    const curCount = cur ? Number(map[cur] ?? map[filterPlatform.value] ?? 0) : 0
+    if (curCount > 0) {
+      return `本平台共 ${curCount} 个，被关键词「${kw}」筛掉了（元素名/定位不含该词）。清空搜索后再查`
+    }
+    return `共 ${total} 个，被关键词「${kw}」筛掉了。清空搜索或改关键词后再查`
   }
-  return ''
+  return `共 ${total} 个，当前视图看不到（平台字段可能为空或属于别的应用）`
 }
 
 function platformLabel(pf: string) {
@@ -1245,7 +1250,22 @@ const pageGroups = computed(() => {
     })
   }
 
-  return Array.from(map.values()).sort((a, b) => {
+  return Array.from(map.values())
+    .filter((g) => {
+      const kw = txt(filterKeyword.value)
+      if (!kw || filterPid) return true
+      const lower = kw.toLowerCase()
+      const titleHit = g.title.includes(kw) || (g.pageId && g.pageId.toLowerCase().includes(lower))
+      const elHit = g.items.some(
+        (r) =>
+          (r.nameZh && r.nameZh.includes(kw)) ||
+          (r.nameEn && String(r.nameEn).toLowerCase().includes(lower)) ||
+          (r.locatorValue && String(r.locatorValue).toLowerCase().includes(lower))
+      )
+      // 有关键词时只留页名/元素命中的组，避免「安装」搜出一堆空壳无线数据页
+      return titleHit || elHit
+    })
+    .sort((a, b) => {
     if (a.key === '__NONE__') return 1
     if (b.key === '__NONE__') return -1
     // 空页排在有元素的后面一点，但新建当前筛选项优先
@@ -1359,12 +1379,21 @@ async function loadList() {
     const byPage = viewMode.value === 'byPage'
     const kw = txt(filterKeyword.value)
     let pageIdParam = txt(filterPageId.value) || undefined
-    // 搜索「温馨提示」等中文页名时，映射到 pageId
+    let keywordParam: string | undefined = kw || undefined
+    // 搜索「温馨提示」等中文页名时，映射到 pageId——但按页折叠且未指定页面时，
+    // 不能钉死「第一个命中页」：否则其它页壳子还在、元素全空，黄条还会误说平台问题。
     if (!pageIdParam && kw) {
-      const hit = pageOptions.value.find(
+      const pageNameHits = pageOptions.value.filter(
         (p) => p.nameZh.includes(kw) || p.pageId.toLowerCase().includes(kw.toLowerCase())
       )
-      if (hit) pageIdParam = hit.pageId
+      if (pageNameHits.length) {
+        if (byPage) {
+          keywordParam = undefined
+        } else {
+          pageIdParam = pageNameHits[0].pageId
+          keywordParam = undefined
+        }
+      }
     }
     const data = await apiClient.getUiElements({
       catalogs: catalogsForScene(filterScene.value),
@@ -1374,9 +1403,7 @@ async function loadList() {
       source: filterSource.value || undefined,
       status: filterStatus.value || undefined,
       moduleTag: txt(filterModule.value) || undefined,
-      keyword: pageIdParam && kw && pageOptions.value.some((p) => p.nameZh.includes(kw))
-        ? undefined
-        : kw || undefined,
+      keyword: keywordParam,
       page: byPage ? 1 : currentPage.value,
       size: byPage ? 500 : pageSize.value
     })

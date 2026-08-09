@@ -40,7 +40,7 @@
           :disabled="ci === candidates.length - 1"
           @click="moveCandidate(ci, 1)"
         >下移</el-button>
-        <el-button type="danger" link size="small" @click="removeCandidate(ci)">删除候选</el-button>
+        <el-button link size="small" class="step-delete-btn" @click="removeCandidate(ci)">删除候选</el-button>
       </div>
       <p class="branch-tip">
         同一轮里多个候选都在屏上时，<b>排在前面的胜出</b>；用上移/下移调整优先级。
@@ -48,21 +48,12 @@
 
       <el-form label-width="110px" class="step-form">
         <el-form-item label="判定元素" required>
-          <el-select
+          <ElementKeySelect
             v-model="cand.elementKey"
-            filterable
-            allow-create
-            default-first-option
-            clearable
-            placeholder="按中文名搜索选择元素"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="el in elementOptions"
-              :key="el.nameEn"
-              :label="elementOptionLabel(el)"
-              :value="el.nameEn" />
-          </el-select>
+            :elements="elementOptions"
+            :pages="pageOptions"
+            placeholder="先选页面，再选该页下的元素"
+          />
           <div class="element-pick-actions">
             <el-button link type="primary" @click="emit('refresh-elements')">刷新列表</el-button>
           </div>
@@ -89,10 +80,12 @@
         v-for="(bs, bi) in cand.steps || []"
         :key="bs._key || `c${ci}-s${bi}`"
         class="branch-step"
+        :style="stepColorStyle(bs.keywordCode)"
       >
         <div class="branch-step-head">
           <span class="branch-idx">{{ childNo(ci, bi) }}</span>
-          <el-tag size="small" type="primary">{{ keywordName(bs.keywordCode) }}</el-tag>
+          <span class="branch-step-name">{{ keywordName(bs.keywordCode) }}</span>
+          <span class="step-cat-tag">{{ stepColorByCode(bs.keywordCode).categoryLabel }}</span>
           <el-tag size="small" type="info" effect="plain">{{ bs.keywordCode }}</el-tag>
           <span v-if="bs.description" class="step-desc-inline" :title="bs.description">{{ bs.description }}</span>
           <span class="step-spacer" />
@@ -103,12 +96,13 @@
             :disabled="bi === (cand.steps || []).length - 1"
             @click="moveStep(ci, bi, 1)"
           >下移</el-button>
-          <el-button type="danger" link size="small" @click="removeStep(ci, bi)">删除</el-button>
+          <el-button link size="small" class="step-delete-btn" @click="removeStep(ci, bi)">删除</el-button>
         </div>
         <BranchStepFields
           :step="bs"
           :path-prefix="childNo(ci, bi)"
           :element-options="elementOptions"
+          :page-options="pageOptions"
           :needs-element="needsElement(bs.keywordCode)"
           :keyword-options="keywordOptions"
           :create-step="createStep"
@@ -153,18 +147,21 @@
         v-for="(bs, bi) in step.params.noneSteps || []"
         :key="bs._key || 'n-' + bi"
         class="branch-step"
+        :style="stepColorStyle(bs.keywordCode)"
       >
         <div class="branch-step-head">
-          <span class="branch-idx branch-idx-else">{{ pathPrefix }}.n{{ bi + 1 }}</span>
-          <el-tag size="small" type="primary">{{ keywordName(bs.keywordCode) }}</el-tag>
+          <span class="branch-idx">{{ pathPrefix }}.n{{ bi + 1 }}</span>
+          <span class="branch-step-name">{{ keywordName(bs.keywordCode) }}</span>
+          <span class="step-cat-tag">{{ stepColorByCode(bs.keywordCode).categoryLabel }}</span>
           <el-tag size="small" type="info" effect="plain">{{ bs.keywordCode }}</el-tag>
           <span class="step-spacer" />
-          <el-button type="danger" link size="small" @click="removeNoneStep(bi)">删除</el-button>
+          <el-button link size="small" class="step-delete-btn" @click="removeNoneStep(bi)">删除</el-button>
         </div>
         <BranchStepFields
           :step="bs"
           :path-prefix="`${pathPrefix}.n${bi + 1}`"
           :element-options="elementOptions"
+          :page-options="pageOptions"
           :needs-element="needsElement(bs.keywordCode)"
           :keyword-options="keywordOptions"
           :create-step="createStep"
@@ -200,7 +197,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { stepColorByCode, stepColorStyle } from '@/utils/stepKeywordColor'
 import BranchStepFields from './BranchStepFields.vue'
+import ElementKeySelect from '../components/ElementKeySelect.vue'
 
 type FlowStep = {
   _key?: string
@@ -222,16 +221,21 @@ const props = withDefaults(defineProps<{
   step: FlowStep
   pathPrefix?: string
   elementOptions: any[]
+  pageOptions?: any[]
   keywordOptions: Array<{ code: string; nameZh: string }>
   createStep: (code: string) => FlowStep
   keywordName: (code: string) => string
   needsElement: (code: string) => boolean
   keywordSchema?: (code: string) => Array<Record<string, any>>
   isCustomUi?: (code: string) => boolean
+  appOptions?: any[]
+  platform?: string
   nestLevel?: number
 }>(), {
   pathPrefix: '1',
-  nestLevel: 0
+  nestLevel: 0,
+  pageOptions: () => [],
+  appOptions: () => []
 })
 
 const emit = defineEmits<{
@@ -286,13 +290,6 @@ function childNo(ci: number, bi: number) {
 
 function newKey() {
   return `wa-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-function elementOptionLabel(el: any) {
-  const zh = String(el?.nameZh || '').trim()
-  const en = String(el?.nameEn || '').trim()
-  if (zh && en) return `${zh}（${en}）`
-  return zh || en || '—'
 }
 
 function addCandidate() {
@@ -441,23 +438,58 @@ function removeNoneStep(bi: number) {
   padding: 8px 0;
 }
 .branch-step {
-  border-top: 1px dashed var(--el-border-color-lighter, var(--app-border));
-  padding-top: 8px;
+  border: 1px solid var(--step-soft-border, var(--el-border-color-lighter, var(--app-border)));
+  border-radius: 8px;
+  padding: 0;
   margin-top: 8px;
+  background: #fff;
+  overflow: hidden;
+  border-top: 3px solid var(--step-color, #16a34a);
 }
 .branch-step-head {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+  padding: 8px 10px;
+  background: var(--step-soft-bg, #f8fafc);
+  border-bottom: 1px solid var(--step-soft-border, #ebeef5);
 }
 .branch-idx {
   font-size: 11px;
   font-weight: 800;
-  color: #16a34a;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--step-color, #16a34a);
+  color: #fff;
 }
 .branch-idx-else {
-  color: #d97706;
+  background: var(--step-color, #d97706);
+}
+.branch-step-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+}
+.step-cat-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--step-color, #606266);
+  background: #fff;
+  border: 1px solid var(--step-soft-border, #ebeef5);
+}
+.branch-step :deep(.step-form) {
+  padding: 8px 10px 2px;
 }
 .step-desc-inline {
   font-size: 12px;
@@ -469,6 +501,13 @@ function removeNoneStep(bi: number) {
 }
 .step-spacer {
   flex: 1;
+}
+.step-delete-btn {
+  color: #909399 !important;
+  font-weight: 400 !important;
+}
+.step-delete-btn:hover {
+  color: #f56c6c !important;
 }
 .element-pick-actions {
   margin-top: 4px;
