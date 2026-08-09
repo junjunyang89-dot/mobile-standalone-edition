@@ -1,87 +1,200 @@
 <template>
-  <el-form label-width="90px" class="step-form">
-    <el-form-item v-if="needsElement" label="元素英文名">
+  <el-form label-width="132px" class="step-form">
+    <el-form-item label="描述">
+      <el-input
+        v-model="step.description"
+        maxlength="120"
+        show-word-limit
+        placeholder="这步干什么，如：点击登录按钮"
+      />
+    </el-form-item>
+    <el-form-item label="期望">
+      <el-input
+        v-model="step.expectation"
+        maxlength="120"
+        show-word-limit
+        placeholder="给人看的预期，如：进入验证码页（不等于断言）"
+      />
+    </el-form-item>
+    <el-form-item v-if="needsElement" :label="elementFieldLabel">
       <el-select
         v-model="step.elementKey"
         filterable
         allow-create
         default-first-option
         clearable
-        placeholder="从元素库选或手输 nameEn"
+        placeholder="按中文名搜索选择元素"
         style="width: 100%"
       >
         <el-option
           v-for="el in elementOptions"
           :key="el.nameEn"
-          :label="`${el.nameZh} (${el.nameEn})`"
+          :label="elementOptionLabel(el)"
           :value="el.nameEn" />
       </el-select>
+      <div class="element-pick-actions">
+        <el-button link type="primary" @click="emit('inspect', step)">记不住？真机点选</el-button>
+        <el-button link @click="emit('refresh-elements')">刷新列表</el-button>
+      </div>
     </el-form-item>
-    <el-form-item v-if="step.keywordCode === 'INPUT'" label="输入内容">
-      <el-input v-model="step.params.text" placeholder="如手机号或验证码" />
+    <el-form-item v-if="step.keywordCode === 'IF_ELEMENT_EXISTS'" label="探测超时">
+      <el-input-number v-model="step.params.timeoutSec" :min="1" :max="60" />
+      <span class="exec-hint" style="margin-left: 8px">秒</span>
     </el-form-item>
-    <el-form-item v-if="step.keywordCode === 'WAIT'" label="延迟毫秒">
-      <el-input-number v-model="step.params.durationMs" :min="0" :step="500" />
-    </el-form-item>
-    <el-form-item v-if="step.keywordCode === 'WAIT_ELEMENT'" label="等待类型">
-      <el-select v-model="step.params.waitType" style="width: 100%">
-        <el-option label="Presence" value="Presence" />
-        <el-option label="Visible" value="Visible" />
-        <el-option label="Clickable" value="Clickable" />
-      </el-select>
-    </el-form-item>
-    <el-form-item v-if="step.keywordCode === 'WAIT_ELEMENT'" label="超时秒">
-      <el-input-number v-model="step.params.timeoutSec" :min="1" :max="120" />
-    </el-form-item>
-    <el-form-item v-if="step.keywordCode === 'SWIPE'" label="方向">
-      <el-select v-model="step.params.direction" style="width: 100%">
-        <el-option label="up" value="up" />
-        <el-option label="down" value="down" />
-        <el-option label="left" value="left" />
-        <el-option label="right" value="right" />
-      </el-select>
-    </el-form-item>
-    <el-form-item v-if="step.keywordCode === 'ASSERT_TEXT'" label="期望文案">
-      <el-input v-model="step.params.expected" />
-    </el-form-item>
-    <el-form-item v-if="step.keywordCode === 'LAUNCH_APP'" label="包名/Bundle">
-      <el-input v-model="step.params.packageName" placeholder="可选" />
-    </el-form-item>
-    <el-form-item v-if="step.keywordCode === 'LAUNCH_APP'" label="Activity">
-      <el-input v-model="step.params.activity" placeholder="可选" />
-    </el-form-item>
-    <el-form-item v-if="step.keywordCode === 'SCREENSHOT'" label="备注">
-      <el-input v-model="step.params.label" />
-    </el-form-item>
-    <el-form-item v-if="step.keywordCode === 'CALL_COMPONENT'" label="组件流程ID">
-      <el-input v-model="step.params.flowId" />
-    </el-form-item>
-    <el-form-item v-if="step.keywordCode === 'RETURN_MESSAGE'" label="提示文案">
-      <el-input
-        v-model="step.params.message"
-        type="textarea"
-        :rows="2"
-        maxlength="500"
-        show-word-limit
-        placeholder="手动输入要返回的提示" />
-    </el-form-item>
+    <!-- 参数表单由后端 param_schema 驱动，与主编辑器共用同一个渲染组件 -->
+    <!-- 启动类步骤是 customUi，通用渲染会跳过；分支内同样要能配 -->
+    <LaunchStepFields
+      v-if="isLaunchLikeStep(step.keywordCode)"
+      :step="step"
+      :app-options="appOptions"
+      :platform="platform"
+    />
+
+    <KeywordParamFields
+      v-else-if="!isCustomUi?.(step.keywordCode)"
+      :schema="schema"
+      :params="step.params"
+      :element-options="elementOptions"
+    />
+
+    <DismissPopupsEditor
+      v-if="step.keywordCode === 'DISMISS_POPUPS'"
+      :step="step"
+      :element-options="elementOptions"
+      @refresh-elements="emit('refresh-elements')"
+    />
+
+    <WaitAnyBranchEditor
+      v-if="step.keywordCode === 'WAIT_ANY' && canNest"
+      :step="step"
+      :path-prefix="pathPrefix || '1'"
+      :element-options="elementOptions"
+      :keyword-options="keywordOptions"
+      :create-step="createStep!"
+      :keyword-name="keywordName!"
+      :needs-element="needsElementFn!"
+      :keyword-schema="keywordSchema"
+      :is-custom-ui="isCustomUi"
+      :app-options="appOptions"
+      :platform="platform"
+      :nest-level="nestLevel"
+      @inspect="emit('inspect', $event)"
+      @refresh-elements="emit('refresh-elements')"
+    />
+
+    <IfBranchEditor
+      v-if="step.keywordCode === 'IF_ELEMENT_EXISTS' && canNest"
+      :step="step"
+      :path-prefix="pathPrefix || '1'"
+      :element-options="elementOptions"
+      :keyword-options="keywordOptions"
+      :create-step="createStep!"
+      :keyword-name="keywordName!"
+      :needs-element="needsElementFn!"
+      :keyword-schema="keywordSchema"
+      :is-custom-ui="isCustomUi"
+      :app-options="appOptions"
+      :platform="platform"
+      :nest-level="nestLevel"
+      @inspect="emit('inspect', $event)"
+      @refresh-elements="emit('refresh-elements')"
+    />
+    <p v-else-if="step.keywordCode === 'IF_ELEMENT_EXISTS' && !canNest" class="nest-limit">
+      嵌套过深：请把后续逻辑拆成独立流程，用「调用组件」引用。
+    </p>
   </el-form>
 </template>
 
 <script setup lang="ts">
-defineProps<{
-  step: {
-    keywordCode: string
-    elementKey?: string
-    params: Record<string, any>
-  }
+import { computed } from 'vue'
+import IfBranchEditor from './IfBranchEditor.vue'
+import WaitAnyBranchEditor from './WaitAnyBranchEditor.vue'
+import DismissPopupsEditor from './DismissPopupsEditor.vue'
+import KeywordParamFields from '../components/KeywordParamFields.vue'
+import LaunchStepFields from './LaunchStepFields.vue'
+
+type FlowStep = {
+  keywordCode: string
+  elementKey?: string
+  description?: string
+  expectation?: string
+  params: Record<string, any>
+}
+
+const props = withDefaults(defineProps<{
+  step: FlowStep
   elementOptions: any[]
   needsElement: boolean
+  /** 当前步骤大纲号，如 "1.2"；嵌套 IF 子步骤会变成 1.2.1 */
+  pathPrefix?: string
+  /** 嵌套 IF 编辑需要；顶层普通分支步骤也可不传（非 IF） */
+  keywordOptions?: Array<{ code: string; nameZh: string }>
+  createStep?: (code: string) => FlowStep
+  keywordName?: (code: string) => string
+  needsElementFn?: (code: string) => boolean
+  nestLevel?: number
+  /** 取关键字参数定义（后端 param_schema） */
+  keywordSchema?: (code: string) => Array<Record<string, any>>
+  /** 该关键字是否由专用编辑器渲染 */
+  isCustomUi?: (code: string) => boolean
+  /** 应用字典，供启动类步骤选择 */
+  appOptions?: any[]
+  /** 流程平台，决定启动步骤是否显示 appActivity */
+  platform?: string
+}>(), {
+  pathPrefix: '',
+  keywordOptions: () => [],
+  nestLevel: 0,
+  appOptions: () => []
+})
+
+function isLaunchLikeStep(code: string) {
+  const c = String(code || '').toUpperCase()
+  return c.startsWith('LAUNCH_APP') || c.startsWith('COLD_START') || c.startsWith('HOT_START')
+}
+
+const emit = defineEmits<{
+  inspect: [step: FlowStep]
+  'refresh-elements': []
 }>()
+
+const canNest = computed(() =>
+  !!props.createStep && !!props.keywordName && !!props.needsElementFn && (props.nestLevel || 0) < 5
+)
+
+const schema = computed(() => props.keywordSchema?.(props.step.keywordCode) || [])
+
+const elementFieldLabel = computed(() => {
+  if (props.step.keywordCode === 'IF_ELEMENT_EXISTS') return '判断元素'
+  if (isScrollUntilStep(props.step.keywordCode)) return '目标元素'
+  return '选择元素'
+})
+
+function isScrollUntilStep(code: string) {
+  return code === 'SCROLL_UNTIL' || code === 'SCROLL_UNTIL_IOS'
+}
+
+function elementOptionLabel(el: any) {
+  const zh = String(el?.nameZh || '').trim()
+  const en = String(el?.nameEn || '').trim()
+  if (zh && en) return `${zh}（${en}）`
+  return zh || en || '—'
+}
 </script>
 
 <style scoped>
 .step-form {
   margin-top: 4px;
+}
+.element-pick-actions {
+  margin-top: 4px;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.nest-limit {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--app-warning);
 }
 </style>

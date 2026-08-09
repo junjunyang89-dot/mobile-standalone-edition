@@ -24,8 +24,6 @@
           <el-option label="Android" value="ANDROID" />
           <el-option label="iOS" value="IOS" />
           <el-option label="HarmonyOS" value="HARMONYOS" />
-          <el-option label="Pog-Android" value="POG_ANDROID" />
-          <el-option label="Pog-iOS" value="POG_IOS" />
         </el-select>
         <span class="device-total" @click="onTotalClick">
           共 {{ deviceStore.devices.length }} 台设备（点击查看详情）
@@ -40,30 +38,53 @@
         highlight-current-row
         @row-click="onRowClick"
       >
-        <el-table-column prop="name" label="设备名称" min-width="140">
+        <el-table-column prop="name" label="设备名称" min-width="160" show-overflow-tooltip>
           <template #default="{ row }">
             <span class="device-name-link">{{ row.name || row.id }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="platform" label="平台" width="120">
+        <el-table-column prop="platform" label="平台" width="110">
           <template #default="{ row }">
             <el-tag size="small">{{ platformLabel(row.platform) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="version" label="版本" width="100" />
-        <el-table-column prop="status" label="状态" width="100">
+        <el-table-column prop="version" label="版本" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span class="version-cell">{{ row.version || '—' }}</span>
+          </template>
+        </el-table-column>
+        <!--
+          环境绑在设备上：一台手机装的就是某个环境的包，不会一会儿线上一会儿测试。
+          四台机同时跑（两台线上两台测试）时不用每次去勾一遍。
+        -->
+        <el-table-column label="环境" width="130">
+          <template #default="{ row }">
+            <el-select
+              :model-value="row.environment || ''"
+              size="small"
+              placeholder="执行时再定"
+              @click.stop
+              @change="(v: string) => saveEnvironment(row, v)"
+            >
+              <el-option label="执行时再定" value="" />
+              <el-option label="测试" value="TEST" />
+              <el-option label="线上" value="PROD" />
+            </el-select>
+          </template>
+        </el-table-column>
+        <el-table-column prop="status" label="状态" width="90">
           <template #default="{ row }">
             <el-tag :type="deviceStatusType(row.status)" size="small">
               {{ deviceStatusText(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="lastSeen" label="最后可见时间" width="180">
+        <el-table-column prop="lastSeen" label="最后可见时间" width="170">
           <template #default="{ row }">
             {{ formatLastSeen(row.lastSeen) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right" @click.stop>
+        <el-table-column label="操作" width="120" fixed="right" @click.stop>
           <template #default="{ row }">
             <el-button
               v-if="!isConnected(row.status)"
@@ -97,6 +118,7 @@ import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
+import { apiClient } from '@/api'
 import { useDeviceStore } from '@/stores/device'
 import { isSupportedDevicePlatform, platformUiLabel } from '@/utils/platform'
 
@@ -104,6 +126,24 @@ const route = useRoute()
 const router = useRouter()
 const deviceStore = useDeviceStore()
 const platformFilter = ref('')
+
+/**
+ * 保存设备绑定的环境。
+ *
+ * 就地改 row 而不是整表刷新：刷新会重排/闪一下，人刚点完就被打断。
+ * 保存失败再回滚——乐观更新的代价必须是「失败要退回去」，否则界面会跟数据库不一致。
+ */
+async function saveEnvironment(row: any, value: string) {
+  const before = row.environment || ''
+  row.environment = value
+  try {
+    await apiClient.setDeviceEnvironment(row.id, value)
+    ElMessage.success(value ? `已绑定到${value === 'PROD' ? '线上' : '测试'}` : '已取消绑定')
+  } catch (e: any) {
+    row.environment = before
+    ElMessage.error(e?.message || '保存失败')
+  }
+}
 
 function platformLabel(p: string) {
   return platformUiLabel(p)
@@ -199,7 +239,7 @@ const disconnectDevice = async (deviceId: string) => {
 
 .filter-label {
   font-size: 13px;
-  color: #606266;
+  color: var(--app-text-secondary);
 }
 
 .platform-select {
@@ -226,7 +266,20 @@ const disconnectDevice = async (deviceId: string) => {
   text-decoration: underline;
 }
 
+.version-cell {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
 :deep(.el-table__row) {
   cursor: pointer;
+}
+
+:deep(.el-table .cell) {
+  line-height: 23px;
 }
 </style>

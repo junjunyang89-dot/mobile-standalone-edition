@@ -93,6 +93,38 @@
       </div>
     </div>
 
+    <div v-show="rightTab === 'cases'" class="xk-panel">
+      <div class="xk-panel-title">生成用例</div>
+      <p class="xk-panel-desc">快捷「生成测试用例」的最近结果；完整列表在侧栏「测试用例」</p>
+      <div v-if="!lastGeneratedCases?.cases?.length" class="xk-empty">
+        暂无结果。输入需求或上传文档/截图后点「生成测试用例」。
+      </div>
+      <template v-else>
+        <div class="xk-result-card">
+          <div class="xk-kv"><span>页面</span><b>{{ lastGeneratedCases.page || '—' }}</b></div>
+          <div class="xk-kv"><span>条数</span><b>{{ lastGeneratedCases.total ?? lastGeneratedCases.cases.length }}</b></div>
+          <div class="xk-kv"><span>用例库</span><b>{{ lastGeneratedCases.category || '—' }}</b></div>
+        </div>
+        <div
+          v-for="(c, i) in lastGeneratedCases.cases"
+          :key="(c.case_id || c.caseId || '') + i"
+          class="xk-know-card"
+        >
+          <div class="xk-know-title">
+            {{ c.case_id || c.caseId }} · {{ c.title }}
+          </div>
+          <div class="xk-know-snippet">
+            {{ c.priority || 'P1' }} · {{ c.type || '功能测试' }}
+            <template v-if="c.precondition"><br />前置：{{ c.precondition }}</template>
+          </div>
+          <div class="xk-know-tag">{{ (c.steps || []).length }} 步</div>
+        </div>
+        <a class="xk-add-know" :href="`#/test-cases/${lastGeneratedCases.category || 'wmpvp-android'}`">
+          打开用例库查看 →
+        </a>
+      </template>
+    </div>
+
     <div v-if="rightTab === 'monitor'" class="xk-know-preview">
       <div class="xk-panel-title">知识库预览</div>
       <div v-if="knowledgeItems.length === 0" class="xk-empty">暂无知识</div>
@@ -135,6 +167,20 @@ defineProps<{
   } | null
   knowledgeItems: KnowledgeItem[]
   workflowLogs: WorkflowLog[]
+  lastGeneratedCases?: {
+    page?: string
+    total?: number
+    category?: string
+    cases: Array<{
+      case_id?: string
+      caseId?: string
+      title?: string
+      priority?: string
+      type?: string
+      precondition?: string
+      steps?: unknown[]
+    }>
+  } | null
 }>()
 
 defineEmits<{
@@ -151,6 +197,7 @@ defineEmits<{
 const rightTabs = [
   { id: 'monitor' as const, label: '元素监控' },
   { id: 'knowledge' as const, label: '知识库' },
+  { id: 'cases' as const, label: '用例' },
   { id: 'workflow' as const, label: '工作流' }
 ]
 </script>
@@ -160,10 +207,10 @@ const rightTabs = [
   --panel: #eceff3;
   --panel-2: #e2e6eb;
   --line: #cdd3dc;
-  --text: #303133;
-  --muted: #606266;
-  --accent: #409eff;
-  --warn: #e6a23c;
+  --text: var(--app-text);
+  --muted: var(--app-text-secondary);
+  --accent: var(--app-primary);
+  --warn: var(--app-warning);
 
   border-left: 1px solid var(--line);
   background: var(--panel);
@@ -235,7 +282,7 @@ const rightTabs = [
 .xk-field {
   width: 100%;
   box-sizing: border-box;
-  background: #f5f7fa;
+  background: var(--app-surface);
   border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--text);
@@ -302,10 +349,10 @@ const rightTabs = [
   max-height: 160px;
   overflow: auto;
   font-size: 11px;
-  color: #606266;
+  color: var(--app-text-secondary);
   white-space: pre-wrap;
   word-break: break-all;
-  background: #e4e7ed;
+  background: var(--app-border);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 8px;
@@ -333,7 +380,7 @@ const rightTabs = [
   margin-top: 6px;
   font-size: 11px;
   color: var(--accent);
-  background: rgba(64, 158, 255, 0.12);
+  background: rgba(24, 144, 255, 0.12);
   padding: 2px 8px;
   border-radius: 999px;
 }

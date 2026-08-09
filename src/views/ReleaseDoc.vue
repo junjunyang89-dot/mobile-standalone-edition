@@ -6,7 +6,8 @@
           <div>
             <span class="card-title">发版文档与邮件管理</span>
             <p class="card-sub">
-              发版文档生成 Wiki 表格；发版邮件按模版组草稿并发送
+              发版文档生成 Wiki 表格；发版邮件按模版组草稿并发送。
+              代码真实改动与漏测对照请用侧栏「周改动漏测」。
             </p>
           </div>
         </div>
@@ -332,23 +333,23 @@ async function doMailSend() {
 .card-sub {
   margin: 4px 0 0;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
   font-weight: normal;
 }
 .result-msg {
-  color: #303133;
+  color: var(--app-text);
 }
 .logs {
   margin: 0;
   white-space: pre-wrap;
   font-size: 12px;
-  color: #606266;
+  color: var(--app-text-secondary);
 }
 .release-tabs :deep(.el-tabs__content) {
   padding: 16px;
 }
 .mail-preview {
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--app-border);
   border-radius: 4px;
   padding: 16px;
   background: #fff;
@@ -362,6 +363,6 @@ async function doMailSend() {
 .mail-hint {
   margin-left: 12px;
   font-size: 12px;
-  color: #e6a23c;
+  color: var(--app-warning);
 }
 </style>

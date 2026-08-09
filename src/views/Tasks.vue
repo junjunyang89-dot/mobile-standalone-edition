@@ -3,7 +3,7 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <span>测试任务</span>
+          <span>APP测试任务</span>
           <div class="card-header-actions">
             <el-button type="primary" @click="showCreateDialog = true">
               <el-icon><Plus /></el-icon>
@@ -220,25 +220,28 @@ const selectedStatus = ref<string>('')
 const deviceIdKeyword = ref('')
 const appIdKeyword = ref('')
 
+/**
+ * 任务类型筛选（展示用）：
+ * - 现在主用：流程用例、流程性能、性能遍历
+ * - 以后可能用：功耗 / 安全 / 稳定 / 兼容
+ * - 已下线新建：功能基础质量（历史任务仍可查看，见 getTaskTypeText）
+ * - 已拿掉：性能指标监控（看监控页即可）、安装卸载升级（已并入流程关键字）、
+ *   界面与适配（暂无落地）、场景化性能重复项
+ */
 const taskTypeOptions = [
-  { value: 'INSTALL_UNINSTALL_UPGRADE_TEST', label: '安装卸载升级测试' },
-  { value: 'FUNCTIONAL_QUALITY_TEST', label: '功能基础质量' },
-  { value: 'PERFORMANCE_BASELINE_TEST', label: '性能基础质量测试' },
+  { value: 'UI_FLOW_TEST', label: '流程用例执行' },
+  { value: 'SCENARIO_PERFORMANCE_TEST', label: '流程性能测试' },
+  { value: 'PERFORMANCE_BASELINE_TEST', label: '性能遍历探索' },
   { value: 'POWER_CONSUMPTION_BASELINE_TEST', label: '功耗基础质量' },
-  { value: 'SCENARIO_PERFORMANCE_TEST', label: '场景化性能' },
   { value: 'SECURITY_BASELINE_QUALITY_TEST', label: '安全基础质量' },
   { value: 'STABILITY_QUALITY_TEST', label: '稳定性基础质量' },
-  { value: 'PERFORMANCE_MONITORING_TEST', label: '性能指标监控' },
-  { value: 'COMPATIBILITY_TEST', label: '兼容性测试' },
-  { value: 'UI_ADAPTATION_TEST', label: '界面与适配测试' }
+  { value: 'COMPATIBILITY_TEST', label: '兼容性测试' }
 ]
 
 const platformOptions = [
   { value: 'ANDROID', label: 'Android' },
   { value: 'IOS', label: 'iOS' },
   { value: 'HARMONYOS', label: 'HarmonyOS' },
-  { value: 'POG_ANDROID', label: 'Pog-Android' },
-  { value: 'POG_IOS', label: 'Pog-iOS' }
 ]
 
 const statusOptions = [
@@ -246,6 +249,7 @@ const statusOptions = [
   { value: 'RUNNING', label: '运行中' },
   { value: 'COMPLETED', label: '已完成' },
   { value: 'FAILED', label: '失败' },
+  { value: 'SKIPPED', label: '已跳过' },
   { value: 'STOPPED', label: '已停止' }
 ]
 
@@ -299,15 +303,16 @@ const onSizeChange = (size: number) => {
 }
 
 const validTaskTypes = [
-  'FUNCTIONAL_QUALITY_TEST',
+  'UI_FLOW_TEST',
+  'SCENARIO_PERFORMANCE_TEST',
   'PERFORMANCE_BASELINE_TEST',
   'POWER_CONSUMPTION_BASELINE_TEST',
-  'SCENARIO_PERFORMANCE_TEST',
   'SECURITY_BASELINE_QUALITY_TEST',
   'STABILITY_QUALITY_TEST',
-  'PERFORMANCE_MONITORING_TEST',
   'COMPATIBILITY_TEST',
+  // 兼容旧链接/历史任务创建入口
   'INSTALL_UNINSTALL_UPGRADE_TEST',
+  'PERFORMANCE_MONITORING_TEST',
   'UI_ADAPTATION_TEST'
 ]
 
@@ -357,10 +362,11 @@ const getPlatformText = (platform: string) => {
 const getTaskTypeText = (taskType?: string) => {
   if (!taskType) return '-'
   const map: Record<string, string> = {
-    FUNCTIONAL_QUALITY_TEST: '功能基础质量',
-    PERFORMANCE_BASELINE_TEST: '性能基础质量测试',
+    FUNCTIONAL_QUALITY_TEST: '功能基础质量（已下线）',
+    UI_FLOW_TEST: '流程用例执行',
+    PERFORMANCE_BASELINE_TEST: '性能遍历探索',
     POWER_CONSUMPTION_BASELINE_TEST: '功耗基础质量',
-    SCENARIO_PERFORMANCE_TEST: '场景化性能',
+    SCENARIO_PERFORMANCE_TEST: '流程性能测试',
     SECURITY_BASELINE_QUALITY_TEST: '安全基础质量',
     STABILITY_QUALITY_TEST: '稳定性基础质量',
     PERFORMANCE_MONITORING_TEST: '性能指标监控',
@@ -400,7 +406,8 @@ const resetFilters = () => {
 
 const isRunnable = (status: string) => {
   const s = (status || '').toLowerCase()
-  return s === 'pending' || s === 'stopped' || s === 'failed'
+  // 已完成也可再跑，方便同配置重复采样对比
+  return s === 'pending' || s === 'stopped' || s === 'failed' || s === 'completed'
 }
 const isStoppable = (status: string) => (status || '').toLowerCase() === 'running'
 
@@ -465,7 +472,7 @@ const deleteTask = async (taskId: string) => {
   margin-bottom: 16px;
   background: #fafbfc;
   border-radius: 8px;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--app-border);
 }
 
 .filter-row {
@@ -486,7 +493,7 @@ const deleteTask = async (taskId: string) => {
 
 .filter-label {
   flex-shrink: 0;
-  color: #606266;
+  color: var(--app-text-secondary);
   font-size: 13px;
   min-width: 72px;
 }
@@ -553,6 +560,6 @@ const deleteTask = async (taskId: string) => {
   border-color: #95d475;
 }
 .platform-tag.pog_ios {
-  border-color: #b3d8ff;
+  border-color: var(--el-color-primary-light-7);
 }
 </style>

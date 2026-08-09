@@ -44,7 +44,6 @@
               <div v-if="overview.scenarioName != null && overview.scenarioName !== '' || overview.scenarioKey" class="header-kv">场景 {{ overview.scenarioName || overview.scenarioKey || '—' }}</div>
               <div class="header-kv">应用包名 {{ overview.appPackageName ?? '—' }}</div>
               <div class="header-kv">应用版本 {{ overview.appVersion ?? '—' }}</div>
-              <div class="header-kv">API版本 {{ overview.apiVersion ?? '—' }}</div>
             </div>
           </div>
           <div class="header-col header-col-exec">
@@ -59,11 +58,14 @@
               <div v-if="overview.executionVariables && (overview.executionVariables.phoneNumberMasked || overview.executionVariables.verificationCodeMasked)" class="header-execution-vars">
                 <span v-if="overview.executionVariables.phoneNumberMasked" class="header-kv">手机号 {{ overview.executionVariables.phoneNumberMasked }}</span>
                 <span v-if="overview.executionVariables.verificationCodeMasked" class="header-kv">验证码 {{ overview.executionVariables.verificationCodeMasked }}</span>
-              </div>
-              <div class="header-actions">
-                <el-button link type="primary" size="small" class="header-action-btn">环境参数</el-button>
-                <el-button v-if="taskId" link type="primary" size="small" class="header-action-btn" @click="openScreenshotReport">查看报告</el-button>
-                <el-button link type="primary" size="small" class="header-action-btn" @click="onExecutionLog">执行日志</el-button>
+                <!-- 环境标识：两个环境的报告并排时，不点开也要能分清 -->
+                <el-tag
+                  v-if="overview.environment === 'TEST'"
+                  size="small"
+                  type="warning"
+                  effect="dark"
+                  style="margin-left: 8px"
+                >{{ overview.environmentLabel || '测试环境' }}</el-tag>
               </div>
             </div>
           </div>
@@ -85,13 +87,26 @@
                     <span>测试不通过项: {{ compatibilitySummary.failedCount }}</span>
                     <span>告警项: {{ compatibilitySummary.warningCount }}</span>
                   </div>
+                  <!--
+                    双口径：只留一个数会二选一地丢信息——含偶现看不出功能是否真坏，
+                    剔除偶现又看不出脚本稳不稳。两个都给，才能区分「脚本不稳」和「功能缺陷」。
+                  -->
+                  <div v-if="compatibilitySummary.functionalHealthPercent != null" class="dual-metric">
+                    <span class="dual-metric-item">
+                      功能健康度 <b>{{ compatibilitySummary.functionalHealthPercent }}%</b>
+                    </span>
+                    <span class="dual-metric-hint">
+                      已剔除归因判为「偶现」的 {{ compatibilitySummary.flakyExcludedCount }} 项；
+                      上方达标率含偶现，反映这轮跑得顺不顺，本项反映功能是否真坏
+                    </span>
+                  </div>
                   <div class="overview-progress-wrap">
                     <el-progress
                       type="circle"
                       :percentage="compatibilityPercent"
                       :stroke-width="12"
                       :width="160"
-                      :color="compatibilityPercent === 100 ? '#67c23a' : compatibilityPercent >= 60 ? '#e6a23c' : '#f56c6c'"
+                      :color="compatibilityPercent === 100 ? '#52c41a' : compatibilityPercent >= 60 ? '#faad14' : '#ff4d4f'"
                     >
                       <template #default>
                         <span class="progress-text">{{ compatibilityPercent }}%</span>
@@ -104,6 +119,13 @@
                   执行完成后可查看检测规则与执行日志
                 </div>
               </div>
+              <!-- 归因排在结果明细之前：排查失败时先看结论再看细节，顺序反了等于没用 -->
+              <FailureDiagnosisCard
+                v-if="overview?.taskId"
+                :task-id="overview.taskId"
+                :initial="overview.failureDiagnosis || null"
+              />
+
               <!-- 测试结果分布：使用 resultDistribution，含设备依赖 -->
               <div class="overview-block">
                 <div class="overview-block-title">测试结果分布</div>
@@ -129,6 +151,36 @@
                   <span class="legend-item"><i class="legend-dot legend-failed"></i> 不通过</span>
                   <span class="legend-item"><i class="legend-dot legend-device"></i> 设备依赖</span>
                 </div>
+              </div>
+              <!-- 流程用例：概览直接展示各步骤执行结果与返回文案 -->
+              <div v-if="isUiFlowTask && flowStepResultItems.length" class="overview-block">
+                <div class="overview-block-title">流程步骤执行结果</div>
+                <p class="flow-step-hint">含大纲号步骤、分支判断与「返回提示」文案；连拍截图已折叠，详见下方截图区或执行日志。</p>
+                <el-table
+                  :data="flowStepResultItems"
+                  stripe
+                  size="small"
+                  class="flow-step-table"
+                  :header-cell-style="{ background: 'var(--el-fill-color-light)' }"
+                >
+                  <el-table-column prop="testItemCategory" label="分类" width="110" />
+                  <el-table-column prop="testItemName" label="步骤" min-width="200" show-overflow-tooltip />
+                  <el-table-column prop="testResult" label="结果" width="100">
+                    <template #default="{ row }">
+                      <span class="result-pill" :class="'result-pill--' + testResultClass(taskStatusAwareResult(row.testResult))">
+                        {{ taskStatusAwareResult(row.testResult) }}
+                      </span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="返回 / 说明" min-width="240">
+                    <template #default="{ row }">
+                      <span v-if="row.detailMessage" class="flow-step-detail" :class="{ 'is-return': String(row.detailMessage).startsWith('返回：') }">
+                        {{ row.detailMessage }}
+                      </span>
+                      <span v-else class="no-log">—</span>
+                    </template>
+                  </el-table-column>
+                </el-table>
               </div>
               <!-- 性能报告：仅性能任务展示，参考「性能测试报告」设计：Tab 整体评估 / 遍历统计 / 资源数据 / 操作详情 -->
               <div v-if="isPerformanceTask" class="overview-block performance-report-block">
@@ -503,16 +555,26 @@
                   </template>
                 </div>
               </div>
-              <!-- 执行结果截图：遍历 executionLog，对每条有 screenshotUrl 的条目展示对应截图；无则回退为单张任务截图 -->
-              <div class="overview-block">
+              <!--
+                执行结果截图：遍历 executionLog，对每条有 screenshotUrl 的条目展示对应截图；无则回退为单张任务截图。
+
+                一张都没有时整块不显示——一个写着「暂无截图」的空框既占地方又让人以为是坏了。
+                性能遍历尤其如此：那边「操作详情」每一行已经带了操作前/操作后两张图，
+                底下再挂一个空的结果截图框，只会让人怀疑是不是漏采了。
+              -->
+              <div v-if="hasAnyScreenshot" class="overview-block">
                 <div class="overview-block-title">执行结果截图</div>
                 <div v-if="overviewStepScreenshots.length" class="overview-screenshots-strip">
                   <div
                     v-for="(entry, index) in overviewStepScreenshots"
                     :key="(entry.screenshotUrl || '') + '-' + index"
                     class="overview-screenshot-item overview-screenshot-item--clickable"
+                    :class="{ 'is-settled': entry.screenshotSettled }"
                     @click="openOverviewScreenshotPreview(index)"
                   >
+                    <span v-if="entry.screenshotSettled" class="settled-badge" title="页面稳定后拍的最终态，复核先看这张">
+                      最终态
+                    </span>
                     <img
                       :src="stepScreenshotSrc(entry.screenshotUrl)"
                       :alt="entry.step || `步骤 ${index + 1} 截图`"
@@ -599,6 +661,7 @@
               >
                 <el-option label="全部" value="" />
                 <el-option label="Info" value="Info" />
+                <el-option label="Warn" value="Warn" />
                 <el-option label="Error" value="Error" />
               </el-select>
             </div>
@@ -607,15 +670,37 @@
                 v-for="(item, index) in filteredExecutionLogSteps"
                 :key="index"
                 class="execution-log-step"
-                :class="executionLogStepLevel(item) === 'Error' ? 'execution-log-step--fail' : 'execution-log-step--success'"
+                :class="{
+                  'execution-log-step--fail': executionLogStepLevel(item) === 'Error',
+                  'execution-log-step--warn': executionLogStepLevel(item) === 'Warn',
+                  'execution-log-step--success': executionLogStepLevel(item) === 'Info'
+                }"
               >
                 <span v-if="item.timestamp" class="step-time">{{ formatLogTime(item.timestamp) }}</span>
-                <el-tag :type="executionLogStepLevel(item) === 'Error' ? 'danger' : 'info'" size="small" class="step-level-tag">
+                <el-tag
+                  :type="executionLogStepLevel(item) === 'Error'
+                    ? 'danger'
+                    : executionLogStepLevel(item) === 'Warn'
+                      ? 'warning'
+                      : 'info'"
+                  size="small"
+                  class="step-level-tag"
+                >
                   {{ executionLogStepLevel(item) }}
                 </el-tag>
                 <div class="step-content">
                   <span class="step-message-line">{{ formatLogMessage(item) }}</span>
                   <div v-if="executionLogStepLevel(item) === 'Error' && item.selector" class="step-selector">未定位到元素：{{ maskDeviceId(item.selector) }}</div>
+                  <div v-if="item.qrPayload" class="step-qr-block">
+                    <div class="step-qr-hint">请用手机扫描安装</div>
+                    <img
+                      :src="qrImageSrc(item.qrPayload)"
+                      alt="安装二维码"
+                      class="step-qr-img"
+                      @error="hideStepScreenshot"
+                    />
+                    <a class="step-qr-link" :href="item.qrPayload" target="_blank" rel="noopener">{{ item.qrPayload }}</a>
+                  </div>
                   <img
                     v-if="item.screenshotUrl"
                     :src="stepScreenshotSrc(item.screenshotUrl)"
@@ -738,6 +823,7 @@ import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
 import type { EChartsOption } from 'echarts'
 import { apiClient } from '@/api'
+import FailureDiagnosisCard from '@/components/FailureDiagnosisCard.vue'
 
 type Overview = {
   taskId: string
@@ -762,7 +848,14 @@ type Overview = {
     passedCount: number
     failedCount: number
     warningCount: number
+    /** 剔除「偶现」后的通过率；null 表示与达标率相同，无需重复展示 */
+    functionalHealthPercent?: number | null
+    flakyExcludedCount?: number
   } | null
+  failureDiagnosis?: Record<string, any> | null
+  /** TEST / PROD */
+  environment?: string | null
+  environmentLabel?: string | null
   resultDistribution: Array<{
     categoryName: string
     passed?: number
@@ -778,7 +871,7 @@ type Overview = {
     detailMessage: string | null
   }>
   /** 执行日志步骤列表，与任务详情/execution-log 结构一致；有则用此渲染执行日志弹窗 */
-  executionLog?: Array<{ step: string; status?: string; level?: 'Info' | 'Error'; message?: string; selector?: string | null; timestamp?: string; screenshotUrl?: string | null }>
+  executionLog?: Array<{ step: string; status?: string; level?: 'Info' | 'Error'; message?: string; selector?: string | null; timestamp?: string; screenshotUrl?: string | null; qrPayload?: string | null; screenshotSettled?: boolean | null }>
 }
 
 const route = useRoute()
@@ -792,11 +885,11 @@ const overviewReady = ref(false)
 const activeTab = ref('overview')
 
 const executionLogVisible = ref(false)
-const executionLogSteps = ref<Array<{ step: string; status?: 'success' | 'fail'; level?: 'Info' | 'Error'; message?: string; selector?: string | null; timestamp?: string; screenshotUrl?: string | null }>>([])
+const executionLogSteps = ref<Array<{ step: string; status?: 'success' | 'fail' | 'neutral'; level?: 'Info' | 'Error' | 'Warn'; message?: string; selector?: string | null; timestamp?: string; screenshotUrl?: string | null; qrPayload?: string | null; screenshotSettled?: boolean | null }>>([])
 const executionLogLoading = ref(false)
 const executionLogError = ref('')
 const screenshotLoadError = ref(false)
-const executionLogLevelFilter = ref<'Info' | 'Error' | ''>('')
+const executionLogLevelFilter = ref<'Info' | 'Warn' | 'Error' | ''>('')
 
 /** 遍历统计截图放大预览 */
 const perfScreenshotPreviewVisible = ref(false)
@@ -902,7 +995,7 @@ const taskId = computed(() => (route.params.id as string) || '')
 /** 轮询定时器：任务执行中时轮询 GET task detail，完成后停止并刷新概览 */
 let pollTimerId: ReturnType<typeof setInterval> | null = null
 const POLL_INTERVAL_MS = 3000
-const TERMINAL_STATUSES = ['COMPLETED', 'FAILED', 'STOPPED']
+const TERMINAL_STATUSES = ['COMPLETED', 'FAILED', 'SKIPPED', 'STOPPED']
 
 function clearPolling() {
   if (pollTimerId != null) {
@@ -935,12 +1028,26 @@ function startPollingIfNeeded() {
   pollTimerId = setInterval(pollTaskStatus, POLL_INTERVAL_MS)
 }
 
-const screenshotUrl = computed(() => (taskId.value ? apiClient.getFunctionalTestTaskScreenshotUrl(taskId.value) : ''))
+const screenshotUrl = computed(() => {
+  // 仅当 overview 有 reportPath 时才请求单图接口，避免无截图任务刷 404
+  if (!taskId.value || !overview.value?.reportPath) return ''
+  return apiClient.getFunctionalTestTaskScreenshotUrl(taskId.value)
+})
 
 /** 执行日志兜底：当 overview 的 executionLog 为空时，尝试从 execution-log 或任务详情接口获取（后端可能未在 overview 中返回） */
 const executionLogFallback = ref<Array<{ step: string; message?: string; timestamp?: string; level?: string; status?: string; selector?: string | null; screenshotUrl?: string | null }>>([])
 
 /** 概览中带截图的执行日志条目（用于「执行结果截图」区：对每条有 screenshotUrl 的日志展示对应截图） */
+/**
+ * 有没有截图可展示。
+ * 一张都没有时整块隐藏——空框比没有更糟：
+ * 性能遍历的「操作详情」里每行已经有操作前/后两张图，底下再挂个「暂无截图」的空框，
+ * 只会让人以为截图漏采了，回头去查一遍。
+ */
+const hasAnyScreenshot = computed(
+  () => overviewStepScreenshots.value.length > 0 || (!!screenshotUrl.value && !screenshotLoadError.value)
+)
+
 const overviewStepScreenshots = computed(() => {
   const fromOverview = normalizeExecutionLogList(overview.value?.executionLog ?? [])
   const list = fromOverview.length > 0 ? fromOverview : normalizeExecutionLogList(executionLogFallback.value)
@@ -950,7 +1057,7 @@ const overviewStepScreenshots = computed(() => {
 /** 是否可确定任务已处于终态（已完成/失败/停止），仅此时才展示具体错误；否则一律显示「暂无结果」避免出现 Network error */
 const isTaskTerminalState = computed(() => {
   const status = (overview.value?.status ?? overview.value?.executionStatus ?? '').toUpperCase()
-  return status === 'COMPLETED' || status === 'FAILED' || status === 'STOPPED'
+  return TERMINAL_STATUSES.includes(status)
 })
 
 /** 性能报告无数据时的提示文案：仅当任务已处于终态时显示具体错误，其余（运行中/未运行/状态未知）均显示「暂无结果」 */
@@ -1005,6 +1112,20 @@ const overviewSummaryTitle = computed(() => {
   return t ? '达标率' : '兼容性满足度'
 })
 
+/** 是否为流程用例任务（概览展示逐步结果） */
+const isUiFlowTask = computed(() => {
+  const t = `${overview.value?.testType || ''} ${overview.value?.scenarioName || ''} ${overview.value?.summarySectionTitle || ''}`
+  return /流程/.test(t) || overview.value?.summarySectionTitle === '流程步骤通过率'
+})
+
+const flowStepResultItems = computed(() => {
+  const items = overview.value?.testResultItems || []
+  return items.filter((it) => {
+    const name = (it.testItemName || '').trim()
+    return name && name !== '暂无执行日志' && name !== '暂无有效步骤日志'
+  })
+})
+
 const overviewSummaryShortLabel = computed(() => {
   const t = (overview.value?.testType || '').trim()
   if (/性能/.test(t)) return '性能'
@@ -1019,6 +1140,8 @@ const compatibilitySummary = computed(() => {
   if (s) return s
   return {
     actualTestItemCount: 0,
+    functionalHealthPercent: null,
+    flakyExcludedCount: 0,
     passedCount: 0,
     failedCount: 0,
     warningCount: 0
@@ -1032,10 +1155,18 @@ const showCompatibilityCircle = computed(() => {
   return (s.actualTestItemCount ?? 0) > 0
 })
 
+/**
+ * 达标率 = 通过 / (通过 + 不通过)。
+ *
+ * 分母只算「能判定成败」的项：告警（用户停止、重试过程）和设备依赖都排除在外。
+ * 之前用「实际测试项」当分母，于是点一次停止就把 100% 拉成 75%，
+ * 兼容性测试里 3 项设备依赖也会白白稀释掉达标率。
+ */
 const compatibilityPercent = computed(() => {
-  const total = compatibilitySummary.value.actualTestItemCount
-  if (!total) return 0
-  return Math.round((compatibilitySummary.value.passedCount / total) * 100)
+  const s = compatibilitySummary.value
+  const judged = (s.passedCount ?? 0) + (s.failedCount ?? 0)
+  if (!judged) return 0
+  return Math.round(((s.passedCount ?? 0) / judged) * 100)
 })
 
 // 测试结果分布：使用 resultDistribution，并计算每项 total
@@ -1109,8 +1240,8 @@ const ISSUE_TYPE_COLORS: Record<string, string> = {
   卡顿: '#ffb74d',
   黑白块: '#9e9e9e',
   音视频: '#f2c94c',
-  其他: '#909399',
-  问题总数: '#909399'
+  其他: '#8f959e',
+  问题总数: '#8f959e'
 }
 
 /** 整体评估-问题分布环形图图例（响应时延、完成时延、卡顿、黑白块、音视频，与后端 issueSummary 一致） */
@@ -1471,10 +1602,15 @@ const testResultClass = (result: string): string => {
   return 'info'
 }
 
-/** 单条日志的 level：优先用 level，否则 status 映射 success→Info、fail→Error */
-function executionLogStepLevel(item: { level?: string; status?: string }): 'Info' | 'Error' {
-  if (item.level === 'Info' || item.level === 'Error') return item.level
-  return (item.status || '').toLowerCase() === 'fail' ? 'Error' : 'Info'
+/**
+ * 单条日志的 level：优先用 level，否则按 status 映射。
+ * 中立态（用户停止、重试前的失败尝试）走 Warn——看得见，但不是失败。
+ */
+function executionLogStepLevel(item: { level?: string; status?: string }): 'Info' | 'Error' | 'Warn' {
+  if (item.level === 'Info' || item.level === 'Error' || item.level === 'Warn') return item.level
+  const st = (item.status || '').toLowerCase()
+  if (st === 'neutral') return 'Warn'
+  return st === 'fail' ? 'Error' : 'Info'
 }
 
 /** 设备 ID 脱敏：前 4 位 + **** + 后 4 位（如 23E00020 → 23E0****0020），仅对 8 位及以上十六进制段脱敏 */
@@ -1506,6 +1642,11 @@ function formatLogTime(timestamp: string | undefined): string {
 }
 
 /** 步骤截图完整 URL：baseUrl + entry.screenshotUrl */
+function qrImageSrc(payload: string): string {
+  const data = encodeURIComponent(String(payload || '').trim())
+  return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${data}`
+}
+
 function stepScreenshotSrc(screenshotUrl: string): string {
   const base = apiClient.getBaseUrl()
   const path = (screenshotUrl || '').trim()
@@ -1681,7 +1822,7 @@ function updateResourceLineChart() {
       splitLine: { show: true, lineStyle: { color: '#f0f0f0' } }
     },
     dataZoom: [
-      { type: 'slider', show: true, xAxisIndex: 0, bottom: 6, height: 26, start: 0, end: 100, borderColor: '#e4e7ed', fillerColor: 'rgba(64, 158, 255, 0.2)', backgroundColor: '#fafbfc', handleStyle: { color: '#409eff' }, textStyle: { fontSize: 11 } },
+      { type: 'slider', show: true, xAxisIndex: 0, bottom: 6, height: 26, start: 0, end: 100, borderColor: '#e8eaed', fillerColor: 'rgba(24, 144, 255, 0.2)', backgroundColor: '#f5f7fa', handleStyle: { color: '#1890ff' }, textStyle: { fontSize: 11 } },
       { type: 'inside', xAxisIndex: 0, start: 0, end: 100 }
     ],
     series: [
@@ -1691,14 +1832,14 @@ function updateResourceLineChart() {
         data: foregroundData,
         smooth: true,
         symbol: 'none',
-        lineStyle: { color: '#409eff' },
+        lineStyle: { color: '#1890ff' },
         ...(fgMax > 0 && {
           markPoint: {
             symbol: 'arrow',
             symbolSize: 14,
             symbolRotate: 180,
             label: { formatter: '前台峰值', ...peakLabel },
-            itemStyle: { color: '#409eff' },
+            itemStyle: { color: '#1890ff' },
             data: [{ type: 'max', name: '前台峰值' }]
           }
         })
@@ -1709,14 +1850,14 @@ function updateResourceLineChart() {
         data: backgroundData,
         smooth: true,
         symbol: 'none',
-        lineStyle: { color: '#67c23a' },
+        lineStyle: { color: '#52c41a' },
         ...(bgMax > 0 && {
           markPoint: {
             symbol: 'arrow',
             symbolSize: 14,
             symbolRotate: 180,
             label: { formatter: '后台峰值', ...peakLabel },
-            itemStyle: { color: '#67c23a' },
+            itemStyle: { color: '#52c41a' },
             data: [{ type: 'max', name: '后台峰值' }]
           }
         })
@@ -1759,7 +1900,7 @@ function updateMemoryLineChart() {
       splitLine: { show: true, lineStyle: { color: '#f0f0f0' } }
     },
     dataZoom: [
-      { type: 'slider', show: true, xAxisIndex: 0, bottom: 6, height: 26, start: 0, end: 100, borderColor: '#e4e7ed', fillerColor: 'rgba(103, 194, 58, 0.2)', backgroundColor: '#fafbfc', handleStyle: { color: '#67c23a' }, textStyle: { fontSize: 11 } },
+      { type: 'slider', show: true, xAxisIndex: 0, bottom: 6, height: 26, start: 0, end: 100, borderColor: '#e8eaed', fillerColor: 'rgba(103, 194, 58, 0.2)', backgroundColor: '#f5f7fa', handleStyle: { color: '#52c41a' }, textStyle: { fontSize: 11 } },
       { type: 'inside', xAxisIndex: 0, start: 0, end: 100 }
     ],
     series: [
@@ -1770,14 +1911,14 @@ function updateMemoryLineChart() {
         smooth: true,
         symbol: 'circle',
         symbolSize: 4,
-        lineStyle: { color: '#409eff' },
+        lineStyle: { color: '#1890ff' },
         ...(fgMax > 0 && {
           markPoint: {
             symbol: 'arrow',
             symbolSize: 14,
             symbolRotate: 180,
             label: { formatter: '前台峰值', ...peakLabel },
-            itemStyle: { color: '#409eff' },
+            itemStyle: { color: '#1890ff' },
             data: [{ type: 'max', name: '前台峰值' }]
           }
         })
@@ -1789,14 +1930,14 @@ function updateMemoryLineChart() {
         smooth: true,
         symbol: 'circle',
         symbolSize: 4,
-        lineStyle: { color: '#67c23a' },
+        lineStyle: { color: '#52c41a' },
         ...(bgMax > 0 && {
           markPoint: {
             symbol: 'arrow',
             symbolSize: 14,
             symbolRotate: 180,
             label: { formatter: '后台峰值', ...peakLabel },
-            itemStyle: { color: '#67c23a' },
+            itemStyle: { color: '#52c41a' },
             data: [{ type: 'max', name: '后台峰值' }]
           }
         })
@@ -1852,12 +1993,12 @@ function updateNetworkLineChart() {
       splitLine: { show: true, lineStyle: { color: '#f0f0f0' } }
     },
     dataZoom: [
-      { type: 'slider', show: true, xAxisIndex: 0, bottom: 6, height: 26, start: 0, end: 100, borderColor: '#e4e7ed', fillerColor: 'rgba(64, 158, 255, 0.2)', backgroundColor: '#fafbfc', handleStyle: { color: '#409eff' }, textStyle: { fontSize: 11 } },
+      { type: 'slider', show: true, xAxisIndex: 0, bottom: 6, height: 26, start: 0, end: 100, borderColor: '#e8eaed', fillerColor: 'rgba(24, 144, 255, 0.2)', backgroundColor: '#f5f7fa', handleStyle: { color: '#1890ff' }, textStyle: { fontSize: 11 } },
       { type: 'inside', xAxisIndex: 0, start: 0, end: 100 }
     ],
     series: [
-      { name: '下行(接收)', type: 'line', data: rxData, smooth: true, symbol: 'none', lineStyle: { color: '#409eff' }, markPoint: { symbol: 'arrow', symbolSize: 14, symbolRotate: 180, label: { formatter: '峰值', position: 'right', fontSize: 11, distance: 8 }, itemStyle: { color: '#409eff' }, data: [{ type: 'max', name: '峰值' }] } },
-      { name: '上行(发送)', type: 'line', data: txData, smooth: true, symbol: 'none', lineStyle: { color: '#67c23a' }, markPoint: { symbol: 'arrow', symbolSize: 14, symbolRotate: 180, label: { formatter: '峰值', position: 'right', fontSize: 11, distance: 8 }, itemStyle: { color: '#67c23a' }, data: [{ type: 'max', name: '峰值' }] } }
+      { name: '下行(接收)', type: 'line', data: rxData, smooth: true, symbol: 'none', lineStyle: { color: '#1890ff' }, markPoint: { symbol: 'arrow', symbolSize: 14, symbolRotate: 180, label: { formatter: '峰值', position: 'right', fontSize: 11, distance: 8 }, itemStyle: { color: '#1890ff' }, data: [{ type: 'max', name: '峰值' }] } },
+      { name: '上行(发送)', type: 'line', data: txData, smooth: true, symbol: 'none', lineStyle: { color: '#52c41a' }, markPoint: { symbol: 'arrow', symbolSize: 14, symbolRotate: 180, label: { formatter: '峰值', position: 'right', fontSize: 11, distance: 8 }, itemStyle: { color: '#52c41a' }, data: [{ type: 'max', name: '峰值' }] } }
     ]
   }
   networkLineChart.setOption(option, true)
@@ -1891,7 +2032,7 @@ function updateTemperatureLineChart() {
       splitLine: { show: true, lineStyle: { color: '#f0f0f0' } }
     },
     dataZoom: [
-      { type: 'slider', show: true, xAxisIndex: 0, bottom: 6, height: 26, start: 0, end: 100, borderColor: '#e4e7ed', fillerColor: 'rgba(230, 162, 60, 0.2)', backgroundColor: '#fafbfc', handleStyle: { color: '#e6a23c' }, textStyle: { fontSize: 11 } },
+      { type: 'slider', show: true, xAxisIndex: 0, bottom: 6, height: 26, start: 0, end: 100, borderColor: '#e8eaed', fillerColor: 'rgba(230, 162, 60, 0.2)', backgroundColor: '#f5f7fa', handleStyle: { color: '#faad14' }, textStyle: { fontSize: 11 } },
       { type: 'inside', xAxisIndex: 0, start: 0, end: 100 }
     ],
     series: [{
@@ -1900,8 +2041,8 @@ function updateTemperatureLineChart() {
       data: tempData,
       smooth: true,
       symbol: 'none',
-      lineStyle: { color: '#e6a23c' },
-      markPoint: { symbol: 'arrow', symbolSize: 14, symbolRotate: 180, label: { formatter: '峰值', position: 'right', fontSize: 11, distance: 8 }, itemStyle: { color: '#e6a23c' }, data: [{ type: 'max', name: '峰值' }] }
+      lineStyle: { color: '#faad14' },
+      markPoint: { symbol: 'arrow', symbolSize: 14, symbolRotate: 180, label: { formatter: '峰值', position: 'right', fontSize: 11, distance: 8 }, itemStyle: { color: '#faad14' }, data: [{ type: 'max', name: '峰值' }] }
     }]
   }
   temperatureLineChart.setOption(option, true)
@@ -2023,7 +2164,7 @@ async function loadOverview() {
 }
 
 function goBack() {
-  router.push({ name: 'AutomationTest' })
+  router.push({ name: 'Tasks' })
 }
 
 function onWindowResize() {
@@ -2083,7 +2224,7 @@ watch([perfReportTab, resourceSubTab], () => {
   gap: 16px;
   padding: 16px 24px;
   background: #fff;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--app-border);
 }
 
 .back-btn {
@@ -2091,18 +2232,18 @@ watch([perfReportTab, resourceSubTab], () => {
   align-items: center;
   gap: 4px;
   font-size: 14px;
-  color: #606266;
+  color: var(--app-text-secondary);
 }
 
 .back-btn:hover {
-  color: #409eff;
+  color: var(--app-primary);
 }
 
 .page-title {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: #303133;
+  color: var(--app-text);
 }
 
 .overview-loading,
@@ -2116,14 +2257,18 @@ watch([perfReportTab, resourceSubTab], () => {
 }
 
 .overview-error {
-  color: #f56c6c;
+  color: var(--app-danger);
 }
 
-/* 蓝色信息头 */
+/* 任务信息头：白卡片 + 浅色图标圈（对齐参考页 KPI 卡，不用满屏实心蓝） */
 .overview-header {
-  background: linear-gradient(135deg, #409eff 0%, #66b1ff 100%);
-  padding: 20px 24px;
-  color: #fff;
+  background: var(--app-card-bg);
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  margin: 16px 16px 0;
+  padding: 18px 20px;
+  color: var(--app-text);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .header-inner {
@@ -2145,12 +2290,13 @@ watch([perfReportTab, resourceSubTab], () => {
 .header-col-icon {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.25);
+  border-radius: 50%;
+  background: var(--el-color-primary-light-9);
+  color: var(--app-primary);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  font-size: 18px;
   flex-shrink: 0;
 }
 
@@ -2164,13 +2310,14 @@ watch([perfReportTab, resourceSubTab], () => {
   font-weight: 600;
   font-size: 14px;
   margin-bottom: 6px;
+  color: var(--app-text);
 }
 
 .header-task-meta,
 .header-task-remarks,
 .header-kv {
   font-size: 13px;
-  opacity: 0.95;
+  color: var(--app-text-secondary);
   margin-bottom: 4px;
 }
 
@@ -2187,14 +2334,14 @@ watch([perfReportTab, resourceSubTab], () => {
 
 .header-task-id {
   font-size: 12px;
-  opacity: 0.9;
+  color: var(--el-text-color-placeholder);
   margin-top: 6px;
   word-break: break-all;
 }
 
 .header-task-scenario {
   font-size: 12px;
-  opacity: 0.9;
+  color: var(--app-text-secondary);
   margin-top: 4px;
 }
 
@@ -2206,12 +2353,12 @@ watch([perfReportTab, resourceSubTab], () => {
 }
 
 .header-action-btn {
-  color: #fff !important;
-  opacity: 0.95;
+  color: var(--app-primary) !important;
+  opacity: 1;
 }
 
 .header-action-btn:hover {
-  opacity: 1;
+  color: var(--el-color-primary-dark-2) !important;
 }
 
 /* Tab 区域 */
@@ -2227,7 +2374,7 @@ watch([perfReportTab, resourceSubTab], () => {
   margin: 0;
   padding: 0 16px;
   background: #fafafa;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--app-border);
 }
 
 .overview-tabs :deep(.el-tabs__item) {
@@ -2249,13 +2396,13 @@ watch([perfReportTab, resourceSubTab], () => {
   padding: 16px;
   background: #fafbfc;
   border-radius: 8px;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--app-border);
 }
 
 .overview-block-title {
   font-weight: 600;
   font-size: 15px;
-  color: #303133;
+  color: var(--app-text);
   margin-bottom: 12px;
 }
 
@@ -2264,7 +2411,7 @@ watch([perfReportTab, resourceSubTab], () => {
   flex-wrap: wrap;
   gap: 16px;
   font-size: 13px;
-  color: #606266;
+  color: var(--app-text-secondary);
   margin-bottom: 16px;
 }
 
@@ -2283,18 +2430,18 @@ watch([perfReportTab, resourceSubTab], () => {
 .progress-text {
   font-size: 24px;
   font-weight: 600;
-  color: #303133;
+  color: var(--app-text);
 }
 
 .progress-label {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
 }
 
 .overview-performance-placeholder {
   padding: 16px 0;
   font-size: 14px;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
 }
 
 .result-distribution {
@@ -2314,7 +2461,7 @@ watch([perfReportTab, resourceSubTab], () => {
 .dist-label {
   width: 100px;
   flex-shrink: 0;
-  color: #606266;
+  color: var(--app-text-secondary);
 }
 
 .dist-bars {
@@ -2333,33 +2480,56 @@ watch([perfReportTab, resourceSubTab], () => {
 }
 
 .dist-bar-passed {
-  background: #67c23a;
+  background: var(--app-success);
 }
 
 .dist-bar-warning {
-  background: #e6a23c;
+  background: var(--app-warning);
 }
 
 .dist-bar-failed {
-  background: #f56c6c;
+  background: var(--app-danger);
 }
 
 .dist-bar-device {
-  background: #909399;
+  background: var(--el-text-color-placeholder);
 }
 
 .dist-value {
   width: 48px;
   text-align: right;
   font-size: 13px;
-  color: #303133;
+  color: var(--app-text);
+}
+
+.flow-step-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+  line-height: 1.5;
+}
+
+.flow-step-table {
+  width: 100%;
+}
+
+.flow-step-detail {
+  font-size: 13px;
+  color: var(--app-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.flow-step-detail.is-return {
+  color: var(--app-warning);
+  font-weight: 500;
 }
 
 .result-legend {
   display: flex;
   gap: 16px;
   font-size: 12px;
-  color: #606266;
+  color: var(--app-text-secondary);
 }
 
 .legend-item {
@@ -2376,15 +2546,15 @@ watch([perfReportTab, resourceSubTab], () => {
 }
 
 .legend-passed {
-  background: #67c23a;
+  background: var(--app-success);
 }
 
 .legend-warning {
-  background: #e6a23c;
+  background: var(--app-warning);
 }
 
 .legend-failed {
-  background: #f56c6c;
+  background: var(--app-danger);
 }
 
 .participating-teams-wrap {
@@ -2400,8 +2570,8 @@ watch([perfReportTab, resourceSubTab], () => {
 .participating-team-tag {
   display: inline-block;
   padding: 4px 12px;
-  background: #ecf5ff;
-  color: #409eff;
+  background: var(--el-color-primary-light-9);
+  color: var(--app-primary);
   border-radius: 4px;
   font-size: 13px;
 }
@@ -2409,12 +2579,12 @@ watch([perfReportTab, resourceSubTab], () => {
 .participating-teams-summary {
   margin-top: 12px;
   font-size: 13px;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
 }
 
 .overview-screenshot-wrap {
   min-height: 120px;
-  border: 1px dashed #dcdfe6;
+  border: 1px dashed var(--app-border);
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -2430,20 +2600,40 @@ watch([perfReportTab, resourceSubTab], () => {
 }
 
 .overview-screenshot-item {
+  position: relative;
   flex: 0 0 auto;
   max-width: 200px;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--app-border);
   border-radius: 8px;
   overflow: hidden;
   background: #fafafa;
+}
+/* 页面稳定后拍的最终态：人工/AI 复核优先看这些，用绿框和角标区分 */
+.overview-screenshot-item.is-settled {
+  outline: 2px solid #22c55e;
+  outline-offset: 1px;
+  border-radius: 6px;
+}
+.settled-badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 1;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(34, 197, 94, 0.92);
+  border-radius: 4px;
+  padding: 1px 6px;
+  pointer-events: none;
 }
 .overview-screenshot-item--clickable {
   cursor: pointer;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .overview-screenshot-item--clickable:hover {
-  border-color: #409eff;
-  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.2);
+  border-color: var(--app-primary);
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.2);
 }
 
 .overview-screenshot-item .overview-screenshot-img {
@@ -2457,7 +2647,7 @@ watch([perfReportTab, resourceSubTab], () => {
 .overview-screenshot-step {
   display: block;
   font-size: 12px;
-  color: #606266;
+  color: var(--app-text-secondary);
   padding: 6px 8px;
   line-height: 1.3;
   word-break: break-all;
@@ -2471,7 +2661,7 @@ watch([perfReportTab, resourceSubTab], () => {
 }
 
 .overview-screenshot-placeholder {
-  color: #909399;
+  color: var(--el-text-color-placeholder);
   font-size: 14px;
   padding: 24px;
 }
@@ -2499,12 +2689,12 @@ watch([perfReportTab, resourceSubTab], () => {
   max-height: 70vh;
   object-fit: contain;
   border-radius: 8px;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--app-border);
   background: var(--el-fill-color-light);
 }
 .overview-screenshot-preview-step {
   font-size: 13px;
-  color: #606266;
+  color: var(--app-text-secondary);
   text-align: center;
   word-break: break-all;
 }
@@ -2516,13 +2706,13 @@ watch([perfReportTab, resourceSubTab], () => {
 }
 .overview-screenshot-preview-counter {
   font-size: 13px;
-  color: #606266;
+  color: var(--app-text-secondary);
   min-width: 4em;
   text-align: center;
 }
 
 .legend-device {
-  background: #909399;
+  background: var(--el-text-color-placeholder);
 }
 
 /* 性能报告（参考「性能测试报告」设计） */
@@ -2533,14 +2723,14 @@ watch([perfReportTab, resourceSubTab], () => {
 
 .performance-report-head {
   padding: 12px 16px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--app-border);
   background: #fafbfc;
 }
 
 .performance-report-head-title {
   font-weight: 600;
   font-size: 15px;
-  color: #303133;
+  color: var(--app-text);
 }
 
 .performance-report-wrap {
@@ -2561,7 +2751,7 @@ watch([perfReportTab, resourceSubTab], () => {
   gap: 8px;
   margin-bottom: 16px;
   padding: 0 0 12px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--app-border);
   position: relative;
   z-index: 1;
 }
@@ -2569,9 +2759,9 @@ watch([perfReportTab, resourceSubTab], () => {
 .perf-anchor-btn {
   padding: 8px 16px;
   font-size: 14px;
-  color: #606266;
+  color: var(--app-text-secondary);
   background: #fff;
-  border: 1px solid #dcdfe6;
+  border: 1px solid var(--app-border);
   border-radius: 4px;
   cursor: pointer;
   position: relative;
@@ -2606,7 +2796,7 @@ watch([perfReportTab, resourceSubTab], () => {
 .performance-report-message {
   padding: 24px 0;
   font-size: 14px;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
   text-align: center;
 }
 
@@ -2620,26 +2810,26 @@ watch([perfReportTab, resourceSubTab], () => {
   margin: 0 0 12px 0;
   font-size: 15px;
   font-weight: 600;
-  color: #303133;
+  color: var(--app-text);
   padding-left: 10px;
   padding-bottom: 8px;
-  border-left: 3px solid #409eff;
+  border-left: 3px solid var(--app-primary);
   border-bottom: none;
 }
 
 .perf-conclusion {
   margin: 0 0 16px 0;
   font-size: 14px;
-  color: #606266;
+  color: var(--app-text-secondary);
   line-height: 1.6;
 }
 .perf-conclusion-num {
-  color: #409eff;
+  color: var(--app-primary);
   font-weight: 700;
   padding: 0 2px;
 }
 .perf-conclusion-num--issue {
-  color: #f56c6c;
+  color: var(--app-danger);
 }
 
 /* 整体评估：左侧环形图 + 右侧表格 */
@@ -2667,7 +2857,7 @@ watch([perfReportTab, resourceSubTab], () => {
   flex-direction: column;
   gap: 8px;
   font-size: 13px;
-  color: #606266;
+  color: var(--app-text-secondary);
 }
 
 .perf-legend-item {
@@ -2694,7 +2884,7 @@ watch([perfReportTab, resourceSubTab], () => {
 }
 
 .perf-issue-value {
-  color: #f56c6c;
+  color: var(--app-danger);
   font-weight: 500;
 }
 
@@ -2730,18 +2920,18 @@ watch([perfReportTab, resourceSubTab], () => {
 .perf-stat-num {
   font-size: 24px;
   font-weight: 600;
-  color: #303133;
+  color: var(--app-text);
 }
 
 .perf-stat-unit {
   font-size: 13px;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
   margin-left: 4px;
 }
 
 .perf-stat-label {
   font-size: 13px;
-  color: #606266;
+  color: var(--app-text-secondary);
   margin-top: 4px;
 }
 
@@ -2750,7 +2940,7 @@ watch([perfReportTab, resourceSubTab], () => {
   min-height: 140px;
   min-width: 200px;
   background: var(--el-fill-color-light);
-  border: 1px dashed #dcdfe6;
+  border: 1px dashed var(--app-border);
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -2759,7 +2949,7 @@ watch([perfReportTab, resourceSubTab], () => {
 
 .perf-placeholder-text {
   font-size: 14px;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
 }
 
 /* 遍历统计 - 截图时间轴条（每秒一张） */
@@ -2768,7 +2958,7 @@ watch([perfReportTab, resourceSubTab], () => {
   min-width: 200px;
   min-height: 120px;
   background: var(--el-fill-color-light);
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--app-border);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -2807,7 +2997,7 @@ watch([perfReportTab, resourceSubTab], () => {
   max-height: 180px;
   object-fit: contain;
   border-radius: 4px;
-  border: 1px solid #dcdfe6;
+  border: 1px solid var(--app-border);
   background: #fff;
   transition: box-shadow 0.15s ease, border-color 0.15s ease;
 }
@@ -2818,11 +3008,11 @@ watch([perfReportTab, resourceSubTab], () => {
 
 .perf-screenshot-time {
   font-size: 11px;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
 }
 .perf-screenshot-action {
   font-size: 12px;
-  color: #303133;
+  color: var(--app-text);
   font-weight: 500;
   max-width: 120px;
   overflow: hidden;
@@ -2832,7 +3022,7 @@ watch([perfReportTab, resourceSubTab], () => {
 }
 .perf-screenshot-page {
   font-size: 10px;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
   max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2857,21 +3047,21 @@ watch([perfReportTab, resourceSubTab], () => {
   max-height: 70vh;
   object-fit: contain;
   border-radius: 8px;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--app-border);
   background: var(--el-fill-color-light);
 }
 .perf-screenshot-preview-time {
   font-size: 13px;
-  color: #606266;
+  color: var(--app-text-secondary);
 }
 .perf-screenshot-preview-op {
   font-size: 12px;
-  color: #303133;
+  color: var(--app-text);
 }
 .perf-screenshot-preview-op-page {
   margin-left: 6px;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
 }
 .perf-screenshot-preview-nav {
   display: flex;
@@ -2881,7 +3071,7 @@ watch([perfReportTab, resourceSubTab], () => {
 }
 .perf-screenshot-preview-counter {
   font-size: 13px;
-  color: #606266;
+  color: var(--app-text-secondary);
   min-width: 4em;
   text-align: center;
 }
@@ -2901,10 +3091,10 @@ watch([perfReportTab, resourceSubTab], () => {
   display: inline-block;
   padding: 5px 12px;
   font-size: 12px;
-  color: #606266;
+  color: var(--app-text-secondary);
   background: #fff;
   border-radius: 16px;
-  border: 1px solid #dcdfe6;
+  border: 1px solid var(--app-border);
   transition: all 0.2s;
   cursor: pointer;
   font-family: inherit;
@@ -2913,12 +3103,12 @@ watch([perfReportTab, resourceSubTab], () => {
 }
 .perf-metric-pill:hover {
   border-color: #c0c4cc;
-  color: #303133;
+  color: var(--app-text);
 }
 .perf-metric-pill.active {
-  color: #409eff;
-  background: #ecf5ff;
-  border-color: #409eff;
+  color: var(--app-primary);
+  background: var(--el-color-primary-light-9);
+  border-color: var(--app-primary);
   font-weight: 500;
 }
 .perf-metric-pill.disabled {
@@ -2932,7 +3122,7 @@ watch([perfReportTab, resourceSubTab], () => {
 
 .perf-resource-subtabs :deep(.el-tabs__header) {
   margin: 0 0 20px 0;
-  border-bottom: 1px solid #e4e7ed;
+  border-bottom: 1px solid var(--app-border);
 }
 
 .perf-resource-subtabs :deep(.el-tabs__nav-wrap) {
@@ -2946,23 +3136,23 @@ watch([perfReportTab, resourceSubTab], () => {
 
 .perf-resource-subtabs :deep(.el-tabs__item) {
   font-size: 15px;
-  color: #606266;
+  color: var(--app-text-secondary);
   padding: 0 20px;
   height: 40px;
   line-height: 40px;
 }
 .perf-resource-subtabs :deep(.el-tabs__item.is-active) {
-  color: #409eff;
+  color: var(--app-primary);
   font-weight: 600;
 }
 
 .perf-resource-subtabs :deep(.el-tabs__active-bar) {
   height: 3px;
-  background-color: #409eff;
+  background-color: var(--app-primary);
 }
 
 .perf-resource-subtabs :deep(.el-tabs__item:hover) {
-  color: #409eff;
+  color: var(--app-primary);
 }
 
 .perf-resource-subtabs :deep(.el-tabs__content) {
@@ -3000,7 +3190,7 @@ watch([perfReportTab, resourceSubTab], () => {
   height: 320px;
   background: #fafbfc;
   border-radius: 8px;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--app-border);
   padding: 12px;
   box-sizing: border-box;
 }
@@ -3017,38 +3207,38 @@ watch([perfReportTab, resourceSubTab], () => {
   padding: 16px;
   background: #fff;
   border-radius: 8px;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--app-border);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
 }
 
 .perf-resource-summary-title {
   font-size: 14px;
   font-weight: 600;
-  color: #303133;
+  color: var(--app-text);
   margin: 0 0 12px 0;
   padding-bottom: 8px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--app-border);
 }
 
 .perf-peak-step {
   font-size: 12px;
-  color: #606266;
+  color: var(--app-text-secondary);
   margin-bottom: 14px;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 .perf-peak-step-label {
-  color: #909399;
+  color: var(--el-text-color-placeholder);
   font-weight: 500;
   font-size: 12px;
 }
 .perf-peak-step-desc {
-  color: #303133;
+  color: var(--app-text);
   line-height: 1.5;
 }
 .perf-peak-step-link {
-  color: #409eff;
+  color: var(--app-primary);
   text-decoration: none;
   cursor: pointer;
   line-height: 1.6;
@@ -3077,14 +3267,14 @@ watch([perfReportTab, resourceSubTab], () => {
   height: 48px;
   object-fit: contain;
   border-radius: 4px;
-  border: 1px solid #dcdfe6;
+  border: 1px solid var(--app-border);
   cursor: pointer;
   display: block;
   margin: 0 auto;
 }
 .perf-op-thumb:hover {
   border-color: var(--el-color-primary);
-  box-shadow: 0 0 4px rgba(64, 158, 255, 0.4);
+  box-shadow: 0 0 4px rgba(24, 144, 255, 0.4);
 }
 
 /* 检测规则表格 */
@@ -3094,7 +3284,7 @@ watch([perfReportTab, resourceSubTab], () => {
 
 .rules-table :deep(.el-table__header th) {
   font-size: 14px;
-  color: #606266;
+  color: var(--app-text-secondary);
   font-weight: 600;
 }
 
@@ -3108,32 +3298,32 @@ watch([perfReportTab, resourceSubTab], () => {
   border-radius: 12px;
   font-size: 12px;
   background: #f0f0f0;
-  color: #606266;
+  color: var(--app-text-secondary);
 }
 
 .result-pill--passed {
   background: #e1f3d8;
-  color: #67c23a;
+  color: var(--app-success);
 }
 
 .result-pill--failed {
   background: #fde2e2;
-  color: #f56c6c;
+  color: var(--app-danger);
 }
 
 .result-pill--warning {
   background: #faecd8;
-  color: #e6a23c;
+  color: var(--app-warning);
 }
 
 .result-pill--info {
   background: #f4f4f5;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
 }
 
 .result-pill--device {
   background: #e9e9eb;
-  color: #606266;
+  color: var(--app-text-secondary);
 }
 
 .detail-log-cell {
@@ -3145,7 +3335,7 @@ watch([perfReportTab, resourceSubTab], () => {
 
 .detail-log-message {
   font-size: 13px;
-  color: #606266;
+  color: var(--app-text-secondary);
   line-height: 1.5;
   word-break: break-all;
 }
@@ -3158,7 +3348,7 @@ watch([perfReportTab, resourceSubTab], () => {
 .rules-empty {
   padding: 40px;
   text-align: center;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
   font-size: 14px;
 }
 
@@ -3175,14 +3365,14 @@ watch([perfReportTab, resourceSubTab], () => {
 .execution-log-error {
   padding: 24px;
   text-align: center;
-  color: #f56c6c;
+  color: var(--app-danger);
   font-size: 14px;
 }
 
 .execution-log-section-title {
   font-weight: 600;
   font-size: 14px;
-  color: #303133;
+  color: var(--app-text);
   margin-bottom: 10px;
 }
 
@@ -3193,7 +3383,7 @@ watch([perfReportTab, resourceSubTab], () => {
 .execution-log-screenshot .screenshot-img {
   max-width: 100%;
   border-radius: 8px;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--app-border);
   display: block;
 }
 
@@ -3210,6 +3400,11 @@ watch([perfReportTab, resourceSubTab], () => {
   margin-bottom: 12px;
 }
 
+/* 中立事件（用户停止、重试前的失败尝试）：看得见但不是失败 */
+.execution-log-step--warn {
+  border-left: 3px solid var(--app-warning);
+  background: rgba(230, 162, 60, 0.05);
+}
 .execution-log-level-filter {
   width: 120px;
 }
@@ -3227,7 +3422,7 @@ watch([perfReportTab, resourceSubTab], () => {
 .execution-log-step .step-time {
   flex-shrink: 0;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
   width: 72px;
 }
 
@@ -3259,11 +3454,11 @@ watch([perfReportTab, resourceSubTab], () => {
 }
 
 .step-icon--success {
-  color: #67c23a;
+  color: var(--app-success);
 }
 
 .step-icon--fail {
-  color: #f56c6c;
+  color: var(--app-danger);
 }
 
 .execution-log-step .step-content {
@@ -3273,20 +3468,20 @@ watch([perfReportTab, resourceSubTab], () => {
 
 .execution-log-step .step-name {
   font-weight: 500;
-  color: #303133;
+  color: var(--app-text);
   margin-bottom: 4px;
 }
 
 .execution-log-step .step-message,
 .execution-log-step .step-selector,
 .execution-log-step .step-timestamp {
-  color: #606266;
+  color: var(--app-text-secondary);
   font-size: 12px;
   margin-top: 2px;
 }
 
 .execution-log-step .step-selector {
-  color: #f56c6c;
+  color: var(--app-danger);
   word-break: break-all;
 }
 
@@ -3296,14 +3491,61 @@ watch([perfReportTab, resourceSubTab], () => {
   max-height: 240px;
   margin-top: 8px;
   border-radius: 6px;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--app-border);
   object-fit: contain;
+}
+
+.execution-log-step .step-qr-block {
+  margin-top: 10px;
+  padding: 10px;
+  background: #fafafa;
+  border: 1px dashed var(--app-border);
+  border-radius: 8px;
+  max-width: 280px;
+}
+
+.execution-log-step .step-qr-hint {
+  font-size: 12px;
+  color: var(--app-text-secondary);
+  margin-bottom: 8px;
+}
+
+.execution-log-step .step-qr-img {
+  display: block;
+  width: 220px;
+  height: 220px;
+  background: #fff;
+}
+
+.execution-log-step .step-qr-link {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  word-break: break-all;
+  color: var(--el-color-primary);
 }
 
 .execution-log-empty {
   padding: 24px;
   text-align: center;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
   font-size: 14px;
+}
+
+.dual-metric {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  font-size: 13px;
+}
+.dual-metric-item b {
+  color: var(--el-color-success);
+  font-size: 15px;
+}
+.dual-metric-hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 </style>

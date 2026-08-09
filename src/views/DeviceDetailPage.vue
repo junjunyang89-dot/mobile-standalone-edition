@@ -37,17 +37,36 @@
           </div>
         </div>
 
-        <div v-if="installedApps.length" class="detail-section">
-          <div class="detail-section-title">已安装应用</div>
-          <el-table :data="installedApps" class="detail-apps-table" max-height="400" stripe>
-            <el-table-column prop="name" label="应用名称" min-width="120" show-overflow-tooltip />
-            <el-table-column prop="packageName" label="包名 / Bundle ID" min-width="200" show-overflow-tooltip />
-            <el-table-column prop="version" label="版本" min-width="130" show-overflow-tooltip class-name="version-cell" />
-          </el-table>
-        </div>
-        <div v-else class="detail-section">
-          <div class="detail-section-title">已安装应用</div>
-          <div class="detail-empty">暂无数据</div>
+        <div class="detail-section detail-section-block detail-apps-section">
+          <div class="detail-section-title detail-section-title-plain">
+            已安装应用
+            <span v-if="appsLoading" class="apps-loading-hint">加载中…</span>
+            <span v-else-if="appsError" class="apps-error-hint">{{ appsError }}</span>
+            <span v-else-if="installedApps.length" class="apps-count-hint">共 {{ installedApps.length }} 个</span>
+          </div>
+          <div v-if="installedApps.length" class="detail-apps-table-wrap">
+            <el-table
+              :data="installedApps"
+              class="detail-apps-table"
+              height="400"
+              stripe
+              v-loading="appsLoading"
+            >
+              <el-table-column label="应用名称" min-width="140" show-overflow-tooltip>
+                <template #default="{ row }">{{ row.name || row.packageName || '—' }}</template>
+              </el-table-column>
+              <el-table-column prop="packageName" label="包名 / Bundle ID" min-width="220" show-overflow-tooltip />
+              <el-table-column label="版本" min-width="140" show-overflow-tooltip>
+                <template #default="{ row }">{{ row.version || '—' }}</template>
+              </el-table-column>
+            </el-table>
+          </div>
+          <div v-else-if="appsLoading" class="detail-empty">正在从设备读取应用列表…</div>
+          <div v-else class="detail-empty">
+            {{ appsError || (isIos
+              ? '暂无数据。请确认手机已 USB 连接并点过「信任」，且本机 ideviceinstaller 可用（1.2+ 用 list 命令）。'
+              : '暂无数据') }}
+          </div>
         </div>
 
         <div v-if="isIos && iosDetailEntries.length" class="detail-section detail-section-block">
@@ -95,7 +114,13 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, Loading } from '@element-plus/icons-vue'
 import { apiClient } from '@/api'
-import { isIosFamilyPlatform, platformElTagType, platformRowClass as platformTagCssClass, platformUiLabel } from '@/utils/platform'
+import {
+  isIosFamilyPlatform,
+  normalizePlatform,
+  platformElTagType,
+  platformRowClass as platformTagCssClass,
+  platformUiLabel
+} from '@/utils/platform'
 
 type DetailData = {
   name?: string
@@ -123,6 +148,9 @@ const router = useRouter()
 const loading = ref(false)
 const error = ref('')
 const detailData = ref<DetailData | null>(null)
+const installedApps = ref<Array<{ name?: string; packageName?: string; version?: string }>>([])
+const appsLoading = ref(false)
+const appsError = ref('')
 
 const deviceId = computed(() => (route.params.id as string) || '')
 
@@ -145,15 +173,12 @@ const platformLabel = computed(() => platformUiLabel(detailData.value?.platform 
 
 const platformTagType = computed(() => platformElTagType(detailData.value?.platform || ''))
 
-const installedApps = computed(() => {
-  const list = detailData.value?.installedApplications
-  return Array.isArray(list) ? list : []
-})
-
 const isIos = computed(() => isIosFamilyPlatform(detailData.value?.platform || ''))
 const isAndroidOrHarmonyos = computed(() => {
   const p = (detailData.value?.platform || '').toUpperCase()
-  return p === 'ANDROID' || p === 'HARMONYOS' || p === 'POG_ANDROID'
+  // 归一后 Android 家族与鸿蒙共用 ADB 技术栈
+  const n = normalizePlatform(p)
+  return n === 'ANDROID' || n === 'HARMONYOS'
 })
 
 const androidDetailSectionTitles: Record<string, string> = {
@@ -217,6 +242,38 @@ const iosDetailEntries = computed(() => {
   }))
 })
 
+async function loadApps(id: string) {
+  appsLoading.value = true
+  appsError.value = ''
+  installedApps.value = []
+  try {
+    const res = await apiClient.getDeviceInstalledApps(id)
+    installedApps.value = Array.isArray(res?.installedApplications) ? res.installedApplications : []
+  } catch (e: any) {
+    appsError.value = e?.message || '应用列表加载失败'
+  } finally {
+    appsLoading.value = false
+  }
+}
+
+/** 首屏后再补 getprop / ideviceinfo 全文，不挡基础信息 */
+async function loadRawInBackground(id: string) {
+  try {
+    const raw = await apiClient.getDeviceDetail(id, { includeRaw: true })
+    if (!detailData.value || deviceId.value !== id) return
+    if (raw.iosDetailRaw) detailData.value.iosDetailRaw = raw.iosDetailRaw
+    if (raw.androidDetailRaw) detailData.value.androidDetailRaw = raw.androidDetailRaw
+    if (raw.iosDetail && Object.keys(raw.iosDetail).length) {
+      detailData.value.iosDetail = raw.iosDetail
+    }
+    if (raw.androidDetail && Object.keys(raw.androidDetail).length) {
+      detailData.value.androidDetail = raw.androidDetail
+    }
+  } catch {
+    // 原始输出失败不影响已展示的基础信息
+  }
+}
+
 async function loadDetail() {
   const id = deviceId.value
   if (!id) {
@@ -226,16 +283,22 @@ async function loadDetail() {
   loading.value = true
   error.value = ''
   detailData.value = null
+  installedApps.value = []
+  appsError.value = ''
   try {
-    const data = await apiClient.getDeviceDetail(id)
+    // 首屏：电量 + 系统信息，不含应用列表 / 全文 dump
+    const data = await apiClient.getDeviceDetail(id, { includeApps: false, includeRaw: false })
     detailData.value = data
+    loading.value = false
+    // 应用列表、完整原始输出并行补齐
+    void loadApps(id)
+    void loadRawInBackground(id)
   } catch (e: any) {
     if (e?.message && (e.message.includes('404') || e.message.includes('Not Found'))) {
       error.value = '设备不存在或无效'
     } else {
       error.value = e?.message || '加载详情失败'
     }
-  } finally {
     loading.value = false
   }
 }
@@ -264,7 +327,7 @@ watch(deviceId, (id) => {
 .page-header {
   margin-bottom: 24px;
   padding: 16px 20px;
-  background: linear-gradient(135deg, #ecf5ff 0%, #e1efff 100%);
+  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-8) 100%);
   border-radius: 10px;
   border-left: 4px solid var(--el-color-primary);
 }
@@ -281,7 +344,7 @@ watch(deviceId, (id) => {
   margin: 0;
   font-size: 20px;
   font-weight: 600;
-  color: #303133;
+  color: var(--app-text);
 }
 
 .detail-loading,
@@ -292,7 +355,7 @@ watch(deviceId, (id) => {
 }
 
 .detail-error {
-  color: #f56c6c;
+  color: var(--app-danger);
 }
 
 .detail-body {
@@ -309,9 +372,9 @@ watch(deviceId, (id) => {
 
 .detail-section-card {
   padding: 18px 22px;
-  background: linear-gradient(135deg, #ecf5ff 0%, #d9ecff 100%);
+  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, #d9ecff 100%);
   border-radius: 10px;
-  border: 1px solid #b3d8ff;
+  border: 1px solid var(--el-color-primary-light-7);
   border-left: 4px solid var(--el-color-primary);
 }
 
@@ -327,13 +390,13 @@ watch(deviceId, (id) => {
   padding: 16px 18px;
   background: #fff;
   border-radius: 10px;
-  border: 1px solid #ebeef5;
-  border-left: 4px solid #67c23a;
+  border: 1px solid var(--app-border);
+  border-left: 4px solid var(--app-success);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .detail-section-block:nth-of-type(4n + 2) {
-  border-left-color: #e6a23c;
+  border-left-color: var(--app-warning);
 }
 
 .detail-section-block:nth-of-type(4n + 3) {
@@ -341,7 +404,7 @@ watch(deviceId, (id) => {
 }
 
 .detail-section-block:nth-of-type(4n) {
-  border-left-color: #909399;
+  border-left-color: var(--el-text-color-placeholder);
 }
 
 .detail-section-title {
@@ -350,13 +413,36 @@ watch(deviceId, (id) => {
   font-size: 15px;
   padding-bottom: 8px;
   border-bottom: 2px solid var(--el-color-primary);
-  display: inline-block;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
   color: var(--el-color-primary);
 }
 
+/* 应用列表标题不再画底边，避免和 el-table 表头叠成双线 */
+.detail-section-title-plain {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 12px;
+}
+
+.detail-apps-section {
+  border-left-color: var(--el-color-primary);
+}
+
+.detail-apps-table-wrap {
+  width: 100%;
+  min-height: 400px;
+}
+
 .detail-section:not(.detail-section-card) .detail-section-title {
-  color: #303133;
+  color: var(--app-text);
   border-bottom-color: var(--el-color-primary);
+}
+
+.detail-section:not(.detail-section-card) .detail-section-title-plain {
+  border-bottom: none;
 }
 
 .detail-row {
@@ -373,29 +459,42 @@ watch(deviceId, (id) => {
 }
 
 .detail-label {
-  color: #606266;
+  color: var(--app-text-secondary);
   min-width: 140px;
   flex-shrink: 0;
   font-size: 14px;
   padding: 2px 8px;
-  background: #f5f7fa;
+  background: var(--app-surface);
   border-radius: 4px;
-  color: #606266;
+  color: var(--app-text-secondary);
 }
 
 .detail-value {
-  color: #303133;
+  color: var(--app-text);
   word-break: break-all;
   font-size: 14px;
 }
 
 .detail-value-emphasis {
   font-weight: 600;
-  color: #303133;
+  color: var(--app-text);
+}
+
+.apps-loading-hint,
+.apps-count-hint {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--el-text-color-placeholder);
+}
+
+.apps-error-hint {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--app-danger);
 }
 
 .detail-empty {
-  color: #909399;
+  color: var(--el-text-color-placeholder);
   font-size: 14px;
   padding: 16px 0;
 }
@@ -410,10 +509,9 @@ watch(deviceId, (id) => {
 .detail-apps-table :deep(.el-table__header th) {
   font-size: 14px;
   padding: 10px 12px;
-  color: #303133;
+  color: var(--app-text);
   font-weight: 600;
-  background: #ecf5ff !important;
-  border-bottom: 2px solid var(--el-color-primary);
+  background: var(--app-surface) !important;
 }
 
 .detail-apps-table :deep(.el-table__body td) {
@@ -421,17 +519,12 @@ watch(deviceId, (id) => {
   padding: 10px 12px;
 }
 
-/* 版本列预留足够宽度，避免长版本号换行 */
-.detail-apps-table :deep(.version-cell) {
-  white-space: nowrap;
-}
-.detail-apps-table :deep(.version-cell .cell) {
-  overflow: hidden;
-  text-overflow: ellipsis;
+.detail-apps-table :deep(.el-table__body-wrapper) {
+  min-height: 320px;
 }
 
 .detail-apps-table :deep(.el-table__row:hover) {
-  background: #f5f7fa !important;
+  background: var(--app-surface) !important;
 }
 
 .detail-apps-table :deep(.el-table--striped .el-table__body tr.el-table__row--striped td) {
@@ -444,14 +537,14 @@ watch(deviceId, (id) => {
   font-size: 13px;
   line-height: 1.6;
   font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
-  background: #f5f7fa;
+  background: var(--app-surface);
   border-radius: 8px;
   max-height: 400px;
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-all;
-  color: #303133;
+  color: var(--app-text);
   border: 1px solid #c0c4cc;
-  border-left: 4px solid #909399;
+  border-left: 4px solid var(--el-text-color-placeholder);
 }
 </style>

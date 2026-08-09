@@ -10,9 +10,29 @@
           </div>
         </template>
 
+        <!-- 步骤 0：环境。放在最前面是因为它决定了下面能选到哪批用例 -->
+        <section class="cfg-section">
+          <div class="cfg-title">步骤 0 · 选择环境（决定候选用例来自哪一批流程）</div>
+          <el-radio-group v-model="environment">
+            <el-radio-button label="PROD">线上（生产包）</el-radio-button>
+            <el-radio-button label="TEST">测试环境（发版前）</el-radio-button>
+          </el-radio-group>
+          <div class="cfg-hint">
+            候选用例＝流程编排里<strong>环境</strong>等于这里所选、且<strong>用途</strong>为「仅回归」或「回归+自动化编排」的流程。
+            环境和用途是两个独立维度：环境决定验哪个包，用途决定出现在哪个入口。
+          </div>
+          <el-alert
+            v-if="environment === 'TEST'"
+            type="warning"
+            :closable="false"
+            show-icon
+            class="cfg-alert"
+            title="测试环境：只列出环境=测试环境的回归用例。请确认第一条流程会装上待验的测试包，后续流程复用设备上的登录态。" />
+        </section>
+
         <!-- 步骤 1：目标 APP -->
         <section class="cfg-section">
-          <div class="cfg-title">步骤 1 · 选择目标 APP</div>
+          <div class="cfg-title">步骤 1 · 选择目标 APP（单选，切换后用例列表会跟着变）</div>
           <div class="app-cards">
             <button
               v-for="app in REGRESSION_APPS"
@@ -20,7 +40,7 @@
               type="button"
               class="app-card"
               :class="{ active: selectedApps.includes(app.id) }"
-              @click="toggleApp(app.id)"
+              @click="selectApp(app.id)"
             >
               <div class="app-card-icon">{{ app.id === 'DOMESTIC_ESPORTS' ? '电竞' : 'Pog' }}</div>
               <div class="app-card-body">
@@ -83,61 +103,214 @@
           </div>
         </section>
 
-        <!-- 步骤 3：功能 -->
+        <!-- 步骤 3：流程用例（按端分开勾选，顺序互不影响） -->
         <section class="cfg-section">
           <div class="cfg-title-row">
-            <div class="cfg-title">步骤 3 · 勾选回归功能</div>
+            <div class="cfg-title">步骤 3 · 勾选回归用例（流程编排）</div>
             <div class="preset-btns">
-              <el-button
-                v-for="p in REGRESSION_PRESETS"
-                :key="p.id"
-                size="small"
-                @click="applyPreset(p.id)"
-              >
-                {{ p.name }}
-              </el-button>
-              <el-button size="small" link type="primary" @click="selectAllFeatures">全选</el-button>
-              <el-button size="small" link @click="selectedFeatures = []">清空</el-button>
+              <el-button size="small" :loading="flowsLoading" @click="loadRegressionFlows">刷新用例</el-button>
+              <el-button size="small" link type="primary" @click="selectAllFlows">全选两端</el-button>
+              <el-button size="small" link @click="clearAllFlows">清空两端</el-button>
             </div>
           </div>
-          <el-checkbox-group v-model="selectedFeatures" class="feature-grid">
-            <el-checkbox
-              v-for="(f, idx) in REGRESSION_FEATURES"
-              :key="f.id"
-              :value="f.id"
-              class="feature-item"
-            >
-              <div class="feature-text">
-                <div>
-                  <span class="feature-idx">功能{{ idx + 1 }}</span>
-                  <span class="feature-name">{{ f.name }}</span>
+
+          <div class="flow-platform-panels" v-loading="flowsLoading">
+            <div class="flow-platform-panel">
+              <div class="flow-platform-head">
+                <div class="flow-platform-title">
+                  <el-tag size="small" type="success" effect="plain">Android</el-tag>
+                  <span>用例 · 勾选顺序 = Android 设备执行顺序</span>
                 </div>
-                <div class="feature-desc" :class="{ warn: f.description.startsWith('⚠️') }">
-                  {{ f.description }}
+                <div class="preset-btns">
+                  <el-button size="small" link type="primary" @click="selectAllAndroidFlows">全选</el-button>
+                  <el-button size="small" link @click="selectedAndroidFlowIds = []">清空</el-button>
                 </div>
               </div>
-            </el-checkbox>
-          </el-checkbox-group>
+              <el-checkbox-group v-model="selectedAndroidFlowIds" class="feature-grid">
+                <el-checkbox
+                  v-for="(f, idx) in androidFlows"
+                  :key="f.id"
+                  :value="f.id"
+                  class="feature-item"
+                >
+                  <div class="feature-text">
+                    <div class="feature-title-row">
+                      <span class="feature-idx">A{{ idx + 1 }}</span>
+                      <el-tooltip :content="f.name" placement="top" :show-after="200">
+                        <div class="feature-name-wrap">
+                          <span class="feature-name">{{ f.name }}</span>
+                        </div>
+                      </el-tooltip>
+                      <div class="feature-meta">
+                        <el-tag size="small" effect="plain">{{ catalogLabel(f.catalog) }}</el-tag>
+                        <el-tag v-if="f.platform" size="small" type="success" effect="plain">{{ f.platform }}</el-tag>
+                      </div>
+                    </div>
+                    <el-tooltip
+                      v-if="f.description"
+                      :content="f.description"
+                      placement="top"
+                      :show-after="200"
+                    >
+                      <div class="feature-desc">{{ f.description }}</div>
+                    </el-tooltip>
+                  </div>
+                </el-checkbox>
+              </el-checkbox-group>
+              <el-empty
+                v-if="!flowsLoading && androidFlows.length === 0"
+                description="暂无 Android 用例"
+                :image-size="48"
+              />
+              <div v-if="androidOrderedPreview.length" class="order-preview order-preview-android">
+                <div class="order-label">Android 执行顺序：</div>
+                <div class="order-chips">
+                  <el-tooltip
+                    v-for="(s, i) in androidOrderedPreview"
+                    :key="`a-${s.id}`"
+                    :content="`${i + 1}. ${s.label}`"
+                    placement="top"
+                    :show-after="200"
+                  >
+                    <el-tag
+                      size="small"
+                      type="success"
+                      effect="light"
+                      class="order-chip order-chip-android"
+                    >
+                      {{ i + 1 }}. {{ s.label }}
+                    </el-tag>
+                  </el-tooltip>
+                </div>
+              </div>
+            </div>
+
+            <div class="flow-platform-panel">
+              <div class="flow-platform-head">
+                <div class="flow-platform-title">
+                  <el-tag size="small" type="info" effect="plain">iOS</el-tag>
+                  <span>用例 · 勾选顺序 = iOS 设备执行顺序</span>
+                </div>
+                <div class="preset-btns">
+                  <el-button size="small" link type="primary" @click="selectAllIosFlows">全选</el-button>
+                  <el-button size="small" link @click="selectedIosFlowIds = []">清空</el-button>
+                </div>
+              </div>
+              <el-checkbox-group v-model="selectedIosFlowIds" class="feature-grid">
+                <el-checkbox
+                  v-for="(f, idx) in iosFlows"
+                  :key="f.id"
+                  :value="f.id"
+                  class="feature-item"
+                >
+                  <div class="feature-text">
+                    <div class="feature-title-row">
+                      <span class="feature-idx">i{{ idx + 1 }}</span>
+                      <el-tooltip :content="f.name" placement="top" :show-after="200">
+                        <div class="feature-name-wrap">
+                          <span class="feature-name">{{ f.name }}</span>
+                        </div>
+                      </el-tooltip>
+                      <div class="feature-meta">
+                        <el-tag size="small" effect="plain">{{ catalogLabel(f.catalog) }}</el-tag>
+                        <el-tag v-if="f.platform" size="small" type="info" effect="plain">{{ f.platform }}</el-tag>
+                      </div>
+                    </div>
+                    <el-tooltip
+                      v-if="f.description"
+                      :content="f.description"
+                      placement="top"
+                      :show-after="200"
+                    >
+                      <div class="feature-desc">{{ f.description }}</div>
+                    </el-tooltip>
+                  </div>
+                </el-checkbox>
+              </el-checkbox-group>
+              <el-empty
+                v-if="!flowsLoading && iosFlows.length === 0"
+                description="暂无 iOS 用例"
+                :image-size="48"
+              />
+              <div v-if="iosOrderedPreview.length" class="order-preview order-preview-ios">
+                <div class="order-label">iOS 执行顺序：</div>
+                <div class="order-chips">
+                  <el-tooltip
+                    v-for="(s, i) in iosOrderedPreview"
+                    :key="`i-${s.id}`"
+                    :content="`${i + 1}. ${s.label}`"
+                    placement="top"
+                    :show-after="200"
+                  >
+                    <el-tag
+                      size="small"
+                      type="primary"
+                      effect="light"
+                      class="order-chip order-chip-ios"
+                    >
+                      {{ i + 1 }}. {{ s.label }}
+                    </el-tag>
+                  </el-tooltip>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="sharedFlows.length" class="flow-platform-panel shared">
+              <div class="flow-platform-head">
+                <div class="flow-platform-title">
+                  <el-tag size="small" effect="plain">双端</el-tag>
+                  <span>未指定平台（两端都会跑）</span>
+                </div>
+                <div class="preset-btns">
+                  <el-button size="small" link type="primary" @click="selectAllSharedFlows">全选</el-button>
+                  <el-button size="small" link @click="selectedSharedFlowIds = []">清空</el-button>
+                </div>
+              </div>
+              <el-checkbox-group v-model="selectedSharedFlowIds" class="feature-grid">
+                <el-checkbox
+                  v-for="(f, idx) in sharedFlows"
+                  :key="f.id"
+                  :value="f.id"
+                  class="feature-item"
+                >
+                  <div class="feature-text">
+                    <div class="feature-title-row">
+                      <span class="feature-idx">S{{ idx + 1 }}</span>
+                      <el-tooltip :content="f.name" placement="top" :show-after="200">
+                        <div class="feature-name-wrap">
+                          <span class="feature-name">{{ f.name }}</span>
+                        </div>
+                      </el-tooltip>
+                      <div class="feature-meta">
+                        <el-tag size="small" effect="plain">{{ catalogLabel(f.catalog) }}</el-tag>
+                      </div>
+                    </div>
+                    <el-tooltip
+                      v-if="f.description"
+                      :content="f.description"
+                      placement="top"
+                      :show-after="200"
+                    >
+                      <div class="feature-desc">{{ f.description }}</div>
+                    </el-tooltip>
+                  </div>
+                </el-checkbox>
+              </el-checkbox-group>
+            </div>
+          </div>
+
+          <el-empty
+            v-if="!flowsLoading && availableFlows.length === 0"
+            :description="flowsEmptyHint"
+            :image-size="64"
+          />
           <el-alert
             type="info"
             :closable="false"
             show-icon
             class="cfg-alert"
-            title="勾选 comment / square 出现「已跳过」是预期。「登录与退出」为登录→退出→再登录（两机选两账号随机分配）。「安装/卸载/启动」固定排在末尾验证。" />
-          <div v-if="orderedStepsPreview.length" class="order-preview">
-            <div class="order-label">依赖智能排序后的执行顺序：</div>
-            <div class="order-chips">
-              <el-tag
-                v-for="(s, i) in orderedStepsPreview"
-                :key="s.id"
-                size="small"
-                effect="plain"
-                class="order-chip"
-              >
-                {{ i + 1 }}. {{ s.label }}
-              </el-tag>
-            </div>
-          </div>
+            title="Android / iOS 分开勾选：两端并发执行时互不影响顺序。每端内按勾选先后排队。装包/卸包请在流程中使用 UNINSTALL_APP / INSTALL_FROM_STORE。"
+          />
         </section>
 
         <!-- 账号与环境 -->
@@ -173,7 +346,7 @@
                     :disabled="a.id === selectedAccountIds[0]" />
                 </el-select>
               </div>
-              <div class="account-hint">两部手机请选两个不同账号；启动后随机分配到各设备执行 登录→退出→再登录</div>
+              <div class="account-hint">两部手机请选两个不同账号；启动后随机分配到各设备（需登录的流程会带上账号参数）</div>
             </el-form-item>
             <el-form-item label="自定义账号">
               <div class="custom-account dual">
@@ -243,7 +416,7 @@
         </template>
 
         <div v-if="!liveJobs.length && !running" class="monitor-empty">
-          <el-empty description="点击左侧「一键开始回归」后，此处展示双端并发进度与最新截图" />
+          <el-empty description="点击左侧「一键开始回归」后，此处展示双端并发进度与各用例截图" />
         </div>
 
         <template v-else>
@@ -273,13 +446,42 @@
             </div>
           </div>
 
-          <div class="cfg-title shot-title">实时最新截图</div>
+          <div class="cfg-title shot-title">各用例截图</div>
           <div class="live-shots">
             <div v-for="job in liveJobs" :key="`shot-${job.key}`" class="live-shot">
-              <div class="live-shot-label">{{ job.appName }} · {{ job.endpointLabel }}</div>
-              <div class="live-shot-frame" @click="previewImage(job.latestScreenshot)">
-                <img v-if="job.latestScreenshot" :src="job.latestScreenshot" alt="screenshot" />
-                <div v-else class="shot-placeholder">等待截图…</div>
+              <div class="live-shot-label">{{ job.appName }} · {{ job.endpointLabel }} · {{ job.deviceName }}</div>
+              <div class="live-step-shots">
+                <div
+                  v-for="(st, idx) in job.steps"
+                  :key="`shot-${job.key}-${st.id}`"
+                  class="live-step-shot"
+                >
+                  <div class="live-step-shot-cap">
+                    <span class="live-step-shot-idx">{{ idx + 1 }}</span>
+                    <span class="live-step-shot-name" :title="st.label">{{ st.shortLabel || st.label }}</span>
+                    <el-tag size="small" :type="stepResultTagType(st.status)">{{ stepResultLabel(st.status) }}</el-tag>
+                  </div>
+                  <div
+                    class="live-shot-frame"
+                    @click="st.screenshot ? previewImage(st.screenshot) : undefined"
+                  >
+                    <img
+                      v-if="st.screenshot"
+                      :src="st.screenshot"
+                      :alt="st.label"
+                      @error="st.screenshot = undefined"
+                    />
+                    <div v-else class="shot-placeholder">
+                      {{
+                        st.status === 'pending' || st.status === 'running'
+                          ? '等待截图…'
+                          : st.status === 'skipped'
+                            ? '已跳过'
+                            : '本步无截图'
+                      }}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -304,7 +506,7 @@
         <div class="report-meta">
           <span>报告时间：{{ currentReport.finishedAtText }}</span>
           <el-divider direction="vertical" />
-          <span>通过率：{{ currentReport.passRate }}%（跳过不计）</span>
+          <span>通过率：{{ currentReport.passRate }}%（跳过不计；不稳定算通过）</span>
           <el-divider direction="vertical" />
           <span>耗时：{{ currentReport.durationText }}</span>
           <el-divider direction="vertical" />
@@ -327,9 +529,16 @@
                   {{ stepResultLabel(shot.status) }}
                 </el-tag>
               </div>
-              <div class="compare-img" @click="previewImage(shot.imageUrl)">
-                <img v-if="shot.imageUrl" :src="shot.imageUrl" :alt="group.stepLabel" />
-                <div v-else-if="shot.status === 'skipped'" class="shot-placeholder">已跳过 · 暂未接入</div>
+              <div class="compare-img" @click="shot.imageUrl ? previewImage(shot.imageUrl) : undefined">
+                <img
+                  v-if="shot.imageUrl"
+                  :src="shot.imageUrl"
+                  :alt="group.stepLabel"
+                  @error="onCompareShotError(shot)"
+                />
+                <div v-else class="shot-placeholder">
+                  {{ shot.status === 'skipped' ? '已跳过 · 暂未接入' : '本步无截图' }}
+                </div>
               </div>
               <div class="compare-actions">
                 <el-button
@@ -347,10 +556,41 @@
         </div>
       </template>
 
-      <div v-if="history.length" class="history-block">
-        <div class="cfg-title">历史记录</div>
-        <el-table :data="history" size="small" max-height="240" :header-cell-style="{ background: '#f5f7fa' }">
+      <div v-if="history.length" ref="historyBlockRef" class="history-block">
+        <div class="history-head">
+          <div class="cfg-title">历史记录</div>
+          <div v-if="historyDateFilter" class="history-filter">
+            <el-tag type="warning" effect="plain" size="small">
+              仅显示 {{ historyDateLabel }} · {{ filteredHistory.length }} 批
+            </el-tag>
+            <el-button size="small" link type="primary" @click="clearHistoryDateFilter">查看全部日期</el-button>
+          </div>
+        </div>
+        <el-empty
+          v-if="!filteredHistory.length"
+          :description="`${historyDateLabel}暂无执行记录`"
+          :image-size="64"
+        />
+        <el-table
+          v-else
+          :data="filteredHistory"
+          size="small"
+          max-height="280"
+          :header-cell-style="{ background: '#f5f7fa' }"
+        >
           <el-table-column prop="finishedAtText" label="时间" width="170" />
+          <el-table-column label="环境" width="80">
+            <template #default="{ row }">
+              <el-tag v-if="row.environment === 'TEST'" size="small" type="warning" effect="plain">测试</el-tag>
+              <el-tag v-else size="small" type="success" effect="plain">线上</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="轨道" width="100">
+            <template #default="{ row }">
+              <el-tag v-if="row.track === 'AUTOMATION'" size="small" type="primary" effect="plain">自动化</el-tag>
+              <el-tag v-else size="small" type="info" effect="plain">回归</el-tag>
+            </template>
+          </el-table-column>
           <el-table-column label="状态" width="100">
             <template #default="{ row }">{{ row.statusText || '-' }}</template>
           </el-table-column>
@@ -379,7 +619,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheckFilled, Refresh } from '@element-plus/icons-vue'
 import { apiClient } from '@/api'
@@ -389,27 +630,31 @@ import {
   HISTORY_STORAGE_KEY,
   MAX_HISTORY,
   REGRESSION_APPS,
-  REGRESSION_FEATURES,
-  REGRESSION_PRESETS,
+  SEED_FLOW_IDS,
+  flowNeedsAccount,
   type RegressionAppId,
-  type RegressionFeatureId,
-  type RegressionStepId
+  type RegressionFlowOption
 } from '@/constants/appOnlineRegression'
 import {
   buildAppDeviceMatrix,
   buildOrderedSteps,
   formatDurationMs,
+  mergePlatformOrderedFlowIds,
+  partitionRegressionFlows,
   resolvePassRate,
   stepResultLabel,
   stepResultTagType
 } from '@/utils/appOnlineRegression'
 import { isAndroidFamilyPlatform, isIosFamilyPlatform } from '@/utils/platform'
 
-type StepRunStatus = 'pending' | 'running' | 'success' | 'failed' | 'skipped'
+const route = useRoute()
+const router = useRouter()
+
+type StepRunStatus = 'pending' | 'running' | 'success' | 'failed' | 'skipped' | 'unstable'
 type JobRunStatus = 'pending' | 'running' | 'success' | 'failed' | 'stopped'
 
 interface LiveStep {
-  id: RegressionStepId
+  id: string
   label: string
   shortLabel: string
   status: StepRunStatus
@@ -444,7 +689,7 @@ interface CompareShot {
 }
 
 interface CompareGroup {
-  stepId: RegressionStepId
+  stepId: string
   stepLabel: string
   shots: CompareShot[]
 }
@@ -463,13 +708,26 @@ interface RegressionReport {
   statusText?: string
   jobCount?: number
   detailLoaded?: boolean
+  /** PROD / TEST；本地临时报告按当时选的环境记 */
+  environment?: string
+  /** REGRESSION / AUTOMATION；自动化批次是从流程编排页发起的 */
+  track?: string
 }
 
 const deviceStore = useDeviceStore()
 
 const selectedApps = ref<RegressionAppId[]>(['DOMESTIC_ESPORTS'])
+/**
+ * 本批次跑哪个环境。默认 PROD——线上回归的行为必须跟加这个选项之前一模一样。
+ * 环境只决定「候选用例取哪批 catalog」和报告上的标签，不改任何执行逻辑。
+ */
+const environment = ref<'PROD' | 'TEST'>('PROD')
 const selectedDeviceIds = ref<string[]>([])
-const selectedFeatures = ref<RegressionFeatureId[]>(['login', 'match', 'install'])
+const availableFlows = ref<RegressionFlowOption[]>([])
+const selectedAndroidFlowIds = ref<string[]>([])
+const selectedIosFlowIds = ref<string[]>([])
+const selectedSharedFlowIds = ref<string[]>([])
+const flowsLoading = ref(false)
 const excludedMatrixKeys = ref<string[]>([])
 
 const selectedAccountIds = ref<string[]>(['', ''])
@@ -485,7 +743,58 @@ const stopFlag = ref(false)
 const liveJobs = ref<LiveJob[]>([])
 const currentReport = ref<RegressionReport | null>(null)
 const history = ref<RegressionReport[]>([])
+/** 工作台跳转带入：YYYY-MM-DD，只看当天批次 */
+const historyDateFilter = ref('')
+const historyBlockRef = ref<HTMLElement | null>(null)
 const viewingRunId = ref('')
+
+function toDateKey(ms: number): string {
+  const d = new Date(ms)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function formatHistoryDateLabel(dateStr: string) {
+  if (!dateStr) return ''
+  const [y, m, day] = dateStr.split('-')
+  if (!y || !m || !day) return dateStr
+  return `${Number(y)}年${Number(m)}月${Number(day)}日`
+}
+
+const historyDateLabel = computed(() => formatHistoryDateLabel(historyDateFilter.value))
+
+const filteredHistory = computed(() => {
+  const date = historyDateFilter.value
+  if (!date) return history.value
+  return history.value.filter((h) => toDateKey(h.finishedAt) === date)
+})
+
+function applyHistoryDateFromRoute() {
+  const raw = route.query.date
+  const date = typeof raw === 'string' ? raw.trim() : ''
+  historyDateFilter.value = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : ''
+}
+
+function clearHistoryDateFilter() {
+  historyDateFilter.value = ''
+  const q = { ...route.query } as Record<string, any>
+  delete q.date
+  delete q.focus
+  router.replace({ path: route.path, query: q })
+}
+
+async function focusHistoryFromWorkbench() {
+  applyHistoryDateFromRoute()
+  await nextTick()
+  historyBlockRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  const list = filteredHistory.value
+  if (list.length) {
+    // 默认打开该日最新一批详情
+    await viewHistory(list[0])
+  } else if (historyDateFilter.value) {
+    ElMessage.info(`${historyDateLabel.value}暂无回归批次`)
+  }
+}
 
 const previewVisible = ref(false)
 const previewUrl = ref('')
@@ -509,7 +818,26 @@ const selectedDevices = computed(() =>
   deviceStore.devices.filter((d) => selectedDeviceIds.value.includes(d.id))
 )
 
-const orderedStepsPreview = computed(() => buildOrderedSteps(selectedFeatures.value))
+const partitionedFlows = computed(() => partitionRegressionFlows(availableFlows.value))
+const androidFlows = computed(() => partitionedFlows.value.android)
+const iosFlows = computed(() => partitionedFlows.value.ios)
+const sharedFlows = computed(() => partitionedFlows.value.shared)
+
+/** 提交后端：Android 顺序 + 双端 + iOS 顺序（各端过滤后相对顺序独立） */
+const selectedFlowIds = computed(() =>
+  mergePlatformOrderedFlowIds(
+    selectedAndroidFlowIds.value,
+    selectedSharedFlowIds.value,
+    selectedIosFlowIds.value
+  )
+)
+
+const androidOrderedPreview = computed(() =>
+  buildOrderedSteps(selectedAndroidFlowIds.value, androidFlows.value)
+)
+const iosOrderedPreview = computed(() =>
+  buildOrderedSteps(selectedIosFlowIds.value, iosFlows.value)
+)
 
 const matrixJobs = computed(() =>
   buildAppDeviceMatrix(
@@ -536,31 +864,129 @@ const accountOptions = computed(() =>
 )
 
 const featuresNeedAccount = computed(() =>
-  selectedFeatures.value.some((id) => REGRESSION_FEATURES.find((f) => f.id === id)?.needsAccount)
+  selectedFlowIds.value.some((id) => {
+    const f = availableFlows.value.find((x) => x.id === id)
+    return f ? flowNeedsAccount(f) : false
+  })
 )
 
 const canStart = computed(
   () =>
     !running.value &&
     selectedApps.value.length > 0 &&
-    selectedFeatures.value.length > 0 &&
+    selectedFlowIds.value.length > 0 &&
     matrixJobs.value.length > 0
 )
 
-function toggleApp(id: RegressionAppId) {
-  const i = selectedApps.value.indexOf(id)
-  if (i >= 0) selectedApps.value.splice(i, 1)
-  else selectedApps.value.push(id)
+function catalogLabel(c?: string) {
+  if (c === 'ONLINE') return '仅线上'
+  if (c === 'SHARED') return '共用'
+  return c || '—'
 }
 
-function applyPreset(presetId: string) {
-  const p = REGRESSION_PRESETS.find((x) => x.id === presetId)
-  if (p) selectedFeatures.value = [...p.featureIds]
+function mapFlowRow(row: any): RegressionFlowOption {
+  return {
+    id: row.id,
+    name: row.name || row.id,
+    description: row.description || '',
+    catalog: row.catalog,
+    appId: row.appId,
+    platform: row.platform,
+    sortOrder: row.sortOrder ?? 100,
+    needsAccount: flowNeedsAccount(row)
+  }
 }
 
-function selectAllFeatures() {
-  selectedFeatures.value = REGRESSION_FEATURES.map((f) => f.id)
+async function loadRegressionFlows() {
+  flowsLoading.value = true
+  try {
+    const apps = selectedApps.value.length ? selectedApps.value : (['DOMESTIC_ESPORTS'] as RegressionAppId[])
+    const lists = await Promise.all(
+      apps.map((appId) =>
+        apiClient.getUiFlows({ appId, forRegression: true, environment: environment.value })
+      )
+    )
+    const byId = new Map<string, RegressionFlowOption>()
+    for (const list of lists) {
+      for (const row of list || []) {
+        const f = mapFlowRow(row)
+        byId.set(f.id, f)
+      }
+    }
+    const next = Array.from(byId.values()).sort(
+      (a, b) => (a.sortOrder ?? 100) - (b.sortOrder ?? 100) || a.name.localeCompare(b.name, 'zh')
+    )
+    availableFlows.value = next
+    const parts = partitionRegressionFlows(next)
+    const visible = new Set(next.map((f) => f.id))
+
+    const keepAndroid = selectedAndroidFlowIds.value.filter((id) => visible.has(id))
+    const keepIos = selectedIosFlowIds.value.filter((id) => visible.has(id))
+    const keepShared = selectedSharedFlowIds.value.filter((id) => visible.has(id))
+
+    if (keepAndroid.length || keepIos.length || keepShared.length) {
+      selectedAndroidFlowIds.value = keepAndroid
+      selectedIosFlowIds.value = keepIos
+      selectedSharedFlowIds.value = keepShared
+    } else {
+      const androidDefaults = [
+        SEED_FLOW_IDS.loginLogoutAndroid,
+        SEED_FLOW_IDS.installVerifyAndroid
+      ].filter((id) => parts.android.some((f) => f.id === id))
+      selectedAndroidFlowIds.value = androidDefaults.length
+        ? androidDefaults
+        : parts.android.map((f) => f.id)
+      selectedIosFlowIds.value = parts.ios.map((f) => f.id)
+      selectedSharedFlowIds.value = parts.shared.map((f) => f.id)
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '加载回归用例失败')
+    availableFlows.value = []
+  } finally {
+    flowsLoading.value = false
+  }
 }
+
+function selectAllAndroidFlows() {
+  selectedAndroidFlowIds.value = androidFlows.value.map((f) => f.id)
+}
+function selectAllIosFlows() {
+  selectedIosFlowIds.value = iosFlows.value.map((f) => f.id)
+}
+function selectAllSharedFlows() {
+  selectedSharedFlowIds.value = sharedFlows.value.map((f) => f.id)
+}
+function selectAllFlows() {
+  selectAllAndroidFlows()
+  selectAllIosFlows()
+  selectAllSharedFlows()
+}
+function clearAllFlows() {
+  selectedAndroidFlowIds.value = []
+  selectedIosFlowIds.value = []
+  selectedSharedFlowIds.value = []
+}
+
+/** 目标 APP 单选：点哪个就切到哪个（国内用例不会出现在海外列表） */
+function selectApp(id: RegressionAppId) {
+  if (selectedApps.value.length === 1 && selectedApps.value[0] === id) return
+  selectedApps.value = [id]
+}
+
+const flowsEmptyHint = computed(() => {
+  if (selectedApps.value.includes('OVERSEAS_POGPOG') && !selectedApps.value.includes('DOMESTIC_ESPORTS')) {
+    return '海外 PogPog 暂无可用用例。国内「完美世界电竞」用例不会出现在此列表；请在流程编排中为 OVERSEAS_POGPOG 创建 ONLINE/SHARED 流程。'
+  }
+  return '当前应用下暂无可用用例。请在「流程编排」创建 catalog=ONLINE/SHARED、启用、非组件的流程。'
+})
+
+watch(environment, () => {
+  loadRegressionFlows()
+})
+
+watch(selectedApps, () => {
+  loadRegressionFlows()
+})
 
 function excludeMatrixKey(key: string) {
   if (!excludedMatrixKeys.value.includes(key)) excludedMatrixKeys.value.push(key)
@@ -612,6 +1038,8 @@ function stepUiStatus(status: StepRunStatus) {
   if (status === 'success') return 'success'
   if (status === 'failed') return 'error'
   if (status === 'running') return 'process'
+  // 不稳定：功能是好的（重跑通过了），但别当成完全正常，用告警色提醒去治理
+  if (status === 'unstable') return 'warning'
   // skipped / pending：灰色 wait，不当失败
   return 'wait'
 }
@@ -619,6 +1047,7 @@ function stepUiStatus(status: StepRunStatus) {
 function stepDesc(status: StepRunStatus) {
   if (status === 'skipped') return '已跳过'
   if (status === 'failed') return '失败'
+  if (status === 'unstable') return '不稳定（重跑才过）'
   if (status === 'success') return '成功'
   if (status === 'running') return '执行中'
   return ''
@@ -666,7 +1095,7 @@ function shotSrc(url?: string | null) {
 }
 
 function buildComparisonGroups(jobs: LiveJob[]): CompareGroup[] {
-  const stepIds: RegressionStepId[] = []
+  const stepIds: string[] = []
   for (const job of jobs) {
     for (const st of job.steps) {
       if (!stepIds.includes(st.id)) stepIds.push(st.id)
@@ -726,9 +1155,9 @@ async function startRegression() {
     const ready = accountCountReady()
     if (ready < need) {
       ElMessage.warning(
-        selectedFeatures.value.includes('login') && selectedDeviceIds.value.length >= 2
-          ? '两部手机执行「登录与退出」需配置两个不同登录手机号（账号 A / B）'
-          : '已选登录/发评/活动类功能，请配置测试账号'
+        featuresNeedAccount.value && selectedDeviceIds.value.length >= 2
+          ? '两部手机执行需登录的流程时，请配置两个不同登录手机号（账号 A / B）'
+          : '已选需登录的流程，请配置测试账号'
       )
       return
     }
@@ -779,7 +1208,7 @@ async function startRegression() {
     const res = await apiClient.startOnlineRegressionRun({
       appIds: selectedApps.value,
       deviceIds: selectedDeviceIds.value,
-      featureIds: selectedFeatures.value,
+      flowIds: selectedFlowIds.value,
       excludeJobKeys: excludedMatrixKeys.value,
       accountIds: accountPayload.accountIds.length ? accountPayload.accountIds : undefined,
       accountId: accountPayload.accountIds[0] || undefined,
@@ -787,7 +1216,8 @@ async function startRegression() {
       customCodes: accountPayload.customCodes.length ? accountPayload.customCodes : undefined,
       customPhone: accountPayload.customPhones[0] || undefined,
       customCode: accountPayload.customCodes[0] || undefined,
-      enableOverseasProxy: enableOverseasProxy.value
+      enableOverseasProxy: enableOverseasProxy.value,
+      environment: environment.value
     })
     activeRunId.value = res.id
     applyRunSnapshot(res)
@@ -804,7 +1234,7 @@ async function startRegression() {
           const detail = await apiClient.fetchOnlineRegressionRun(res.id)
           applyRunSnapshot(detail)
           const st = (detail.status || '').toUpperCase()
-          if (st === 'COMPLETED' || st === 'FAILED' || st === 'STOPPED') {
+          if (st === 'COMPLETED' || st === 'FAILED' || st === 'SKIPPED' || st === 'STOPPED') {
             if (pollTimer) clearInterval(pollTimer)
             pollTimer = null
             resolve()
@@ -824,7 +1254,7 @@ async function startRegression() {
       ElMessage.success(`回归完成，通过率 ${currentReport.value?.passRate ?? 0}%（跳过步骤不计失败）`)
     }
   } catch (e: any) {
-    ElMessage.error(e?.message || '启动线上回归失败（请确认已执行 schema_online_regression.sql 并重启后端）')
+    ElMessage.error(e?.message || '启动回归失败（请确认已执行 schema_online_regression.sql 与 migration_online_regression_environment.sql 并重启后端）')
     running.value = false
   } finally {
     running.value = false
@@ -853,7 +1283,7 @@ function applyRunSnapshot(detail: {
 }) {
   liveJobs.value = detail.jobs.map((job) => {
     const steps = (job.steps || []).map((s) => ({
-      id: (s.stepId || s.id) as RegressionStepId,
+      id: s.stepId || s.id,
       label: s.label,
       shortLabel: shortLabel(s.label),
       status: (s.status || 'pending') as StepRunStatus,
@@ -921,6 +1351,9 @@ function buildReportFromJobs(
       .join('\n\n'),
     statusText: opts?.statusText,
     jobCount: jobs.length,
+    // 本地生成的报告用当时选的环境；服务端历史以库里的为准
+    environment: environment.value,
+    track: 'REGRESSION',
     detailLoaded: true
   }
 }
@@ -947,6 +1380,7 @@ function summarizeRunStatus(status?: string): string {
   const s = (status || '').toUpperCase()
   if (s === 'COMPLETED') return '已完成'
   if (s === 'FAILED') return '失败'
+  if (s === 'SKIPPED') return '已跳过'
   if (s === 'STOPPED') return '已停止'
   if (s === 'RUNNING') return '执行中'
   if (s === 'PENDING') return '排队中'
@@ -972,6 +1406,8 @@ async function loadServerHistory() {
         logText: '',
         statusText: summarizeRunStatus(r.status),
         jobCount: r.jobCount ?? 0,
+        environment: r.environment || 'PROD',
+        track: r.track || 'REGRESSION',
         detailLoaded: false
       }
     })
@@ -1037,6 +1473,11 @@ function previewImage(url?: string) {
   previewVisible.value = true
 }
 
+/** 历史/报告里可能残留无效截图 URL（404），避免裂图 */
+function onCompareShotError(shot: CompareShot) {
+  shot.imageUrl = undefined
+}
+
 function downloadReportLog(report: RegressionReport) {
   const blob = new Blob([report.logText], { type: 'text/plain;charset=utf-8' })
   const a = document.createElement('a')
@@ -1052,18 +1493,37 @@ function reportDefect(group: CompareGroup, shot: CompareShot) {
   )
 }
 
-function clearHistory() {
+async function clearHistory() {
+  try {
+    await ElMessageBox.confirm('将清空服务端与本地的全部历史批次，模块本身保留。是否继续？', '清空历史', {
+      type: 'warning'
+    })
+  } catch {
+    return
+  }
+  try {
+    await apiClient.clearOnlineRegressionHistory()
+  } catch (e: any) {
+    // 后端未重启时仍清本地，避免列表假数据
+    console.warn('clear server history failed', e)
+  }
   history.value = []
   currentReport.value = null
+  viewingRunId.value = ''
   localStorage.removeItem(HISTORY_STORAGE_KEY)
+  ElMessage.success('历史记录已清空')
 }
 
 onMounted(async () => {
   loadHistory()
   await loadServerHistory()
-  if (history.value.length && history.value[0].detailLoaded) {
+  applyHistoryDateFromRoute()
+  if (route.query.focus === 'history') {
+    await focusHistoryFromWorkbench()
+  } else if (history.value.length && history.value[0].detailLoaded) {
     currentReport.value = history.value[0]
   }
+  await loadRegressionFlows()
   try {
     const accounts = await apiClient.getOnlineRegressionAccounts()
     if (Array.isArray(accounts) && accounts.length) {
@@ -1150,7 +1610,7 @@ onUnmounted(() => {
 .cfg-title {
   font-size: 14px;
   font-weight: 600;
-  color: #303133;
+  color: var(--app-text);
   margin-bottom: 12px;
 }
 
@@ -1165,6 +1625,13 @@ onUnmounted(() => {
 
 .cfg-title-row .cfg-title {
   margin-bottom: 0;
+}
+
+.cfg-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+  line-height: 1.6;
 }
 
 .cfg-alert {
@@ -1185,7 +1652,7 @@ onUnmounted(() => {
   text-align: left;
   padding: 14px;
   border-radius: 12px;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--app-border);
   background: #fafbfc;
   cursor: pointer;
   transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
@@ -1197,7 +1664,7 @@ onUnmounted(() => {
 
 .app-card.active {
   border-color: var(--el-color-primary);
-  background: #ecf5ff;
+  background: var(--el-color-primary-light-9);
   box-shadow: 0 0 0 1px var(--el-color-primary) inset;
 }
 
@@ -1221,13 +1688,13 @@ onUnmounted(() => {
 
 .app-card-name {
   font-weight: 700;
-  color: #303133;
+  color: var(--app-text);
 }
 
 .app-card-sub,
 .app-card-hint {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
   margin-top: 2px;
 }
 
@@ -1248,7 +1715,7 @@ onUnmounted(() => {
 
 .device-group {
   background: #fafbfc;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--app-border);
   border-radius: 8px;
   padding: 12px;
 }
@@ -1257,7 +1724,7 @@ onUnmounted(() => {
   font-size: 13px;
   font-weight: 600;
   margin-bottom: 8px;
-  color: #606266;
+  color: var(--app-text-secondary);
 }
 
 .device-group :deep(.el-checkbox) {
@@ -1274,19 +1741,19 @@ onUnmounted(() => {
 
 .dev-status {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
 }
 
 .dev-status.ok {
-  color: #67c23a;
+  color: var(--app-success);
 }
 
 .dev-status.busy {
-  color: #f56c6c;
+  color: var(--app-danger);
 }
 
 .dev-status.off {
-  color: #909399;
+  color: var(--el-text-color-placeholder);
 }
 
 .preset-btns {
@@ -1296,65 +1763,197 @@ onUnmounted(() => {
   align-items: center;
 }
 
+.flow-platform-panels {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.flow-platform-panel {
+  padding: 12px;
+  border: 1px solid #eef0f3;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.flow-platform-panel.shared {
+  background: #fafbfc;
+}
+
+.flow-platform-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.flow-platform-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--app-text-secondary);
+}
+
 .feature-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px 12px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px 12px;
+  width: 100%;
 }
 
 .feature-item {
   margin-right: 0 !important;
   height: auto !important;
-  align-items: flex-start;
-  padding: 8px 10px;
+  width: 100%;
+  max-width: 100%;
+  align-items: center !important;
+  white-space: normal !important;
+  padding: 8px 12px;
   background: #fafbfc;
   border-radius: 8px;
   border: 1px solid #eef0f3;
+  box-sizing: border-box;
+}
+
+.feature-item :deep(.el-checkbox__input) {
+  margin-top: 0;
+}
+
+.feature-item :deep(.el-checkbox__label) {
+  width: 100%;
+  min-width: 0;
+  white-space: normal !important;
+  line-height: 1.35;
+  overflow: visible;
 }
 
 .feature-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
   line-height: 1.35;
+  width: 100%;
+}
+
+.feature-title-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
+  width: 100%;
 }
 
 .feature-idx {
-  color: #909399;
+  flex: 0 0 auto;
+  color: var(--el-text-color-placeholder);
   font-size: 12px;
-  margin-right: 6px;
+}
+
+.feature-name-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .feature-name {
-  color: #303133;
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--app-text);
   font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
+
+/* tooltip 包裹节点要参与 flex 收缩，否则截断后 hover 也不稳 */
+.feature-title-row > .el-tooltip__trigger {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.feature-meta {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .feature-desc {
-  margin-top: 4px;
   font-size: 12px;
-  color: #67c23a;
-  white-space: normal;
+  color: var(--el-text-color-placeholder);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: 22px;
+  cursor: default;
 }
 
 .feature-desc.warn {
-  color: #e6a23c;
+  color: var(--app-warning);
 }
 
 .order-preview {
   margin-top: 12px;
   padding: 10px 12px;
-  background: #f5f7fa;
+  background: var(--app-surface);
   border-radius: 8px;
+}
+
+.order-preview-android {
+  background: #f0f9eb;
+  border: 1px solid #e1f3d8;
+}
+
+.order-preview-ios {
+  background: var(--el-color-primary-light-9);
+  border: 1px solid #d9ecff;
 }
 
 .order-label {
   font-size: 12px;
-  color: #606266;
+  color: var(--app-text-secondary);
   margin-bottom: 8px;
+}
+
+.order-preview-android .order-label {
+  color: var(--app-success);
+  font-weight: 600;
+}
+
+.order-preview-ios .order-label {
+  color: var(--app-primary);
+  font-weight: 600;
 }
 
 .order-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.order-chip-ios {
+  --el-tag-bg-color: var(--el-color-primary-light-9);
+  --el-tag-border-color: #a0cfff;
+  --el-tag-text-color: #337ecc;
+}
+
+.order-chip-android {
+  --el-tag-bg-color: #f0f9eb;
+  --el-tag-border-color: #b3e19d;
+  --el-tag-text-color: #529b2e;
 }
 
 .dual-accounts {
@@ -1367,7 +1966,7 @@ onUnmounted(() => {
 .account-hint {
   margin-top: 6px;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
   line-height: 1.4;
 }
 
@@ -1409,7 +2008,7 @@ onUnmounted(() => {
 }
 
 .matrix-arrow {
-  color: #909399;
+  color: var(--el-text-color-placeholder);
 }
 
 .start-wrap {
@@ -1436,7 +2035,7 @@ onUnmounted(() => {
 
 .live-job {
   padding: 12px;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--app-border);
   border-radius: 10px;
   background: #fafbfc;
 }
@@ -1453,33 +2052,33 @@ onUnmounted(() => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #909399;
+  background: var(--el-text-color-placeholder);
 }
 
 .live-dot.running {
-  background: #e6a23c;
+  background: var(--app-warning);
   box-shadow: 0 0 0 3px rgba(230, 162, 60, 0.25);
 }
 
 .live-dot.success {
-  background: #67c23a;
+  background: var(--app-success);
 }
 
 .live-dot.failed,
 .live-dot.stopped {
-  background: #f56c6c;
+  background: var(--app-danger);
 }
 
 .live-pct {
   margin-left: auto;
   font-size: 13px;
-  color: #606266;
+  color: var(--app-text-secondary);
 }
 
 .live-step {
   margin-top: 6px;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
 }
 
 .live-steps {
@@ -1493,11 +2092,11 @@ onUnmounted(() => {
 
 .live-steps :deep(.el-step__description) {
   font-size: 11px;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
 }
 
 .live-steps :deep(.is-skipped-step .el-step__description) {
-  color: #909399;
+  color: var(--el-text-color-placeholder);
 }
 
 .live-steps :deep(.is-skipped-step .el-step__head) {
@@ -1506,7 +2105,7 @@ onUnmounted(() => {
 }
 
 .live-steps :deep(.is-skipped-step .el-step__title) {
-  color: #909399;
+  color: var(--el-text-color-placeholder);
 }
 
 .shot-title {
@@ -1514,25 +2113,63 @@ onUnmounted(() => {
 }
 
 .live-shots {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .live-shot-label {
   font-size: 12px;
-  color: #606266;
+  color: var(--app-text-secondary);
+  margin-bottom: 8px;
+}
+
+.live-step-shots {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.live-step-shot-cap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   margin-bottom: 6px;
+  min-width: 0;
+}
+
+.live-step-shot-idx {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--el-color-primary-light-9);
+  color: var(--app-primary);
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.live-step-shot-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--app-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .live-shot-frame,
 .compare-img {
   aspect-ratio: 9 / 16;
-  max-height: 280px;
+  max-height: 220px;
   border-radius: 10px;
   overflow: hidden;
   background: #0f172a;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--app-border);
   cursor: zoom-in;
   display: flex;
   align-items: center;
@@ -1557,7 +2194,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 4px 0;
   margin-bottom: 16px;
-  color: #606266;
+  color: var(--app-text-secondary);
   font-size: 13px;
 }
 
@@ -1568,7 +2205,7 @@ onUnmounted(() => {
 .compare-title {
   font-weight: 600;
   margin-bottom: 10px;
-  color: #303133;
+  color: var(--app-text);
 }
 
 .compare-grid {
@@ -1578,7 +2215,7 @@ onUnmounted(() => {
 }
 
 .compare-item {
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--app-border);
   border-radius: 10px;
   padding: 10px;
   background: #fff;
@@ -1591,7 +2228,7 @@ onUnmounted(() => {
   align-items: center;
   margin-bottom: 8px;
   font-size: 12px;
-  color: #606266;
+  color: var(--app-text-secondary);
 }
 
 .compare-actions {
@@ -1602,6 +2239,26 @@ onUnmounted(() => {
   margin-top: 8px;
   padding-top: 16px;
   border-top: 1px solid #eef0f3;
+}
+
+.history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.history-head .cfg-title {
+  margin-bottom: 0;
+}
+
+.history-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .preview-full {

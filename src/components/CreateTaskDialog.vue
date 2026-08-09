@@ -25,40 +25,6 @@
             :value="item.value" />
         </el-select>
       </el-form-item>
-      <el-form-item v-if="form.taskType === 'FUNCTIONAL_QUALITY_TEST'" label="测试场景" required>
-        <el-select
-          v-model="form.scenarioKey"
-          placeholder="请选择测试场景，可按名称搜索"
-          style="width: 100%"
-          filterable
-          :loading="scenariosLoading"
-          :disabled="!form.platform || (!scenariosLoading && scenarioOptions.length === 0)"
-        >
-          <el-option
-            v-for="s in scenarioOptions"
-            :key="s.scenarioKey"
-            :label="s.name"
-            :value="s.scenarioKey" />
-        </el-select>
-        <el-alert
-          v-if="form.platform && !scenariosLoading && scenarioOptions.length === 0"
-          type="warning"
-          :closable="false"
-          show-icon
-          style="margin-top: 8px"
-        >
-          暂无测试场景（当前平台暂无内置功能质量场景）。请更换平台或待后端配置；请勿改用不带 platform 的全量接口再在本地筛选，以免混入其它平台场景。
-        </el-alert>
-        <el-alert
-          v-if="needsSteamEsportsApp"
-          type="info"
-          :closable="false"
-          show-icon
-          style="margin-top: 8px"
-        >
-          {{ steamEsportsHint }}
-        </el-alert>
-      </el-form-item>
       <el-alert
         v-if="form.taskType === 'PERFORMANCE_BASELINE_TEST'"
         type="info"
@@ -188,71 +154,37 @@ const taskStore = useTaskStore()
 const submitting = ref(false)
 const devices = ref<{ id: string; name?: string; version?: string; platform?: string; status?: string }[]>([])
 const installedApps = ref<{ id: string; packageName?: string; name?: string }[]>([])
-const scenarios = ref<{ scenarioKey: string; name: string; platform?: string }[]>([])
 const devicesLoading = ref(false)
 const appsLoading = ref(false)
-const scenariosLoading = ref(false)
 
 const deviceList = computed(() => {
   if (!form.platform) return []
   return devices.value.filter((d) => deviceRowMatchesTaskPlatform(d.platform, form.platform))
 })
 const appList = computed(() => installedApps.value)
-/** 功能基础质量场景：仅使用 GET .../functional-quality?platform= 的返回列表，不在本地再筛或合并全量数据 */
-const scenarioOptions = computed(() => {
-  if (form.taskType !== 'FUNCTIONAL_QUALITY_TEST' || !form.platform) return []
-  return scenarios.value
-})
-
-/** 需使用完美世界电竞应用（steam.esports）的场景 */
-const STEAM_ESPORTS_SCENARIOS = [
-  'settings',
-  'settings_account',
-  'settings_interests',
-  'settings_school_cert',
-  'cs_event_schedule_browse_android',
-  'cs_ended_match_detail_data_android',
-  'cs_ended_match_detail_analysis_android'
-]
-const needsSteamEsportsApp = computed(() =>
-  STEAM_ESPORTS_SCENARIOS.includes(form.scenarioKey || '')
-)
-const steamEsportsHint = computed(() => {
-  const k = form.scenarioKey || ''
-  if (k.startsWith('cs_event_schedule') || k.startsWith('cs_ended_match_detail')) {
-    return 'CS-赛事-赛程相关场景（赛程浏览、赛事详情-数据、赛事详情-分析）需使用完美世界电竞应用（包名含 steam.esports），请在「应用ID」中选择该应用。'
-  }
-  return '设置测试、设置-我的账号、设置-我的兴趣、设置-高校认证需使用完美世界电竞应用（包名含 steam.esports），请在「应用ID」中选择该应用。'
-})
 
 const taskTypeOptions = [
-  { value: 'INSTALL_UNINSTALL_UPGRADE_TEST', label: '安装卸载升级测试' },
-  { value: 'FUNCTIONAL_QUALITY_TEST', label: '功能基础质量' },
-  { value: 'PERFORMANCE_BASELINE_TEST', label: '性能基础质量测试' },
+  { value: 'UI_FLOW_TEST', label: '流程用例执行' },
+  { value: 'SCENARIO_PERFORMANCE_TEST', label: '流程性能测试' },
+  { value: 'PERFORMANCE_BASELINE_TEST', label: '性能遍历探索' },
   { value: 'POWER_CONSUMPTION_BASELINE_TEST', label: '功耗基础质量' },
-  { value: 'SCENARIO_PERFORMANCE_TEST', label: '场景化性能' },
   { value: 'SECURITY_BASELINE_QUALITY_TEST', label: '安全基础质量' },
   { value: 'STABILITY_QUALITY_TEST', label: '稳定性基础质量' },
-  { value: 'PERFORMANCE_MONITORING_TEST', label: '性能指标监控' },
-  { value: 'COMPATIBILITY_TEST', label: '兼容性测试' },
-  { value: 'UI_ADAPTATION_TEST', label: '界面与适配测试' }
+  { value: 'COMPATIBILITY_TEST', label: '兼容性测试' }
 ]
 
 const platformOptions = [
   { value: 'ANDROID', label: 'Android' },
   { value: 'IOS', label: 'iOS' },
   { value: 'HARMONYOS', label: 'HarmonyOS' },
-  { value: 'POG_ANDROID', label: 'Pog-Android' },
-  { value: 'POG_IOS', label: 'Pog-iOS' }
 ]
 
 /** 性能基础质量测试可选执行时长（分钟），后端限制 1～60，未传则默认 2 */
 const traversalMinutesOptions = [2, 5, 10, 30, 60]
 
 const form = reactive({
-  taskType: 'FUNCTIONAL_QUALITY_TEST',
+  taskType: 'UI_FLOW_TEST',
   platform: 'ANDROID' as SupportedDevicePlatform,
-  scenarioKey: '' as string,
   deviceId: '',
   appId: '',
   taskName: '',
@@ -269,9 +201,6 @@ watch(
     if (visible && form.platform) {
       loadDevices(true)
     }
-    if (visible && form.taskType === 'FUNCTIONAL_QUALITY_TEST') {
-      loadScenarios()
-    }
   }
 )
 
@@ -279,7 +208,6 @@ watch(
   () => form.platform,
   (platform, oldPlatform) => {
     if (oldPlatform !== undefined) {
-      form.scenarioKey = ''
       form.deviceId = ''
       form.appId = ''
       devices.value = []
@@ -288,34 +216,6 @@ watch(
     if (platform) {
       loadDevices(true)
     }
-    if (form.taskType === 'FUNCTIONAL_QUALITY_TEST') {
-      loadScenarios()
-    }
-  }
-)
-
-async function loadScenarios() {
-  if (form.taskType !== 'FUNCTIONAL_QUALITY_TEST') return
-  if (!form.platform) {
-    scenarios.value = []
-    return
-  }
-  scenariosLoading.value = true
-  try {
-    scenarios.value = await apiClient.getFunctionalQualityScenarios(form.platform)
-  } catch (e) {
-    console.error('Load scenarios error:', e)
-    scenarios.value = []
-  } finally {
-    scenariosLoading.value = false
-  }
-}
-
-watch(
-  () => form.taskType,
-  (taskType) => {
-    form.scenarioKey = ''
-    if (taskType === 'FUNCTIONAL_QUALITY_TEST') loadScenarios()
   }
 )
 
@@ -366,9 +266,8 @@ function onAppDropdownVisible(visible: boolean) {
 }
 
 function resetForm() {
-  form.taskType = 'FUNCTIONAL_QUALITY_TEST'
+  form.taskType = 'UI_FLOW_TEST'
   form.platform = 'ANDROID'
-  form.scenarioKey = ''
   form.deviceId = ''
   form.appId = ''
   form.taskName = ''
@@ -376,17 +275,12 @@ function resetForm() {
   form.traversalMinutes = 2
   devices.value = []
   installedApps.value = []
-  scenarios.value = []
 }
 
 const submit = async () => {
-  const { taskType, platform, deviceId, appId, scenarioKey } = form
+  const { taskType, platform, deviceId, appId } = form
   if (!taskType || !platform || !deviceId?.trim() || !appId?.trim()) {
     ElMessage.warning('请填写必填项：任务类型、平台、设备ID、应用ID')
-    return
-  }
-  if (taskType === 'FUNCTIONAL_QUALITY_TEST' && !scenarioKey?.trim()) {
-    ElMessage.warning('请选择测试场景，以明确要执行的任务')
     return
   }
   submitting.value = true
@@ -399,15 +293,11 @@ const submit = async () => {
       taskName: form.taskName?.trim() || undefined,
       remarks: form.remarks?.trim() || undefined
     }
-    if (taskType === 'FUNCTIONAL_QUALITY_TEST' && scenarioKey?.trim()) {
-      body.scenarioKey = scenarioKey.trim().toLowerCase()
-    }
     if (taskType === 'PERFORMANCE_BASELINE_TEST') {
       body.config = JSON.stringify({ traversalMinutes: form.traversalMinutes })
     }
-    const res = await taskStore.createTestTask(body)
-    const scenarioLabel = res && (res as any).scenarioName ? `，场景：${(res as any).scenarioName}` : res && (res as any).scenarioKey ? `，scenarioKey：${(res as any).scenarioKey}` : ''
-    ElMessage.success(`创建成功${scenarioLabel}`)
+    await taskStore.createTestTask(body)
+    ElMessage.success('创建成功')
     emit('update:modelValue', false)
     resetForm()
     emit('success')

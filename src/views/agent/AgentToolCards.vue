@@ -26,7 +26,7 @@ defineProps<{
 }
 .xk-tool-badge {
   display: inline-block;
-  background: #e6a23c;
+  background: var(--app-warning);
   color: #ffffff;
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 12px;
@@ -37,7 +37,7 @@ defineProps<{
 }
 .xk-tool-meta {
   margin: 0;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
   font-size: 12px;
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   white-space: pre-wrap;

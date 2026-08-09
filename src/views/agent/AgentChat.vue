@@ -7,6 +7,7 @@
           <span v-else>杨</span>
         </div>
         <div class="xk-bubble-wrap">
+          <AgentHandbookCards :hits="m.handbookHits" />
           <AgentToolCards :actions="m.actions" />
           <div class="xk-bubble">
             <pre class="xk-text">{{ m.content }}</pre>
@@ -25,6 +26,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
+import AgentHandbookCards from './AgentHandbookCards.vue'
 import AgentToolCards from './AgentToolCards.vue'
 import { assistantAvatar, type ChatMsg } from './types'
 
@@ -51,8 +53,8 @@ defineExpose({ scrollBottom, el: chatBoxEl })
 .xk-chat-block {
   --panel-2: #eceff3;
   --line: #cdd3dc;
-  --text: #303133;
-  --muted: #606266;
+  --text: var(--app-text);
+  --muted: var(--app-text-secondary);
   --user: #d9ecff;
   display: flex;
   flex-direction: column;
@@ -99,7 +101,7 @@ defineExpose({ scrollBottom, el: chatBoxEl })
   padding: 0;
   border: 1px solid #f5dab1;
 }
-.xk-avatar.user { background: #409eff; color: #ffffff; }
+.xk-avatar.user { background: var(--app-primary); color: #ffffff; }
 .xk-bubble-wrap { max-width: min(720px, 85%); }
 .xk-msg.user .xk-bubble-wrap {
   display: flex;
@@ -115,7 +117,7 @@ defineExpose({ scrollBottom, el: chatBoxEl })
 }
 .xk-msg.user .xk-bubble {
   background: var(--user);
-  border-color: #b3d8ff;
+  border-color: var(--el-color-primary-light-7);
 }
 .xk-bubble.muted { color: var(--muted); font-size: 13px; }
 .xk-text {

@@ -16,7 +16,7 @@ export const useDeviceStore = defineStore('device', () => {
   const devices = ref<Device[]>([])
   const loading = ref(false)
 
-  const PLATFORMS = ['ANDROID', 'IOS', 'HARMONYOS', 'POG_ANDROID', 'POG_IOS'] as const
+  const PLATFORMS = ['ANDROID', 'IOS', 'HARMONYOS'] as const
 
   /**
    * 获取设备列表：GET {baseUrl}/devices 或 GET {baseUrl}/devices/platform/{platform}

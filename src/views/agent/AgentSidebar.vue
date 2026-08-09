@@ -49,6 +49,7 @@ const modes = [
 const quickOps = [
   { id: 'monitor', title: '监控新页面', desc: '输入 URL 快速爬取' },
   { id: 'save', title: '存入知识', desc: '保存业务流程' },
+  { id: 'cases', title: '生成测试用例', desc: '需求文档/截图 → 用例' },
   { id: 'run', title: '运行工作流', desc: '触发自动化任务' },
   { id: 'report', title: '测试报告', desc: '生成汇总报告' }
 ]
@@ -59,9 +60,9 @@ const quickOps = [
   --panel: #eceff3;
   --panel-2: #e2e6eb;
   --line: #cdd3dc;
-  --text: #303133;
-  --muted: #606266;
-  --accent: #409eff;
+  --text: var(--app-text);
+  --muted: var(--app-text-secondary);
+  --accent: var(--app-primary);
 
   border-right: 1px solid var(--line);
   background: var(--panel);
@@ -92,9 +93,9 @@ const quickOps = [
   margin-bottom: 2px;
   border-left: 2px solid transparent;
 }
-.xk-mode:hover { background: rgba(64, 158, 255, 0.08); color: var(--text); }
+.xk-mode:hover { background: rgba(24, 144, 255, 0.08); color: var(--text); }
 .xk-mode.active {
-  background: rgba(64, 158, 255, 0.12);
+  background: rgba(24, 144, 255, 0.12);
   color: var(--accent);
   border-left-color: var(--accent);
 }

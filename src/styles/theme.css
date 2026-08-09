@@ -1,12 +1,199 @@
-/* 侧栏分组标题 */
+/*
+ * 全局主题 Token
+ *
+ * 当前启用：产品试配色（见 theme-palette-backup.md 目标表）
+ * 还原旧版：把下方「试配色」整块换成 backup 文件里的旧值即可
+ */
+
+:root {
+  /* —— 试配色（对齐 APITest 参考页取样） —— */
+  --app-sidebar-bg: #1d2740;
+  --app-sidebar-header: #192236;
+  --app-main-bg: #f8fafc;
+  --app-card-bg: #ffffff;
+  --app-primary: #1890ff;
+  --app-success: #52c41a;
+  --app-danger: #ff4d4f;
+  --app-warning: #faad14;
+  --app-text: #1f2329;
+  --app-text-secondary: #64748b;
+  --app-border: #e8eaef;
+  --app-surface: #f1f5f9;
+
+  /* 全局字号：正文 14px */
+  --app-font-size: 14px;
+  --app-font-size-sm: 12px;
+  --app-font-size-lg: 15px;
+  --app-font-size-title: 17px;
+
+  /* 侧栏文字层级（由 sidebar 背景推导） */
+  --app-sidebar-text: #bfcbd9;
+  --app-sidebar-text-strong: #e8eef4;
+  --app-sidebar-text-muted: #8b9bb0;
+  --app-sidebar-text-leaf: #a8b3c4;
+  --app-sidebar-icon: #8b9bb0;
+  --app-sidebar-active-bg: rgba(24, 144, 255, 0.16);
+
+  /* 按钮尺寸（结构统一，颜色跟主色） */
+  --app-btn-radius: 5px;
+  --app-btn-padding-y: 5px;
+  --app-btn-padding-x: 11px;
+  --app-btn-font-size: 13px;
+  --app-btn-plain-border: #d1d5db;
+  --app-btn-plain-text: #374151;
+  --app-btn-plain-bg: #ffffff;
+
+  /* Element Plus 字号 */
+  --el-font-size-extra-large: 20px;
+  --el-font-size-large: 17px;
+  --el-font-size-medium: 15px;
+  --el-font-size-base: 14px;
+  --el-font-size-small: 13px;
+  --el-font-size-extra-small: 12px;
+  --el-menu-item-height: 46px;
+  --el-menu-sub-item-height: 40px;
+  --el-font-weight-primary: 500;
+  --el-border-radius-base: 5px;
+
+  /* Element Plus 语义色覆盖 */
+  --el-color-primary: var(--app-primary);
+  --el-color-primary-light-3: #4da6ff;
+  --el-color-primary-light-5: #8cc8ff;
+  --el-color-primary-light-7: #b3daff;
+  --el-color-primary-light-8: #cce6ff;
+  --el-color-primary-light-9: #e6f4ff;
+  --el-color-primary-dark-2: #0f78d9;
+
+  --el-color-success: var(--app-success);
+  --el-color-success-light-3: #7ed321;
+  --el-color-success-light-5: #95de64;
+  --el-color-success-light-7: #b7eb8f;
+  --el-color-success-light-8: #d9f7be;
+  --el-color-success-light-9: #f6ffed;
+  --el-color-success-dark-2: #389e0d;
+
+  --el-color-warning: var(--app-warning);
+  --el-color-warning-light-3: #ffc53d;
+  --el-color-warning-light-5: #ffd666;
+  --el-color-warning-light-7: #ffe58f;
+  --el-color-warning-light-8: #fff1b8;
+  --el-color-warning-light-9: #fffbe6;
+  --el-color-warning-dark-2: #d48806;
+
+  --el-color-danger: var(--app-danger);
+  --el-color-danger-light-3: #ff7875;
+  --el-color-danger-light-5: #ff9c9e;
+  --el-color-danger-light-7: #ffccc7;
+  --el-color-danger-light-8: #ffd8d6;
+  --el-color-danger-light-9: #fff1f0;
+  --el-color-danger-dark-2: #cf1322;
+
+  --el-text-color-primary: var(--app-text);
+  --el-text-color-regular: var(--app-text);
+  --el-text-color-secondary: var(--app-text-secondary);
+  --el-text-color-placeholder: #8f959e;
+  --el-border-color: var(--app-border);
+  --el-border-color-light: var(--app-border);
+  --el-border-color-lighter: #eef0f3;
+  --el-border-color-extra-light: #f5f6f8;
+  --el-bg-color: var(--app-card-bg);
+  --el-bg-color-page: var(--app-main-bg);
+  --el-fill-color-blank: var(--app-card-bg);
+  --el-fill-color-light: var(--app-surface);
+  --el-fill-color: #eef0f3;
+}
+
+html {
+  font-size: var(--app-font-size);
+}
+
 .nav-section-label {
   margin: 10px 12px 2px;
   padding: 8px 10px 4px;
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   font-weight: 600;
   letter-spacing: 0.4px;
-  color: #9aa8b8;
+  color: var(--app-sidebar-text-muted);
   user-select: none;
   pointer-events: none;
   line-height: 1.3;
+}
+
+body {
+  font-size: var(--app-font-size);
+  line-height: 1.55;
+  color: var(--app-text);
+  background: var(--app-main-bg);
+}
+
+.el-menu {
+  --el-menu-item-font-size: 14px;
+  --el-menu-sub-item-font-size: 13px;
+}
+
+/* 全局按钮：尺寸统一，颜色跟主色板 */
+.el-button {
+  --el-button-font-weight: 500;
+  height: auto;
+  min-height: 0;
+  padding: var(--app-btn-padding-y) var(--app-btn-padding-x);
+  font-size: var(--app-btn-font-size);
+  border-radius: var(--app-btn-radius);
+}
+
+.el-button--small {
+  padding: 3px 9px;
+  font-size: 12px;
+  border-radius: var(--app-btn-radius);
+}
+
+.el-form-item__label {
+  font-size: var(--el-font-size-base);
+}
+
+.el-input__inner,
+.el-textarea__inner,
+.el-select__wrapper {
+  font-size: var(--el-font-size-base);
+}
+
+.el-card {
+  --el-card-bg-color: var(--app-card-bg);
+  --el-card-border-color: var(--app-border);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.el-dialog,
+.el-drawer {
+  --el-dialog-bg-color: var(--app-card-bg);
+  --el-drawer-bg-color: var(--app-card-bg);
+}
+
+.el-dialog__header,
+.el-drawer__header {
+  color: var(--app-text);
+  margin-right: 0;
+}
+
+.el-overlay {
+  background-color: rgba(29, 39, 64, 0.45);
+}
+
+.el-table {
+  font-size: var(--el-font-size-base);
+  --el-table-border-color: var(--app-border);
+  --el-table-header-bg-color: var(--app-surface);
+  --el-table-row-hover-bg-color: var(--el-color-primary-light-9);
+  --el-table-header-text-color: var(--app-text);
+  --el-table-text-color: var(--app-text);
+}
+
+.el-message-box {
+  --el-messagebox-title-color: var(--app-text);
+}
+
+.el-pagination {
+  --el-pagination-button-color: var(--app-text-secondary);
+  --el-pagination-hover-color: var(--app-primary);
 }

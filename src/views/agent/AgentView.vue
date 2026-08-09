@@ -8,9 +8,9 @@
       <div class="xk-top-right">
         <span class="xk-pill" :class="status?.configured ? 'ok' : 'bad'">
           <i class="dot" />
-          {{ status?.configured ? 'Agent 在线' : 'Agent 未配置' }}
+          {{ status?.configured ? '千问在线' : '千问未配置' }}
         </span>
-        <span class="xk-pill mute">GPT-5.4-mini</span>
+        <span v-if="status?.chatModel" class="xk-pill mute">{{ status.chatModel }}</span>
         <span class="xk-pill mute">知识库 {{ knowledgeCountDisplay }} 条</span>
         <button type="button" class="xk-link-btn" @click="tipsVisible = true">使用帮助</button>
       </div>
@@ -44,7 +44,7 @@
 
       <AgentRightPanel
         :right-tab="rightTab"
-        :configured="!!status?.configured"
+        :configured="!!status?.codewordsConfigured"
         v-model:monitor-url="monitorUrl"
         v-model:monitor-schedule="monitorSchedule"
         v-model:show-last-monitor="showLastMonitor"
@@ -53,6 +53,7 @@
         :monitor-summary="monitorSummary"
         :knowledge-items="knowledgeItems"
         :workflow-logs="workflowLogs"
+        :last-generated-cases="lastGeneratedCases"
         @tab="onRightTab"
         @run-monitor="runMonitor"
         @refresh-knowledge="loadKnowledge"
@@ -85,7 +86,7 @@ import { useAgent } from './composables/useAgent'
 const tipsItems = [
   { you: 'Ctrl/Cmd+V 粘贴截图', agent: '图片入库并带给 Agent ✅' },
   { you: '拖入需求文档.md', agent: '解析并写入本地知识库 ✅' },
-  { you: '根据这份需求生成测试用例', agent: '结合知识库 / 工作流返回用例 ✅' },
+  { you: '点「生成测试用例」', agent: '需求文字/PDF/截图 → 用例卡片 ✅' },
   { you: '监控这个 H5 页面元素', agent: '浏览器爬取 → 返回定位库 ✅' }
 ]
 
@@ -110,6 +111,7 @@ const {
   pendingFiles,
   dragOver,
   uploading,
+  lastGeneratedCases,
   switchMode,
   onRightTab,
   onChip,
@@ -131,17 +133,17 @@ const {
 <style scoped>
 .xk-shell {
   /* 略暗浅灰，减轻过白 */
-  --bg: #e4e7ed;
+  --bg: var(--app-border);
   --panel: #eceff3;
   --panel-2: #e2e6eb;
   --line: #cdd3dc;
-  --text: #303133;
-  --muted: #606266;
-  --accent: #409eff;
+  --text: var(--app-text);
+  --muted: var(--app-text-secondary);
+  --accent: var(--app-primary);
   --accent-2: #337ecc;
-  --warn: #e6a23c;
+  --warn: var(--app-warning);
   --user: #d9ecff;
-  --danger: #f56c6c;
+  --danger: var(--app-danger);
 
   height: 100%;
   background: var(--bg);
@@ -174,7 +176,7 @@ const {
   border-bottom: 1px solid var(--line);
   background: #eceff3;
 }
-.xk-brand { font-weight: 650; letter-spacing: 0.02em; margin-right: 14px; color: #303133; }
+.xk-brand { font-weight: 650; letter-spacing: 0.02em; margin-right: 14px; color: var(--app-text); }
 .xk-session {
   color: var(--muted);
   font-size: 12px;
@@ -232,7 +234,7 @@ const {
   border: 1px solid var(--line);
 }
 .tips-you { font-size: 14px; color: var(--text); margin-bottom: 6px; }
-.tips-agent { font-size: 13px; color: #409eff; font-weight: 600; }
+.tips-agent { font-size: 13px; color: var(--app-primary); font-weight: 600; }
 
 @media (max-width: 1100px) {
   .xk-body { grid-template-columns: 180px minmax(0, 1fr); }

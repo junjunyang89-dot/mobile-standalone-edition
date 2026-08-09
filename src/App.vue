@@ -27,4 +27,28 @@ const locale = ref(zhCn)
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
+
+/*
+ * macOS Electron hiddenInset：顶栏 header 使用了 -webkit-app-region: drag。
+ * 抽屉/对话框若叠在顶部，× 落在拖拽区里会点不动。弹层必须显式 no-drag。
+ */
+.el-overlay,
+.el-overlay-dialog,
+.el-drawer,
+.el-drawer__header,
+.el-drawer__body,
+.el-drawer__footer,
+.el-drawer__close-btn,
+.el-dialog,
+.el-dialog__header,
+.el-dialog__body,
+.el-dialog__footer,
+.el-dialog__headerbtn,
+.el-message-box,
+.el-message-box__header,
+.el-message-box__btns,
+.el-popup-parent--hidden {
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
 </style>

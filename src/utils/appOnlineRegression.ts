@@ -1,11 +1,4 @@
-import {
-  FEATURE_TO_STEPS,
-  STEP_LABEL,
-  STEP_ORDER_WEIGHT,
-  type RegressionAppId,
-  type RegressionFeatureId,
-  type RegressionStepId
-} from '@/constants/appOnlineRegression'
+import type { RegressionAppId, RegressionFlowOption } from '@/constants/appOnlineRegression'
 import { isAndroidFamilyPlatform, isIosFamilyPlatform } from '@/utils/platform'
 
 export interface RegressionDeviceRef {
@@ -28,43 +21,87 @@ export interface MatrixJob {
 }
 
 export interface OrderedStep {
-  id: RegressionStepId
+  id: string
   label: string
   weight: number
-  /** 来源功能勾选项 */
-  fromFeature: RegressionFeatureId
+  catalog?: string
 }
 
 /**
- * 勾选功能 → 依赖智能排序后的原子步骤列表。
- * 规则：登录 → 退出 → 再登录 → 消费/浏览 → 卸载 → 安装 → 启动（安装套件固定末尾）
+ * 勾选流程 → 按勾选顺序（flowIds 数组顺序）生成执行列表。
+ * 不去重后重排 sort_order；后勾选的排在后面。
  */
-export function buildOrderedSteps(featureIds: RegressionFeatureId[]): OrderedStep[] {
-  const unique = Array.from(new Set(featureIds))
+export function buildOrderedSteps(
+  flowIds: string[],
+  flows: RegressionFlowOption[]
+): OrderedStep[] {
+  const byId = new Map(flows.map((f) => [f.id, f]))
+  const unique = Array.from(new Set(flowIds.filter(Boolean)))
   const steps: OrderedStep[] = []
-  const seen = new Set<RegressionStepId>()
-
-  for (const fid of unique) {
-    const expanded = FEATURE_TO_STEPS[fid] || []
-    for (const sid of expanded) {
-      if (seen.has(sid)) continue
-      seen.add(sid)
-      steps.push({
-        id: sid,
-        label: STEP_LABEL[sid],
-        weight: STEP_ORDER_WEIGHT[sid],
-        fromFeature: fid
-      })
-    }
+  for (const id of unique) {
+    const f = byId.get(id)
+    if (!f) continue
+    steps.push({
+      id: f.id,
+      label: f.name || f.id,
+      weight: f.sortOrder ?? 100,
+      catalog: f.catalog
+    })
   }
-
-  return steps.sort((a, b) => a.weight - b.weight || a.id.localeCompare(b.id))
+  return steps
 }
 
 export function deviceEndpoint(platform: string): MatrixJob['endpoint'] {
   if (isAndroidFamilyPlatform(platform)) return 'android'
   if (isIosFamilyPlatform(platform)) return 'ios'
   return 'other'
+}
+
+/** 回归用例按端分组：ANDROID 族 / iOS 族 / 未指定(双端都跑) */
+export type FlowPlatformBucket = 'android' | 'ios' | 'shared'
+
+export function flowPlatformBucket(platform?: string): FlowPlatformBucket {
+  const u = (platform || '').trim().toUpperCase()
+  if (!u || u === 'ALL' || u === 'BOTH' || u === 'SHARED') return 'shared'
+  if (isAndroidFamilyPlatform(u) || u === 'HARMONYOS') return 'android'
+  if (isIosFamilyPlatform(u)) return 'ios'
+  return 'shared'
+}
+
+export function partitionRegressionFlows(flows: RegressionFlowOption[]): {
+  android: RegressionFlowOption[]
+  ios: RegressionFlowOption[]
+  shared: RegressionFlowOption[]
+} {
+  const android: RegressionFlowOption[] = []
+  const ios: RegressionFlowOption[] = []
+  const shared: RegressionFlowOption[] = []
+  for (const f of flows) {
+    const b = flowPlatformBucket(f.platform)
+    if (b === 'android') android.push(f)
+    else if (b === 'ios') ios.push(f)
+    else shared.push(f)
+  }
+  return { android, ios, shared }
+}
+
+/**
+ * 提交给后端的 flowIds：Android 勾选顺序 + 双端共用 + iOS 勾选顺序。
+ * 后端按设备平台过滤后，各端相对顺序保持独立。
+ */
+export function mergePlatformOrderedFlowIds(
+  androidIds: string[],
+  sharedIds: string[],
+  iosIds: string[]
+): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const id of [...androidIds, ...sharedIds, ...iosIds]) {
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
+  }
+  return out
 }
 
 const APP_LABEL: Record<RegressionAppId, string> = {

@@ -58,6 +58,27 @@
         <el-form-item label="iOS Bundle ID">
           <el-input v-model="form.iosBundleId" placeholder="如 com.wmzq.esportapp" />
         </el-form-item>
+        <el-form-item label="蒲公英 appKey（Android）">
+          <el-input v-model="form.pgyerAppKeyAndroid" placeholder="应用短链里那一段，如 pwesports" />
+        </el-form-item>
+        <el-form-item label="蒲公英 appKey（iOS）">
+          <el-input v-model="form.pgyerAppKeyIos" placeholder="iOS 包的 appKey" />
+          <div class="pgyer-hint">
+            配了之后，流程里的「安装应用」不用再填 buildKey 或下载 URL——
+            按应用 + 平台自动装最新版，每次发版不用改流程
+          </div>
+        </el-form-item>
+        <el-form-item label="渠道页 URL">
+          <el-input
+            v-model="form.channelUrls"
+            type="textarea"
+            :rows="4"
+            placeholder='JSON，如 {"XIAOMI":"https://...","HUAWEI":"https://...","OPPO":"...","VIVO":"..."}'
+          />
+          <div style="margin-top: 6px; font-size: 12px; color: #909399">
+            CHANNEL_PAGE 安装时优先打开对应厂商地址；你汇总各渠道页后粘贴即可。
+          </div>
+        </el-form-item>
         <el-form-item label="说明">
           <el-input v-model="form.description" type="textarea" :rows="2" />
         </el-form-item>
@@ -116,6 +137,9 @@ const form = reactive({
   nameZh: '',
   androidPackage: '',
   iosBundleId: '',
+  pgyerAppKeyAndroid: '',
+  pgyerAppKeyIos: '',
+  channelUrls: '',
   description: '',
   sortOrder: 100,
   enabled: true
@@ -132,6 +156,9 @@ function openAdd() {
     nameZh: '',
     androidPackage: '',
     iosBundleId: '',
+    pgyerAppKeyAndroid: '',
+    pgyerAppKeyIos: '',
+    channelUrls: '',
     description: '',
     sortOrder: 100,
     enabled: true
@@ -146,6 +173,9 @@ function openEdit(row: any) {
     nameZh: row.nameZh || '',
     androidPackage: row.androidPackage || '',
     iosBundleId: row.iosBundleId || '',
+    pgyerAppKeyAndroid: row.pgyerAppKeyAndroid || '',
+    pgyerAppKeyIos: row.pgyerAppKeyIos || '',
+    channelUrls: row.channelUrls || '',
     description: row.description || '',
     sortOrder: row.sortOrder ?? 100,
     enabled: row.enabled !== false
@@ -206,7 +236,14 @@ onMounted(loadList)
 .card-sub {
   margin: 4px 0 0;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
   font-weight: normal;
+}
+
+.pgyer-hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.6;
+  margin-top: 4px;
 }
 </style>

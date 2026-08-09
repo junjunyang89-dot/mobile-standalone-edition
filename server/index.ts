@@ -147,7 +147,7 @@ app.get('/api/tasks', async (req, res) => {
       const config = typeof t.config === 'string' ? (() => { try { return JSON.parse(t.config) } catch { return {} } })() : (t.config || {})
       return {
         ...t,
-        taskType: config.taskType || 'FUNCTIONAL_QUALITY_TEST',
+        taskType: config.taskType || 'UI_FLOW_TEST',
         appId: config.appId ?? t.appId ?? null,
         scenarioKey: t.scenarioKey ?? null,
         scenarioName: t.scenarioName ?? null
@@ -218,7 +218,7 @@ app.post('/api/tasks/test', async (req, res) => {
     const scenarioName = scenarioKeyNorm ? buildScenarioName(scenarioKeyNorm, platform) : null
     const config: Record<string, any> = {
       appId: appId && String(appId).trim(),
-      taskType: taskType || 'FUNCTIONAL_QUALITY_TEST'
+      taskType: taskType || 'UI_FLOW_TEST'
     }
     if (configRaw != null) {
       try {
@@ -398,7 +398,7 @@ app.post('/api/functional-test/tasks', async (req, res) => {
       deviceId: deviceId && String(deviceId).trim() || undefined,
       scenarioKey: scenarioKeyNorm,
       scenarioName,
-      config: applicationId ? { appId: String(applicationId).trim(), taskType: 'FUNCTIONAL_QUALITY_TEST' } : { taskType: 'FUNCTIONAL_QUALITY_TEST' }
+      config: applicationId ? { appId: String(applicationId).trim(), taskType: 'UI_FLOW_TEST' } : { taskType: 'UI_FLOW_TEST' }
     })
     res.json({ success: true, data: task })
   } catch (error: any) {
@@ -554,28 +554,6 @@ app.get('/api/functional-test/tasks/:taskId/screenshot', (req, res) => {
 
 // Android 设置测试代理（转发至 automation-service，见对接文档；端口由 AUTOMATION_SERVICE_PORT 控制，默认 8099）
 const AUTOMATION_SERVICE_BASE = `http://127.0.0.1:${process.env.AUTOMATION_SERVICE_PORT || '8099'}/automation-service`
-app.post('/api/android-settings-test/execute', async (req, res) => {
-  try {
-    const response = await fetch(`${AUTOMATION_SERVICE_BASE}/api/android-settings-test/execute`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req.body || {})
-    })
-    const data = await response.json().catch(() => ({}))
-    res.status(response.status).json(data)
-  } catch (e: any) {
-    res.status(502).json({ code: 502, message: e?.message || 'automation-service 不可达', data: null })
-  }
-})
-app.get('/api/android-settings-test/health', async (req, res) => {
-  try {
-    const response = await fetch(`${AUTOMATION_SERVICE_BASE}/api/android-settings-test/health`)
-    const data = await response.json().catch(() => ({}))
-    res.status(response.status).json(data)
-  } catch (e: any) {
-    res.status(502).json({ status: 'DOWN', error: e?.message || 'automation-service 不可达' })
-  }
-})
 
 // 性能报告：GET /api/functional-test/tasks/:taskId/performance-report（仅性能任务，返回最新执行的 result_data 解析 JSON；无则 404）
 app.get('/api/functional-test/tasks/:taskId/performance-report', async (req, res) => {

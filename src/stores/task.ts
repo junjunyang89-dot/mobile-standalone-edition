@@ -18,8 +18,6 @@ export interface Task {
     | 'ANDROID'
     | 'IOS'
     | 'HARMONYOS'
-    | 'POG_ANDROID'
-    | 'POG_IOS'
   deviceId?: string
   appId?: string
   taskType?: string
@@ -86,7 +84,7 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
-  /** 统一创建任务：POST /api/tasks/test，必填 taskType/platform/deviceId/appId。功能基础质量需传 scenarioKey（如 "settings"、"settings_account"、"settings_interests"、"settings_school_cert"）。返回创建结果（含 scenarioKey/scenarioName 时可用来确认）。 */
+  /** 统一创建任务：POST /api/tasks/test，必填 taskType/platform/deviceId/appId。流程用例请传 UI_FLOW_TEST 并在配置中绑定 flowId。 */
   const createTestTask = async (body: {
     taskType: string
     platform: SupportedDevicePlatform | string

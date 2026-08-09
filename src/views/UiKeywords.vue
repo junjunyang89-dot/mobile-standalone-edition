@@ -258,7 +258,7 @@ onMounted(loadList)
 .card-sub {
   margin: 4px 0 0;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
   font-weight: normal;
 }
 .filter-bar {

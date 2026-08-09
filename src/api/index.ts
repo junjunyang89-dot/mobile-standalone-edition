@@ -55,7 +55,7 @@ class ApiClient {
     return Array.isArray(raw) ? raw : []
   }
 
-  /** 按平台设备列表：GET {baseUrl}/devices/platform/{platform}，platform 与后端枚举一致（含 POG_ANDROID、POG_IOS） */
+  /** 按平台设备列表：GET {baseUrl}/devices/platform/{platform}，platform 为 ANDROID / IOS / HARMONYOS */
   async getDevicesByPlatform(platform: SupportedDevicePlatform | string) {
     const raw = await this.request<any>(`/devices/platform/${platform}`)
     return Array.isArray(raw) ? raw : []
@@ -65,6 +65,59 @@ class ApiClient {
   async getApplicationsByPlatform(platform: SupportedDevicePlatform | string) {
     const raw = await this.request<any>(`/applications/platform/${platform}`)
     return Array.isArray(raw) ? raw : []
+  }
+
+  /** 工作台看板统计：元素/流程覆盖、近7日通过率、线上回归等 */
+  async getWorkbenchStats() {
+    return this.request<{
+      activeElementCount: number
+      totalElementCount: number
+      enabledFlowCount: number
+      regressionFlowCount: number
+      taskPassRate7d: number | null
+      tasksFinished7d: number
+      tasksPassed7d: number
+      tasksFailed7d: number
+      tasksRunning: number
+      tasksTotal: number
+      latestRegressionPassRate: number | null
+      regressionPassRate7d: number | null
+      regressionRuns7d: number
+      regressionWeekDays?: Array<{
+        date: string
+        dateText: string
+        weekday: string
+        runCount: number
+        passRate: number | null
+        allPassed: boolean | null
+      }>
+      recentRegressionRuns?: Array<{
+        id: string
+        status: string
+        passRate?: number | null
+        dateText?: string
+        dayText?: string
+        date?: string
+        appsText?: string
+        jobCount?: number
+        finishedAt?: string | null
+        features?: Array<{
+          stepId: string
+          label: string
+          status: string
+          sortOrder?: number
+        }>
+      }>
+      p0BugCount: number | null
+      p0BugAvailable: boolean
+      recentFailedTasks: Array<{
+        id: string
+        name: string
+        status: string
+        taskType?: string
+        updatedAt?: string
+      }>
+    }>('/workbench/stats')
   }
 
   /** 首页已连接设备统计：GET /devices/connected-summary，返回总数、各平台数量及设备列表 */
@@ -83,6 +136,14 @@ class ApiClient {
     return this.request<string>('/devices/scan', { method: 'POST' })
   }
 
+  /** 这台设备跑哪个环境。传空串＝取消绑定，回到「执行时再定」 */
+  async setDeviceEnvironment(deviceId: string, environment: string) {
+    return this.request<{ ok: boolean; environment: string }>(
+      `/devices/${encodeURIComponent(deviceId)}/environment`,
+      { method: 'PUT', body: JSON.stringify({ environment }) }
+    )
+  }
+
   /** 获取单个设备详情：GET /devices/{id}，404 表示不存在 */
   async getDevice(deviceId: string) {
     return this.request<any>(`/devices/${deviceId}`)
@@ -90,12 +151,17 @@ class ApiClient {
 
   /**
    * 设备详情（点击设备后展示）：GET /devices/{id}/detail
-   * 返回：设备名称、batteryLevel、installedApplications[]；
-   * iOS 时含 iosDetail（解析键值对）+ iosDetailRaw（ideviceinfo 完整输出）；
-   * Android/HarmonyOS 时含 androidDetail（分层结构）+ androidDetailRaw（getprop + dumpsys battery 完整输出）
-   * 404 表示设备不存在或无效
+   * 默认不含已安装应用、不含 getprop 全文（首屏更快）。
+   * includeApps / includeRaw 按需打开；应用列表见 getDeviceInstalledApps。
    */
-  async getDeviceDetail(deviceId: string) {
+  async getDeviceDetail(
+    deviceId: string,
+    opts?: { includeApps?: boolean; includeRaw?: boolean }
+  ) {
+    const qs = new URLSearchParams()
+    if (opts?.includeApps) qs.set('includeApps', 'true')
+    if (opts?.includeRaw) qs.set('includeRaw', 'true')
+    const suffix = qs.toString() ? `?${qs.toString()}` : ''
     return this.request<{
       id?: string
       name?: string
@@ -116,7 +182,14 @@ class ApiClient {
         sensorInfo?: Record<string, string | number | boolean | undefined>
       }
       androidDetailRaw?: string
-    }>(`/devices/${deviceId}/detail`)
+    }>(`/devices/${encodeURIComponent(deviceId)}/detail${suffix}`)
+  }
+
+  /** 已安装应用（独立接口，详情页异步加载） */
+  async getDeviceInstalledApps(deviceId: string) {
+    return this.request<{
+      installedApplications?: Array<{ name?: string; packageName?: string; version?: string }>
+    }>(`/devices/${encodeURIComponent(deviceId)}/installed-apps`)
   }
 
   async connectDevice(deviceId: string) {
@@ -129,6 +202,63 @@ class ApiClient {
     return this.request<boolean>(`/devices/${deviceId}/disconnect`, {
       method: 'POST'
     })
+  }
+
+  /** 真机点选：拉取当前屏截图元信息；screenshotUrl 为 devices/{id}/inspect/screenshot */
+  async getDeviceInspectSnapshot(deviceId: string) {
+    return this.request<{
+      deviceId: string
+      platform?: string
+      screenshotUrl: string
+      screenshotPath?: string
+      width?: number
+      height?: number
+    }>(`/devices/${deviceId}/inspect/snapshot`)
+  }
+
+  /** 真机点选：按相对坐标命中控件，返回推荐 locator 与已匹配元素 */
+  async postDeviceInspectHitTest(
+    deviceId: string,
+    body: { xRatio?: number; yRatio?: number; x?: number; y?: number; appId?: string }
+  ) {
+    return this.request<{
+      deviceId: string
+      platform?: string
+      x: number
+      y: number
+      width: number
+      height: number
+      candidates: Array<{
+        rank: number
+        className?: string
+        resourceId?: string
+        text?: string
+        contentDesc?: string
+        clickable?: boolean
+        enabled?: boolean
+        bounds?: { left: number; top: number; right: number; bottom: number }
+        locatorType: string
+        locatorValue: string
+        suggestedNameEn?: string
+        suggestedNameZh?: string
+        visualHint?: string
+        matchedElementId?: string
+        matchedNameEn?: string
+        matchedNameZh?: string
+        matchedStatus?: string
+      }>
+    }>(`/devices/${deviceId}/inspect/hit-test`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  /** 静态资源完整 URL（如 tmp/screenshots/xxx.png） */
+  resolveAssetUrl(path?: string | null) {
+    if (!path) return ''
+    if (path.startsWith('http')) return path
+    const p = path.startsWith('/') ? path : `/${path}`
+    return `${this.baseURL}${p}`
   }
 
   // 任务管理（分页）
@@ -178,8 +308,8 @@ class ApiClient {
 
   /**
    * 统一创建任务：POST /api/tasks/test。
-   * 创建性能基础质量测试必须用此接口（不要用 POST /functional-test/tasks，该接口仅创建功能体验测试）。请求体传 taskType: "PERFORMANCE_BASELINE_TEST" 及 platform、deviceId、appId 等，设备选 Android。
-   * 功能基础质量须带 scenarioKey（选「设置测试」→ "settings"，选「设置-我的账号」→ "settings_account" 等，小写），后端会落库并返回 scenarioName。
+   * 创建性能基础质量测试必须用此接口（不要用 POST /functional-test/tasks）。请求体传 taskType: "PERFORMANCE_BASELINE_TEST" 及 platform、deviceId、appId 等，设备选 Android。
+   * 流程用例请用 UI_FLOW_TEST，并在 config 中传 flowId。功能基础质量（FUNCTIONAL_QUALITY_TEST）已下线，后端会拒绝新建。
    */
   async createTestTask(body: {
     taskType: string
@@ -262,25 +392,18 @@ class ApiClient {
     return this.request<any[]>(`/applications/devices/${deviceId}/applications${q}`)
   }
 
-  /** @deprecated 请使用 createTestTask，传 appId 并指定 taskType: FUNCTIONAL_QUALITY_TEST */
-  async createFunctionalTestTask(taskData: {
+  /** @deprecated 功能基础质量已下线，请勿再调用；请使用 createTestTask + UI_FLOW_TEST 等类型 */
+  async createFunctionalTestTask(_taskData: {
     taskName?: string
     remarks?: string
     platform: SupportedDevicePlatform | string
     deviceId: string
     applicationId: string
-  }) {
-    return this.createTestTask({
-      taskType: 'FUNCTIONAL_QUALITY_TEST',
-      platform: taskData.platform,
-      deviceId: taskData.deviceId,
-      appId: taskData.applicationId,
-      taskName: taskData.taskName,
-      remarks: taskData.remarks
-    })
+  }): Promise<never> {
+    throw new Error('功能基础质量测试已下线，请改用流程用例执行（UI_FLOW_TEST）')
   }
 
-  /** 表单字段需含 file、deviceId；platform 与设备/应用枚举一致（含 POG_ANDROID、POG_IOS）。POST {baseUrl}/applications/upload */
+  /** 表单字段需含 file、deviceId；platform 为 ANDROID / IOS / HARMONYOS。POST {baseUrl}/applications/upload */
   async uploadAndInstallApp(formData: FormData) {
     const url = `${this.baseURL}/applications/upload`
     const response = await fetch(url, {
@@ -296,84 +419,6 @@ class ApiClient {
     return await response.json()
   }
 
-  // 页面对象（含元素）
-  async getPageObjects(params?: {
-    catalog?: 'AUTOMATION' | 'ONLINE' | 'SHARED' | string
-    appId?: string
-    platform?: SupportedDevicePlatform | string
-  }) {
-    const q = new URLSearchParams()
-    if (params?.catalog) q.append('catalog', params.catalog)
-    if (params?.appId) q.append('appId', params.appId)
-    if (params?.platform) q.append('platform', params.platform)
-    const qs = q.toString()
-    return this.request<any[]>(qs ? `/page-objects?${qs}` : '/page-objects')
-  }
-
-  async getPageObject(id: string) {
-    return this.request<any>(`/page-objects/${id}`)
-  }
-
-  /** 按定位方式分类的详情，用于编辑页分块展示 */
-  async getPageObjectCategorized(id: string) {
-    return this.request<any>(`/page-objects/${id}/categorized`)
-  }
-
-  async getPageObjectByPage(params: {
-    platform: SupportedDevicePlatform | string
-    appId: string
-    pagePath: string
-  }) {
-    const q = new URLSearchParams()
-    q.append('platform', params.platform)
-    q.append('appId', params.appId)
-    q.append('pagePath', params.pagePath)
-    return this.request<any>(`/page-objects/by-page?${q.toString()}`)
-  }
-
-  async createPageObject(body: {
-    platform: SupportedDevicePlatform | string
-    appId: string
-    pagePath: string
-    catalog?: 'AUTOMATION' | 'ONLINE' | 'SHARED' | string
-    name?: string
-    description?: string
-    elements?: Record<string, any>
-    createdBy?: string
-  }) {
-    return this.request<any>('/page-objects', {
-      method: 'POST',
-      body: JSON.stringify(body)
-    })
-  }
-
-  async updatePageObject(
-    id: string,
-    body: Partial<{
-      name: string
-      description: string
-      pagePath: string
-      catalog: 'AUTOMATION' | 'ONLINE' | 'SHARED' | string
-      elements: Record<string, any>
-    }>
-  ) {
-    return this.request<any>(`/page-objects/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(body)
-    })
-  }
-
-  /** 按页面删除：删除整个页面对象及其下所有元素 */
-  async deletePageObject(id: string) {
-    return this.request<void>(`/page-objects/${id}`, { method: 'DELETE' })
-  }
-
-  /** 按元素删除：只删除该页面下指定元素，返回更新后的完整 PageObject */
-  async deletePageObjectElement(id: string, elementKey: string) {
-    return this.request<any>(`/page-objects/${id}/elements/${encodeURIComponent(elementKey)}`, {
-      method: 'DELETE'
-    })
-  }
 
   // —— 低代码资产：行级元素 / 关键字 / 流程 ——
   async getUiElements(params?: {
@@ -383,7 +428,13 @@ class ApiClient {
     /** 如 'AUTOMATION,SHARED'：某场景页同时包含专用 + 两边共用 */
     catalogs?: string
     moduleTag?: string
+    pageId?: string
+    source?: string
+    status?: string
     keyword?: string
+    /** 传 page 时走分页，返回 PageResult；不传则返回全量数组 */
+    page?: number
+    size?: number
   }) {
     const q = new URLSearchParams()
     if (params?.appId) q.append('appId', params.appId)
@@ -391,9 +442,24 @@ class ApiClient {
     if (params?.catalog) q.append('catalog', params.catalog)
     if (params?.catalogs) q.append('catalogs', params.catalogs)
     if (params?.moduleTag) q.append('moduleTag', params.moduleTag)
+    if (params?.pageId) q.append('pageId', params.pageId)
+    if (params?.source) q.append('source', params.source)
+    if (params?.status) q.append('status', params.status)
     if (params?.keyword) q.append('keyword', params.keyword)
+    if (params?.page != null) q.append('page', String(params.page))
+    if (params?.size != null) q.append('size', String(params.size))
     const qs = q.toString()
-    return this.request<any[]>(qs ? `/ui-elements?${qs}` : '/ui-elements')
+    const path = qs ? `/ui-elements?${qs}` : '/ui-elements'
+    if (params?.page != null) {
+      return this.request<{
+        content: any[]
+        totalElements: number
+        totalPages: number
+        page: number
+        size: number
+      }>(path)
+    }
+    return this.request<any[]>(path)
   }
 
   async getUiElement(id: string) {
@@ -402,6 +468,111 @@ class ApiClient {
 
   async createUiElement(body: Record<string, unknown>) {
     return this.request<any>('/ui-elements', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  /** 解析 Appium Inspector XML：POST /ui-elements/inspector-xml/parse */
+  async parseInspectorXml(body: { platform: string; xml: string }) {
+    return this.request<{ candidates: any[]; count: number }>('/ui-elements/inspector-xml/parse', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  /** 页面/弹窗字典 */
+  async getUiPages(params?: { appId?: string; enabledOnly?: boolean }) {
+    const q = new URLSearchParams()
+    if (params?.appId) q.append('appId', params.appId)
+    if (params?.enabledOnly) q.append('enabledOnly', 'true')
+    const qs = q.toString()
+    return this.request<any[]>(qs ? `/ui-pages?${qs}` : '/ui-pages')
+  }
+
+  async createUiPage(body: {
+    appId: string
+    pageId: string
+    nameZh: string
+    description?: string
+    moduleTag?: string
+    sortOrder?: number
+  }) {
+    return this.request<any>('/ui-pages', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async ensureUiPage(body: { appId: string; pageId: string; nameZh?: string; moduleTag?: string }) {
+    return this.request<any>('/ui-pages/ensure', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+    async updateUiPage(id: string, body: {
+      pageId?: string
+      nameZh?: string
+      description?: string
+      moduleTag?: string
+      sortOrder?: number
+      enabled?: boolean
+    }) {
+      return this.request<any>(`/ui-pages/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(body) })
+    }
+
+  /** 勾选候选写入元素库：POST /ui-elements/inspector-xml/import */
+  async importInspectorXml(body: {
+    appId: string
+    platform: string
+    status?: string
+    pageId: string
+    pageNameZh?: string
+    moduleTag?: string
+    items: Array<Record<string, unknown>>
+  }) {
+    return this.request<{
+      created: any[]
+      createdCount: number
+      skipped?: string[]
+      skippedCount?: number
+      errors: string[]
+    }>('/ui-elements/inspector-xml/import', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  // ---------- 专项：版本质量卡 ----------
+
+  async getPerfBaselineVersions(packageName: string, platform = 'ANDROID') {
+    const q = new URLSearchParams({ packageName, platform })
+    return this.request<string[]>(`/perf-baseline/versions?${q}`)
+  }
+
+  async comparePerfBaseline(params: {
+    packageName: string
+    platform?: string
+    versionName: string
+    deviceModel?: string
+  }) {
+    const q = new URLSearchParams({
+      packageName: params.packageName,
+      platform: params.platform || 'ANDROID',
+      versionName: params.versionName
+    })
+    if (params.deviceModel) q.set('deviceModel', params.deviceModel)
+    return this.request<
+      Array<{
+        metricKey: string
+        label: string
+        unit: string
+        current: number | null
+        baseline: number | null
+        baselineVersion: string | null
+        deviceModel: string | null
+        deltaPercent: number | null
+        level: string
+        summary: string
+      }>
+    >(`/perf-baseline/compare?${q}`)
+  }
+
+  /** 删页面。页面下还有元素时后端会拒绝，并告诉你有几个 */
+  async deleteUiPage(id: string) {
+    return this.request<{ ok: boolean }>(`/ui-pages/${encodeURIComponent(id)}`, { method: 'DELETE' })
   }
 
   async updateUiElement(id: string, body: Record<string, unknown>) {
@@ -458,12 +629,21 @@ class ApiClient {
     platform?: string
     catalog?: string
     componentOnly?: boolean
+    /** 线上回归可选用例：ONLINE/SHARED、启用、非组件 */
+    forRegression?: boolean
+    /** 环境：PROD（默认）/ TEST */
+    environment?: string
+    /** 批量执行轨道：REGRESSION（默认）/ AUTOMATION，与 forRegression 配合用 */
+    track?: string
   }) {
     const q = new URLSearchParams()
     if (params?.appId) q.append('appId', params.appId)
     if (params?.platform) q.append('platform', params.platform)
     if (params?.catalog) q.append('catalog', params.catalog)
     if (params?.componentOnly != null) q.append('componentOnly', String(params.componentOnly))
+    if (params?.forRegression != null) q.append('forRegression', String(params.forRegression))
+    if (params?.environment) q.append('environment', params.environment)
+    if (params?.track) q.append('track', params.track)
     const qs = q.toString()
     return this.request<any[]>(qs ? `/ui-flows?${qs}` : '/ui-flows')
   }
@@ -482,6 +662,56 @@ class ApiClient {
 
   async deleteUiFlow(id: string) {
     return this.request<{ ok: boolean }>(`/ui-flows/${id}`, { method: 'DELETE' })
+  }
+
+  /** 按「应用字典 + 平台」列最近几个蒲公英版本，执行流程时挑一个装 */
+  async getPgyerAppBuilds(appId: string, platform?: string, limit = 5) {
+    const q = new URLSearchParams({ appId, limit: String(limit) })
+    if (platform) q.set('platform', platform)
+    return this.request<
+      Array<{
+        buildKey: string
+        buildVersion: string
+        buildVersionNo: string
+        buildBuildVersion: number
+        buildCreated: string
+        buildFileSize: number
+        buildUpdateDescription: string
+      }>
+    >(`/pgyer/app-builds?${q.toString()}`)
+  }
+
+  /** 这条流程用到的定位变量名，执行对话框据此列输入框 */
+  async getFlowLocatorVariables(flowId: string) {
+    return this.request<string[]>(`/ui-flows/${encodeURIComponent(flowId)}/locator-variables`)
+  }
+
+  /** 执行流程：创建 UI_FLOW_TEST 任务并默认立即 run */
+  async executeUiFlow(
+    flowId: string,
+    body: {
+      deviceId: string
+      platform?: string
+      appId?: string
+      /** 自定义包名 / BundleId，可覆盖字典或单独使用 */
+      packageName?: string
+      activity?: string
+      taskName?: string
+      params?: Record<string, string>
+      /** TEST / PROD，缺省 PROD。只决定报告标识与验证码，包名两个环境一致 */
+      environment?: string
+      runNow?: boolean
+    }
+  ) {
+    return this.request<{
+      taskId: string
+      task: any
+      started: boolean
+      message: string
+    }>(`/ui-flows/${flowId}/execute`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
   }
 
   // —— 业务应用字典 ——
@@ -506,6 +736,59 @@ class ApiClient {
 
   async deleteUiApp(id: string) {
     return this.request<{ ok: boolean }>(`/ui-apps/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  // —— H5 页面汇总 ——
+  async getUiH5Pages(params?: { appId?: string; enabledOnly?: boolean }) {
+    const q = new URLSearchParams()
+    if (params?.appId) q.append('appId', params.appId)
+    if (params?.enabledOnly != null) q.append('enabledOnly', String(params.enabledOnly))
+    const qs = q.toString()
+    return this.request<any[]>(qs ? `/ui-h5-pages?${qs}` : '/ui-h5-pages')
+  }
+
+  async getUiH5Page(id: string) {
+    return this.request<any>(`/ui-h5-pages/${encodeURIComponent(id)}`)
+  }
+
+  async getUiH5PageOpen(id: string) {
+    return this.request<{
+      id: string
+      name: string
+      rawUrl: string
+      openUrl: string
+      authType: string
+      hasToken: boolean
+      note: string
+      apiProbeUrl?: string
+    }>(`/ui-h5-pages/${encodeURIComponent(id)}/open`)
+  }
+
+  async probeUiH5Page(id: string) {
+    return this.request<{
+      ok: boolean
+      message: string
+      apiUrl?: string
+      postId?: string
+      postTitle?: string
+      httpStatus?: number
+      rawPreview?: string
+    }>(`/ui-h5-pages/${encodeURIComponent(id)}/probe`)
+  }
+
+  async createUiH5Page(body: Record<string, unknown>) {
+    return this.request<any>('/ui-h5-pages', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async updateUiH5Page(id: string, body: Record<string, unknown>) {
+    return this.request<any>(`/ui-h5-pages/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async deleteUiH5Page(id: string) {
+    return this.request<{ ok: boolean }>(`/ui-h5-pages/${encodeURIComponent(id)}`, { method: 'DELETE' })
   }
 
   /** 发版文档：预览抽取（不建 Wiki 页） */
@@ -554,6 +837,522 @@ class ApiClient {
     })
   }
 
+  /** 周改动漏测看板：多仓 git diff */
+  async changeReviewDiff(body: {
+    weekLabel?: string
+    projects: Array<{
+      name: string
+      type: string
+      path: string
+      baseRef?: string
+      headRef: string
+      pathspecs?: string[]
+    }>
+    checklist?: Array<{
+      id?: string
+      title: string
+      keywords?: string
+      projectType?: string
+    }>
+    releaseDbNotes?: string
+  }) {
+    return this.request<any>('/change-review/diff', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  /** 周改动漏测看板：从发版文档校对行解析分支与 DB 备注 */
+  async changeReviewImportBranches(body: {
+    rows: Array<{ summary?: string; branches?: string; dbChanges?: string }>
+  }) {
+    return this.request<any>('/change-review/import-branches', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  /** Web 端测试：Playwright 就绪状态 */
+  async webTestStatus() {
+    return this.request<{
+      enabled: boolean
+      projectReady: boolean
+      nodeModulesPresent: boolean
+      projectDir: string
+      message: string
+      supportedChannels: string[]
+      plannedChannels: string[]
+    }>('/web-test/status')
+  }
+
+  async webTestKeywords() {
+    return this.request<Array<{ code: string; nameZh: string; category: string; description: string }>>(
+      '/web-test/keywords'
+    )
+  }
+
+  async getWebTestCases(params?: { channel?: string; enabledOnly?: boolean; keyword?: string }) {
+    const q = new URLSearchParams()
+    if (params?.channel) q.set('channel', params.channel)
+    if (params?.enabledOnly != null) q.set('enabledOnly', String(params.enabledOnly))
+    if (params?.keyword) q.set('keyword', params.keyword)
+    const qs = q.toString()
+    return this.request<any[]>(qs ? `/web-test/cases?${qs}` : '/web-test/cases')
+  }
+
+  async createWebTestCase(body: Record<string, unknown>) {
+    return this.request<any>('/web-test/cases', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async updateWebTestCase(id: string, body: Record<string, unknown>) {
+    return this.request<any>(`/web-test/cases/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async deleteWebTestCase(id: string) {
+    return this.request<{ ok: boolean }>(`/web-test/cases/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  async getApiProjects(params?: { enabledOnly?: boolean }) {
+    const q = new URLSearchParams()
+    if (params?.enabledOnly != null) q.set('enabledOnly', String(params.enabledOnly))
+    const qs = q.toString()
+    return this.request<
+      Array<{
+        code: string
+        name: string
+        description?: string
+        enabled?: boolean
+        sortOrder?: number
+      }>
+    >(qs ? `/api-projects?${qs}` : '/api-projects')
+  }
+
+  async createApiProject(body: Record<string, unknown>) {
+    return this.request<any>('/api-projects', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async updateApiProject(code: string, body: Record<string, unknown>) {
+    return this.request<any>(`/api-projects/${encodeURIComponent(code)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async deleteApiProject(code: string) {
+    return this.request<{ ok: boolean }>(`/api-projects/${encodeURIComponent(code)}`, {
+      method: 'DELETE'
+    })
+  }
+
+  async getApiUrls(params?: { project?: string; environment?: string; enabledOnly?: boolean }) {
+    const q = new URLSearchParams()
+    if (params?.project) q.set('project', params.project)
+    if (params?.collectionId) q.set('collectionId', params.collectionId)
+    if (params?.environment) q.set('environment', params.environment)
+    if (params?.enabledOnly != null) q.set('enabledOnly', String(params.enabledOnly))
+    const qs = q.toString()
+    return this.request<any[]>(qs ? `/api-urls?${qs}` : '/api-urls')
+  }
+
+  async createApiUrl(body: Record<string, unknown>) {
+    return this.request<any>('/api-urls', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async updateApiUrl(id: string, body: Record<string, unknown>) {
+    return this.request<any>(`/api-urls/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async deleteApiUrl(id: string) {
+    return this.request<{ ok: boolean }>(`/api-urls/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  // —— 接口测试（TEST / PROD 环境）——
+  async getApiTestEnvs() {
+    return this.request<
+      Array<{
+        environment: string
+        name: string
+        baseUrl: string
+        defaultHeaders?: string
+        defaultToken?: string
+        enabled?: boolean
+      }>
+    >('/api-test/envs')
+  }
+
+  async saveApiTestEnv(
+    environment: string,
+    body: {
+      name?: string
+      baseUrl: string
+      defaultHeaders?: string
+      defaultToken?: string
+      enabled?: boolean
+    }
+  ) {
+    return this.request<any>(`/api-test/envs/${encodeURIComponent(environment)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    })
+  }
+
+  // ---------- 用例集合 ----------
+
+  async getApiTestCollections(project?: string) {
+    const qs = project ? `?project=${encodeURIComponent(project)}` : ''
+    return this.request<
+      Array<{
+        id: string
+        project: string
+        name: string
+        description?: string
+        enabled?: boolean
+        sortOrder?: number
+        caseCount?: number
+        passRate?: number | null
+        lastRunAt?: string | null
+        lastRunId?: string | null
+      }>
+    >(`/api-test/collections${qs}`)
+  }
+
+  async createApiTestCollection(body: Record<string, unknown>) {
+    return this.request<any>('/api-test/collections', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async updateApiTestCollection(id: string, body: Record<string, unknown>) {
+    return this.request<any>(`/api-test/collections/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async deleteApiTestCollection(id: string) {
+    return this.request<{ ok: boolean }>(`/api-test/collections/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    })
+  }
+
+  /** id 传 '__none__' 表示移出集合 */
+  async assignApiTestCases(collectionId: string, caseIds: string[]) {
+    return this.request<{ assigned: number }>(
+      `/api-test/collections/${encodeURIComponent(collectionId)}/cases`,
+      { method: 'POST', body: JSON.stringify({ caseIds }) }
+    )
+  }
+
+  async autoGroupApiTestCases(project: string) {
+    return this.request<{ created: number; assigned: number }>(
+      `/api-test/projects/${encodeURIComponent(project)}/auto-group`,
+      { method: 'POST' }
+    )
+  }
+
+  // ---------- 定时执行 ----------
+
+  async getApiTestSchedules() {
+    return this.request<
+      Array<{
+        id: string
+        name: string
+        cron: string
+        collectionId?: string | null
+        collectionName?: string | null
+        project?: string | null
+        environment: string
+        enabled: boolean
+        nextRunAt?: string | null
+        lastRunAt?: string | null
+        lastRunId?: string | null
+        lastStatus?: string | null
+        lastMessage?: string | null
+        caseCount?: number
+      }>
+    >('/api-test/schedules')
+  }
+
+  async saveApiTestSchedule(body: Record<string, unknown>) {
+    return this.request<any>('/api-test/schedules', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async deleteApiTestSchedule(id: string) {
+    return this.request<{ ok: boolean }>(`/api-test/schedules/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    })
+  }
+
+  async runApiTestScheduleNow(id: string) {
+    return this.request<any>(`/api-test/schedules/${encodeURIComponent(id)}/run`, { method: 'POST' })
+  }
+
+  // ---------- 执行报告 ----------
+
+  async getApiTestRuns(params: { collectionId?: string; limit?: number } = {}) {
+    const q = new URLSearchParams()
+    if (params.collectionId) q.set('collectionId', params.collectionId)
+    if (params.limit) q.set('limit', String(params.limit))
+    const qs = q.toString()
+    return this.request<
+      Array<{
+        id: string
+        environment: string
+        collectionId?: string | null
+        collectionName?: string | null
+        total: number
+        passed: number
+        failed: number
+        durationMs: number
+        ok: boolean | number
+        message?: string
+        createdAt: string
+      }>
+    >(`/api-test/runs${qs ? '?' + qs : ''}`)
+  }
+
+  async getApiTestRunDetail(runId: string) {
+    return this.request<{ run: any; cases: any[] }>(`/api-test/runs/${encodeURIComponent(runId)}`)
+  }
+
+  async getApiTestTrend(days = 7) {
+    return this.request<Array<Record<string, any>>>(`/api-test/runs/trend?days=${days}`)
+  }
+
+  /** 环境变量。secret 的值后端返回掩码，真值不下发浏览器 */
+  async getApiTestVariables(environment: string) {
+    return this.request<
+      Array<{
+        environment: string
+        name: string
+        value?: string
+        secret?: boolean
+        enabled?: boolean
+        description?: string
+        sortOrder?: number
+      }>
+    >(`/api-test/envs/${encodeURIComponent(environment)}/variables`)
+  }
+
+  async saveApiTestVariable(
+    environment: string,
+    body: {
+      name: string
+      value?: string
+      secret?: boolean
+      enabled?: boolean
+      description?: string
+      sortOrder?: number
+    }
+  ) {
+    return this.request<any>(`/api-test/envs/${encodeURIComponent(environment)}/variables`, {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async deleteApiTestVariable(environment: string, name: string) {
+    return this.request<{ ok: boolean }>(
+      `/api-test/envs/${encodeURIComponent(environment)}/variables/${encodeURIComponent(name)}`,
+      { method: 'DELETE' }
+    )
+  }
+
+  // ---------- 流程覆盖了哪些用例（真相存在用例的 flowId 上，这里只是另一个编辑入口） ----------
+
+  async getFlowCases(flowId: string) {
+    return this.request<any[]>(`/ui-flows/${encodeURIComponent(flowId)}/cases`)
+  }
+
+  async getFlowLinkableCases(flowId: string, params: { platform?: string; keyword?: string } = {}) {
+    const q = new URLSearchParams()
+    if (params.platform) q.set('platform', params.platform)
+    if (params.keyword) q.set('keyword', params.keyword)
+    const qs = q.toString()
+    return this.request<any[]>(
+      `/ui-flows/${encodeURIComponent(flowId)}/linkable-cases${qs ? '?' + qs : ''}`
+    )
+  }
+
+  async setFlowCases(flowId: string, caseIds: number[]) {
+    return this.request<{ linked: number; unlinked: number }>(
+      `/ui-flows/${encodeURIComponent(flowId)}/cases`,
+      { method: 'PUT', body: JSON.stringify({ caseIds }) }
+    )
+  }
+
+  async getApiTestProjects() {
+    return this.request<string[]>('/api-test/projects')
+  }
+
+  async reimportApiTestProject(project: string) {
+    return this.request<{ ok: boolean; imported: number; project: string }>(
+      `/api-test/projects/${encodeURIComponent(project)}/reimport`,
+      { method: 'POST' }
+    )
+  }
+
+  async getApiTestCases(params?: {
+    project?: string
+    /** 传 __none__ 查还没归组的用例 */
+    collectionId?: string
+    environment?: string
+    enabledOnly?: boolean
+    keyword?: string
+    page?: number
+    size?: number
+  }) {
+    const q = new URLSearchParams()
+    if (params?.project) q.set('project', params.project)
+    if (params?.environment) q.set('environment', params.environment)
+    if (params?.enabledOnly != null) q.set('enabledOnly', String(params.enabledOnly))
+    if (params?.keyword) q.set('keyword', params.keyword)
+    if (params?.page != null) q.set('page', String(params.page))
+    if (params?.size != null) q.set('size', String(params.size))
+    const qs = q.toString()
+    const path = qs ? `/api-test/cases?${qs}` : '/api-test/cases'
+    if (params?.page != null) {
+      return this.request<{
+        content: any[]
+        totalElements: number
+        totalPages: number
+        page: number
+        size: number
+      }>(path)
+    }
+    return this.request<any[]>(path)
+  }
+
+  async createApiTestCase(body: Record<string, unknown>) {
+    return this.request<any>('/api-test/cases', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async updateApiTestCase(id: string, body: Record<string, unknown>) {
+    return this.request<any>(`/api-test/cases/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async deleteApiTestCase(id: string) {
+    return this.request<{ ok: boolean }>(`/api-test/cases/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    })
+  }
+
+  async runApiTest(body: {
+    /** 与 collectionId 二选一 */
+    caseIds?: string[]
+    /** 按集合执行：顺序由集合内用例的排序号决定，调用方不用管 */
+    collectionId?: string
+    environment?: string
+    tokenOverride?: string
+    urlIdOverride?: string
+    confirmProd?: boolean
+  }) {
+    return this.request<{
+      ok: boolean
+      message: string
+      environment: string
+      total: number
+      passed: number
+      failed: number
+      durationMs: number
+      runId?: string
+      collectionId?: string
+      collectionName?: string
+      cases: Array<{
+        id: string
+        name: string
+        method?: string
+        url?: string
+        status: string
+        httpStatus?: number
+        durationMs?: number
+        error?: string
+        assertionResults?: string[]
+        bodyPreview?: string
+      }>
+    }>('/api-test/run', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  /** 接口测试统计面板：KPI + Recent Runs + Collections */
+  async getApiTestStats() {
+    return this.request<{
+      updatedAt?: string
+      cases: number
+      casesDelta7d: number
+      passRate: number | null
+      passRateDelta: number | null
+      failed: number
+      failedDelta: number | null
+      avgLatencyMs: number | null
+      avgLatencyDeltaMs: number | null
+      recentRuns: Array<{
+        id: string
+        caseId?: string
+        name?: string
+        method?: string
+        path?: string
+        status?: string
+        durationMs?: number | null
+        createdAt?: string
+      }>
+      collections: Array<{
+        project: string
+        name: string
+        caseCount: number
+        passRate: number | null
+      }>
+    }>('/api-test/stats')
+  }
+
+  /** Web 端测试：执行编排用例（caseIds）或临时 URL（cases） */
+  async webTestRun(body: {
+    caseIds?: string[]
+    tokenOverride?: string
+    cases?: Array<{
+      name?: string
+      channel?: string
+      url?: string
+      authMode?: string
+      token?: string
+      authQueryKey?: string
+      cookieDomain?: string
+      h5PageId?: string
+    }>
+  }) {
+    return this.request<{
+      ok: boolean
+      message: string
+      total: number
+      passed: number
+      failed: number
+      skipped: number
+      durationMs: number
+      reportDir?: string
+      cases: Array<{
+        name: string
+        channel?: string
+        url?: string
+        status: string
+        error?: string
+        requirementRef?: string
+      }>
+      logTail?: string
+    }>('/web-test/run', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
   // —— CodeWords AI Agent / 元素监控 ——
   async getCodeWordsStatus() {
     return this.request<{
@@ -561,6 +1360,7 @@ class ApiClient {
       configured: boolean
       agentId: string
       monitorWorkflowId: string
+      testCaseGeneratorId?: string
       apiBase: string
       knowledgeCount?: number
       storageReady?: boolean
@@ -579,6 +1379,430 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(body)
     })
+  }
+
+  /** CodeWords 测试用例生成器 v2（仅返回 JSON，不落库） */
+  /**
+   * 用千问生成用例（不落库）。截图/需求文档直接传文件，不用先放到公网。
+   * 替代原来按次计费的 CodeWords 工作流，产出格式一致。
+   */
+  async generateTestCasesByQwen(params: { pageName: string; text?: string; files?: File[] }) {
+    const fd = new FormData()
+    fd.append('pageName', params.pageName)
+    if (params.text) fd.append('text', params.text)
+    ;(params.files || []).forEach((f) => fd.append('files', f))
+    const res = await fetch(`${this.baseURL}/ai-test-cases/generate`, { method: 'POST', body: fd })
+    const data = await res.json().catch(() => ({ message: '生成失败' }))
+    if (!res.ok) throw new Error(data.message || '生成失败')
+    return data as { page: string; total: number; model: string; test_cases: any[] }
+  }
+
+  // —— 接口变更分析（分支 vs 基线）——
+  async getApiChangeProjects() {
+    return this.request<Array<{
+      code: string; name: string; repoPath?: string; baseBranch?: string; ready: boolean
+    }>>('/api-changes/projects')
+  }
+
+  async getApiChangeBranches(project: string) {
+    return this.request<{ repoPath: string; branches: string[]; current: string }>(
+      `/api-changes/branches?project=${encodeURIComponent(project)}`
+    )
+  }
+
+  // —— 接口变更分析：表结构 / 代码目录 ——
+  async getApiTableSchemas(project?: string) {
+    const q = project ? `?project=${encodeURIComponent(project)}` : ''
+    return this.request<any[]>(`/api-changes/table-schemas${q}`)
+  }
+
+  async saveApiTableSchema(body: Record<string, unknown>) {
+    return this.request<any>('/api-changes/table-schemas', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async deleteApiTableSchema(id: number) {
+    return this.request<any>(`/api-changes/table-schemas/${id}`, { method: 'DELETE' })
+  }
+
+  /** 粘进去先看看推导出什么，不落库 */
+  async previewTableHints(ddl: string) {
+    return this.request<{ tableName: string; testHints: any[] }>(
+      '/api-changes/table-schemas/preview',
+      { method: 'POST', body: JSON.stringify({ ddl }) }
+    )
+  }
+
+  async getApiCodeDirs(project?: string) {
+    const q = project ? `?project=${encodeURIComponent(project)}` : ''
+    return this.request<any[]>(`/api-changes/code-dirs${q}`)
+  }
+
+  async saveApiCodeDir(body: Record<string, unknown>) {
+    return this.request<any>('/api-changes/code-dirs', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async deleteApiCodeDir(id: number) {
+    return this.request<any>(`/api-changes/code-dirs/${id}`, { method: 'DELETE' })
+  }
+
+  /** 目录对目录：拿不到内网、只能把两个分支各拷一份到本地时用 */
+  async analyzeApiChangeDirs(body: { project?: string; baseDir: string; headDir: string }) {
+    return this.request<any>('/api-changes/analyze-dirs', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async analyzeApiChanges(body: { project: string; baseRef?: string; headRef?: string }) {
+    return this.request<any>('/api-changes/analyze', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  /** 接口变更分析历史报告列表 */
+  async listApiChangeReports(params?: { project?: string; limit?: number }) {
+    const qs = new URLSearchParams()
+    if (params?.project) qs.set('project', params.project)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const suffix = qs.toString() ? `?${qs.toString()}` : ''
+    return this.request<
+      Array<{
+        id: number
+        project?: string
+        baseRef?: string
+        headRef?: string
+        summary?: string
+        createdAt?: string
+      }>
+    >(`/api-changes/reports${suffix}`)
+  }
+
+  async getApiChangeReport(id: number) {
+    return this.request<{
+      id: number
+      project?: string
+      baseRef?: string
+      headRef?: string
+      summary?: string
+      createdAt?: string
+      report: any
+    }>(`/api-changes/reports/${id}`)
+  }
+
+  async deleteApiChangeReport(id: number) {
+    return this.request<{ ok: boolean }>(`/api-changes/reports/${id}`, { method: 'DELETE' })
+  }
+
+  /** 表格解析预览：只解析不落库，让人先看一眼再决定 */
+  async parseTestCaseSheet(file: File) {
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await fetch(`${this.baseURL}/ai-test-cases/import/parse`, { method: 'POST', body: fd })
+    const data = await res.json().catch(() => ({ message: '解析失败' }))
+    if (!res.ok) throw new Error(data.message || '解析失败')
+    return data as { rows: any[]; raw: any[]; warnings: string[] }
+  }
+
+  /** 从表格软件直接粘贴的内容（行换行、列 Tab），同样只解析不落库 */
+  async parseTestCaseText(text: string) {
+    return this.request<{ rows: any[]; raw: any[]; warnings: string[] }>(
+      '/ai-test-cases/import/parse-text',
+      { method: 'POST', body: JSON.stringify({ text }) }
+    )
+  }
+
+  /** 确认导入：rows 用预览返回的 raw */
+  async importTestCases(category: string, rows: any[]) {
+    return this.request<{ imported: number; failed: string[] }>('/ai-test-cases/import', {
+      method: 'POST',
+      body: JSON.stringify({ category, rows })
+    })
+  }
+
+  /** 手工新建一条用例（source=MANUAL）；生成器批量落库仍走 saveAiTestCasesBatch */
+  async createAiTestCase(body: Record<string, unknown>) {
+    return this.request<any>('/ai-test-cases', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  /** 编辑用例：只传要改的字段。flowId 传空串＝解除流程关联，不传＝不动 */
+  async updateAiTestCase(id: number, body: Record<string, unknown>) {
+    return this.request<any>(`/ai-test-cases/${id}`, { method: 'PUT', body: JSON.stringify(body) })
+  }
+
+  async generateAiTestCases(body: {
+    page_name?: string
+    text_content?: string
+    images?: string[]
+    elements?: Array<Record<string, any>>
+    screenshot_url?: string
+    requirements?: string
+  }) {
+    return this.request<{
+      page?: string
+      total?: number
+      input_types?: string[]
+      test_cases?: AiTestCaseDto[]
+      [key: string]: any
+    }>('/codewords/test-cases/generate', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  /**
+   * 测试用例生成：multipart 上传（图片由后端转 base64 data URI，文档抽文字）。
+   * FormData: page_name, text_content?, requirements?, files
+   */
+  async generateAiTestCasesUpload(params: {
+    page_name: string
+    text_content?: string
+    requirements?: string
+    files?: File[]
+  }) {
+    const form = new FormData()
+    form.append('page_name', params.page_name)
+    if (params.text_content) form.append('text_content', params.text_content)
+    if (params.requirements) form.append('requirements', params.requirements)
+    for (const f of params.files || []) {
+      form.append('files', f)
+    }
+    const url = `${this.baseURL}/codewords/test-cases/generate-upload`
+    const response = await fetch(url, { method: 'POST', body: form })
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Generate failed' }))
+      throw new Error(error.message || error.error || `HTTP ${response.status}`)
+    }
+    return (await response.json()) as {
+      page?: string
+      total?: number
+      input_types?: string[]
+      test_cases?: AiTestCaseDto[]
+      [key: string]: any
+    }
+  }
+
+  /** AI 用例文档列表（表 ai_test_cases） */
+  async listAiTestCases(params?: {
+    category?: string
+    pageName?: string
+    priority?: string
+    status?: string
+    platform?: string
+    batchId?: string
+    automationAdvice?: string
+    releaseStage?: string
+    /** 标题/编号/测试点/模块 模糊搜 */
+    keyword?: string
+    page?: number
+    size?: number
+  }) {
+    const qs = new URLSearchParams()
+    if (params?.category) qs.set('category', params.category)
+    if (params?.pageName) qs.set('pageName', params.pageName)
+    if (params?.priority) qs.set('priority', params.priority)
+    if (params?.status) qs.set('status', params.status)
+    if (params?.platform) qs.set('platform', params.platform)
+    if (params?.batchId) qs.set('batchId', params.batchId)
+    if (params?.automationAdvice) qs.set('automationAdvice', params.automationAdvice)
+    if (params?.releaseStage) qs.set('releaseStage', params.releaseStage)
+    if (params?.keyword) qs.set('keyword', params.keyword)
+    qs.set('page', String(params?.page ?? 1))
+    qs.set('size', String(params?.size ?? 20))
+    return this.request<{
+      content: AiTestCaseDto[]
+      totalElements: number
+      page: number
+      size: number
+      totalPages: number
+      onlineCount?: number
+      testingCount?: number
+    }>(`/ai-test-cases?${qs.toString()}`)
+  }
+
+  async promoteAiTestCase(id: number) {
+    return this.request<AiTestCaseDto>(`/ai-test-cases/${id}/promote`, { method: 'POST' })
+  }
+
+  async promoteAiTestCasesBatch(ids: number[]) {
+    return this.request<{ promoted: number; failed: string[] }>('/ai-test-cases/promote-batch', {
+      method: 'POST',
+      body: JSON.stringify({ ids })
+    })
+  }
+
+  async saveAiTestCasesBatch(body: {
+    page_name: string
+    category?: string
+    platform?: string
+    screenshot_url?: string
+    app_id?: string
+    status?: string
+    test_cases: Array<Record<string, any>>
+  }) {
+    return this.request<{
+      batchId: string
+      pageName: string
+      category?: string
+      saved: number
+      cases: AiTestCaseDto[]
+    }>('/ai-test-cases/batch', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async updateAiTestCaseStatus(id: number, status: 'DRAFT' | 'REVIEWED' | 'ARCHIVED') {
+    return this.request<AiTestCaseDto>(`/ai-test-cases/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status })
+    })
+  }
+
+  async deleteAiTestCase(id: number) {
+    return this.request<{ ok: boolean }>(`/ai-test-cases/${id}`, {
+      method: 'DELETE'
+    })
+  }
+
+  /** 知识手册：分类短记列表（现象/原因/处理） */
+  async listHandbook(params?: { category?: string; project?: string; q?: string; limit?: number }) {
+    const qs = new URLSearchParams()
+    if (params?.category) qs.set('category', params.category)
+    if (params?.project) qs.set('project', params.project)
+    if (params?.q) qs.set('q', params.q)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const suffix = qs.toString() ? `?${qs.toString()}` : ''
+    return this.request<
+      Array<{
+        id: number
+        category: string
+        project?: string
+        title: string
+        symptom: string
+        cause: string
+        fix: string
+        tags?: string
+        imageUrl?: string
+        createdAt?: string
+        updatedAt?: string
+      }>
+    >(`/handbook${suffix}`)
+  }
+
+  async getHandbook(id: number) {
+    return this.request<{
+      id: number
+      category: string
+      project?: string
+      title: string
+      symptom: string
+      cause: string
+      fix: string
+      tags?: string
+      imageUrl?: string
+      createdAt?: string
+      updatedAt?: string
+    }>(`/handbook/${id}`)
+  }
+
+  async createHandbook(body: {
+    category: string
+    project?: string | null
+    title: string
+    symptom: string
+    cause: string
+    fix: string
+    tags?: string
+    imageUrl?: string | null
+  }) {
+    return this.request<any>('/handbook', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async updateHandbook(
+    id: number,
+    body: {
+      category: string
+      project?: string | null
+      title: string
+      symptom: string
+      cause: string
+      fix: string
+      tags?: string
+      imageUrl?: string | null
+    }
+  ) {
+    return this.request<any>(`/handbook/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async deleteHandbook(id: number) {
+    return this.request<{ ok: boolean }>(`/handbook/${id}`, {
+      method: 'DELETE'
+    })
+  }
+
+  /** 上传知识手册配图（可选），返回 { imageUrl, url } */
+  async uploadHandbookImage(file: File) {
+    const form = new FormData()
+    form.append('file', file)
+    const url = `${this.baseURL}/handbook/image/upload`
+    const response = await fetch(url, { method: 'POST', body: form })
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: '上传失败' }))
+      throw new Error(error.message || error.error || `HTTP ${response.status}`)
+    }
+    return response.json() as Promise<{ imageUrl: string; url: string }>
+  }
+
+  /**
+   * AI 汇总短记草稿（不落库）。
+   * FormData: text?, hintCategory?, hintProject?, files[]
+   */
+  async aiSummarizeHandbook(params: {
+    text?: string
+    hintCategory?: string
+    hintProject?: string
+    files?: File[]
+  }) {
+    const form = new FormData()
+    if (params.text?.trim()) form.append('text', params.text.trim())
+    if (params.hintCategory) form.append('hintCategory', params.hintCategory)
+    if (params.hintProject) form.append('hintProject', params.hintProject)
+    ;(params.files || []).slice(0, 3).forEach((f) => form.append('files', f))
+    const url = `${this.baseURL}/handbook/ai-summarize`
+    const response = await fetch(url, { method: 'POST', body: form })
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'AI 汇总失败' }))
+      throw new Error(error.message || error.error || `HTTP ${response.status}`)
+    }
+    return response.json() as Promise<{
+      category: string
+      project?: string
+      title: string
+      symptom: string
+      cause: string
+      fix: string
+      tags?: string
+      imageUrl?: string
+      model?: string
+    }>
+  }
+
+  /** 知识手册配图完整 URL（DB 存相对路径 handbook-images/xxx.png） */
+  handbookImageUrl(imageUrl?: string | null) {
+    if (!imageUrl) return ''
+    if (imageUrl.startsWith('http')) return imageUrl
+    const path = imageUrl.startsWith('/') ? imageUrl : `/${imageUrl}`
+    return `${this.baseURL}${path}`
   }
 
   /** 平台前端知识库列表（无需 STORAGE_API_KEY） */
@@ -644,87 +1868,18 @@ class ApiClient {
     })
   }
 
-  // 自动化测试（场景列表 + 一键执行）
-  async getFunctionalTestScenarios() {
-    return this.request<any[]>('/functional-test/scenarios')
-  }
+  // 自动化测试任务详情 / 概览 / 日志 / 截图（保留）；旧场景列表与 /execute 已下线
 
-  /**
-   * 按模块分组（不含 Pog 派生场景）。若需展示 Pog-Android / Pog-iOS 可执行项，请改用
-   * getFunctionalTestScenariosByPlatformModule 或 getFunctionalTestScenariosByPlatform。
-   */
-  async getFunctionalTestScenariosByModule() {
-    return this.request<any[]>('/functional-test/scenarios/by-module')
-  }
-
-  /**
-   * 按平台→模块两层分组的场景列表：GET /functional-test/scenarios/by-platform-module
-   */
-  async getFunctionalTestScenariosByPlatformModule(): Promise<
-    Array<{
-      platform: string
-      platformLabel: string
-      modules: Array<{
-        moduleKey: string
-        moduleName: string
-        scenarios: Array<{ id: string; name: string; platform: string; taskType: string; description?: string; scenarioKey?: string }>
-      }>
-    }>
-  > {
-    return this.request<any[]>('/functional-test/scenarios/by-platform-module')
-  }
-
-  /**
-   * 按平台分组的场景列表：GET /functional-test/scenarios/by-platform
-   * 返回 [{ platform, platformLabel, scenarios: [...] }, ...]，用于折叠展示。
-   */
-  async getFunctionalTestScenariosByPlatform(): Promise<
-    Array<{
-      platform: string
-      platformLabel: string
-      scenarios: Array<{
-        id: string
-        name: string
-        platform: string
-        taskType: string
-        description?: string
-        scenarioKey?: string
-      }>
-    }>
-  > {
-    return this.request<any[]>('/functional-test/scenarios/by-platform')
-  }
-
-  /**
-   * 功能基础质量场景下拉：GET /functional-test/scenarios/functional-quality?platform={platform}
-   * `platform` 必填（与任务所选平台枚举一致）。Pog 平台当前多为空数组；禁止改调不带 platform 的全量接口再在本地筛选，以免混入 Android/iOS 场景。
-   */
-  async getFunctionalQualityScenarios(platform: string) {
+  /** 场景化性能测试场景：GET /functional-test/scenarios/scenario-performance?platform= */
+  async getScenarioPerformanceScenarios(platform: string) {
     const p = String(platform || '').trim()
     if (!p) {
       return Promise.resolve([])
     }
     const q = `?platform=${encodeURIComponent(p)}`
     return this.request<Array<{ scenarioKey: string; name: string; platform?: string; id?: string; taskType?: string; description?: string }>>(
-      `/functional-test/scenarios/functional-quality${q}`
+      `/functional-test/scenarios/scenario-performance${q}`
     )
-  }
-
-  /**
-   * 执行登录自动化测试：POST /functional-test/execute
-   * 必填 scenarioId、deviceId、applicationId；config 推荐必传（JSON 字符串含 phoneNumber、verificationCode）。
-   * scenarioId 须与列表/分组接口返回的 id 完全一致，勿使用已废弃或非接口返回的 id。
-   */
-  async executeFunctionalTest(body: {
-    scenarioId: string
-    deviceId: string
-    applicationId: string
-    config?: string
-  }) {
-    return this.request<{ taskId: string; status: string; message?: string }>('/functional-test/execute', {
-      method: 'POST',
-      body: JSON.stringify(body)
-    })
   }
 
   /**
@@ -885,6 +2040,8 @@ class ApiClient {
         networkTxBytes?: { peak?: number; min?: number; avg?: number }
         /** 温度 ℃ */
         temperature?: { peak?: number; min?: number; avg?: number }
+        /** 帧率 FPS */
+        fps?: { peak?: number; min?: number; avg?: number }
       }
       issueSummary: {
         responseDelayCount?: number
@@ -910,6 +2067,10 @@ class ApiClient {
         networkTxBytes?: number
         /** 温度，十分之一摄氏度（÷10 为 ℃） */
         temperatureTenthsC?: number
+        /** 估算 FPS（gfxinfo） */
+        fps?: number
+        /** 卡顿帧占比 % */
+        jankPercent?: number
       }>
       operations: Array<{
         index: number
@@ -948,78 +2109,6 @@ class ApiClient {
     return `${this.baseURL}/functional-test/tasks/${taskId}/performance-screenshots/${index}`
   }
 
-  // ---------- 设置测试直调接口（对接 automation-service，见「Android 设置测试 - 前端对接调试文档」） ----------
-
-  /** Android 设置测试执行响应（后端返回 code/message/data，成功时 code===200，失败时 code===500 等） */
-  async executeAndroidSettingsTest(body: {
-    deviceId?: string
-    appiumServerUrl?: string
-    packageName?: string
-    platformVersion?: string
-    deviceName?: string
-  } = {}): Promise<{
-    code: number
-    message?: string
-    data?: {
-      reportId?: string
-      taskId?: string
-      deviceId?: string
-      testCaseName?: string
-      testSteps?: Array<{ stepName: string; status: string; duration?: number; errorMessage?: string | null }>
-      testData?: {
-        loadingCompletionDelayMs?: number
-        whiteScreenDurationMs?: number
-      }
-    }
-  }> {
-    const url = `${this.baseURL}/android-settings-test/execute`
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 120000)
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: controller.signal
-      })
-      clearTimeout(timeoutId)
-      const json = await response.json().catch(() => ({ code: response.status, message: '响应解析失败' }))
-      return json as { code: number; message?: string; data?: any }
-    } catch (e: any) {
-      clearTimeout(timeoutId)
-      if (e?.name === 'AbortError') {
-        return { code: 0, message: '请求超时（单次测试建议 ≥120 秒）' }
-      }
-      return { code: 0, message: e?.message || '网络错误' }
-    }
-  }
-
-  /**
-   * iOS 设置测试直调：POST {baseUrl}/ios-settings-test/execute（备用，主流程不依赖）
-   * 请求体 deviceId 必填，applicationId 与 bundleId 二选一；响应格式同 Android。
-   */
-  async executeIosSettingsTest(body: {
-    deviceId: string
-    applicationId?: string
-    bundleId?: string
-    appiumServerUrl?: string
-  }) {
-    return this.request<{ code?: number; message?: string; data?: { taskId?: string; deviceId?: string; testCaseName?: string; testSteps?: Array<{ stepName: string; status: string; errorMessage?: string | null }>; reportPath?: string } }>(
-      '/ios-settings-test/execute',
-      { method: 'POST', body: JSON.stringify(body) }
-    )
-  }
-
-  /** Android 设置测试健康检查：GET {baseUrl}/android-settings-test/health（备用） */
-  async getAndroidSettingsTestHealth() {
-    return this.request<{ status?: string; service?: string; timestamp?: number }>('/android-settings-test/health')
-  }
-
-  /** iOS 设置测试健康检查：GET {baseUrl}/ios-settings-test/health（备用） */
-  async getIosSettingsTestHealth() {
-    return this.request<{ status?: string; service?: string; timestamp?: number }>('/ios-settings-test/health')
-  }
-
   // 测试计划（定时任务）
   async getTestPlans() {
     return this.request<any[]>('/test-plans')
@@ -1034,7 +2123,7 @@ class ApiClient {
     scenarioId: string
     scenarioConfig?: string
     enabled?: boolean
-    /** 与后端计划类型枚举一致，如 POG_ANDROID、POG_IOS、POGPOG（兼容旧数据） */
+    /** 与后端计划类型枚举一致：ANDROID / IOS / HARMONYOS */
     planType?: string
   }) {
     return this.request<any>('/test-plans', {
@@ -1062,7 +2151,7 @@ class ApiClient {
     return this.request<any>(`/test-plans/${id}/resume`, { method: 'POST' })
   }
 
-  // —— APP 线上回归 ——
+  // —— APP 回归（线上 + 测试环境）——
   async getOnlineRegressionAccounts(appId?: string) {
     const q = appId ? `?appId=${encodeURIComponent(appId)}` : ''
     return this.request<
@@ -1073,7 +2162,8 @@ class ApiClient {
   async startOnlineRegressionRun(body: {
     appIds: string[]
     deviceIds: string[]
-    featureIds: string[]
+    /** 勾选的 ui_flows.id */
+    flowIds: string[]
     excludeJobKeys?: string[]
     /** 多账号：两机回归时传两个不同账号，后端随机分配到设备 */
     accountIds?: string[]
@@ -1083,6 +2173,12 @@ class ApiClient {
     customPhone?: string
     customCode?: string
     enableOverseasProxy?: boolean
+    /** PROD（默认，线上回归）/ TEST（测试环境发版前回归） */
+    environment?: string
+    /** REGRESSION（默认）/ AUTOMATION（按前置依赖拓扑排序执行） */
+    track?: string
+    /** 复位流程：每条用例前先跑一次，把设备带回已知起点 */
+    resetFlowId?: string
   }) {
     return this.request<{
       id: string
@@ -1117,6 +2213,26 @@ class ApiClient {
     }>('/online-regression/runs', { method: 'POST', body: JSON.stringify(body) })
   }
 
+  /**
+   * 执行顺序预览。自动化轨道会补入没勾的前置并按依赖排序；成环时返回 400 且 message 带完整环路。
+   */
+  async previewRunOrder(flowIds: string[], track?: string, resetFlowId?: string) {
+    return this.request<{
+      steps: Array<{ id: string; label: string; weight: number; fromFeature?: string }>
+      autoAddedIds: string[]
+      resetFlowId?: string | null
+    }>('/online-regression/preview-order', {
+      method: 'POST',
+      body: JSON.stringify({ flowIds, track, resetFlowId })
+    })
+  }
+
+  async clearOnlineRegressionHistory() {
+    return this.request<{ success: boolean; deleted?: number }>('/online-regression/runs', {
+      method: 'DELETE'
+    })
+  }
+
   async listOnlineRegressionRuns(limit = 20) {
     return this.request<
       Array<{
@@ -1128,6 +2244,12 @@ class ApiClient {
         finishedAt?: string | null
         createdAt?: string | null
         jobCount?: number
+        /** PROD / TEST，存量批次由后端补成 PROD */
+        environment?: string
+        environmentLabel?: string
+        /** REGRESSION / AUTOMATION，存量批次由后端补成 REGRESSION */
+        track?: string
+        trackLabel?: string
       }>
     >(`/online-regression/runs?limit=${encodeURIComponent(String(limit))}`)
   }
@@ -1204,6 +2326,98 @@ class ApiClient {
       body: JSON.stringify(body)
     })
   }
+
+  // ==================== 失败归因 ====================
+
+  /** 当前结论（人工优先）；没有归因过时后端返回 204，这里归一为 null */
+  async getFailureDiagnosis(taskId: string) {
+    const res = await fetch(`${this.baseURL}/failure-diagnosis/${encodeURIComponent(taskId)}`)
+    if (res.status === 204) return null
+    if (!res.ok) throw new Error(`获取归因失败: ${res.status}`)
+    return res.json()
+  }
+
+  /** 全部结论，最新在前。AI 与人工的分歧都留在这里 */
+  async getFailureDiagnosisHistory(taskId: string) {
+    return this.request<any[]>(`/failure-diagnosis/${encodeURIComponent(taskId)}/history`)
+  }
+
+  /** 分类字典：值 + 中文名 + 对应处理动作 */
+  async getFailureDiagnosisCategories() {
+    return this.request<Array<{ value: string; label: string; action: string }>>(
+      '/failure-diagnosis/categories'
+    )
+  }
+
+  /** 人工改判：另存一条 source=HUMAN 的结论，不覆盖 AI 那条 */
+  async saveFailureDiagnosis(taskId: string, body: Record<string, unknown>) {
+    return this.request(`/failure-diagnosis/${encodeURIComponent(taskId)}`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  /** 采纳候选定位；旧定位由后端降级进备用，不会丢 */
+  async applyDiagnosisLocator(id: string, operator?: string) {
+    const q = operator ? `?operator=${encodeURIComponent(operator)}` : ''
+    return this.request(`/failure-diagnosis/records/${encodeURIComponent(id)}/apply-locator${q}`, {
+      method: 'POST'
+    })
+  }
+
+  /** 认可这条结论。没有这个动作，「人工改判率」分不清「判对了」和「没人看」 */
+  async reviewDiagnosis(id: string, operator?: string) {
+    const q = operator ? `?operator=${encodeURIComponent(operator)}` : ''
+    return this.request(`/failure-diagnosis/records/${encodeURIComponent(id)}/review${q}`, {
+      method: 'POST'
+    })
+  }
+
+}
+
+export interface AiTestCaseStep {
+  step?: number
+  action?: string
+  target?: string
+  expected?: string
+}
+
+export interface AiTestCaseDto {
+  id?: number
+  caseId?: string
+  case_id?: string
+  pageName?: string
+  page_name?: string
+  category?: string
+  title: string
+  priority?: string
+  type?: string
+  precondition?: string
+  steps?: AiTestCaseStep[]
+  screenshotUrl?: string
+  platform?: string
+  appId?: string
+  source?: string
+  status?: string
+  batchId?: string
+  module?: string
+  subModule?: string
+  testItem?: string
+  testPoint?: string
+  expectedResult?: string
+  remark?: string
+  flowId?: string
+  /** RECOMMENDED | PARTIAL | NOT_RECOMMENDED；空＝未评估 */
+  automationAdvice?: string | null
+  /** TESTING | ONLINE */
+  releaseStage?: string | null
+  automated?: boolean
+  flowName?: string
+  flowMissing?: boolean
+  lastRunStatus?: string
+  lastRunAt?: string
+  createdAt?: string
+  updatedAt?: string
 }
 
 export const apiClient = new ApiClient(API_BASE_URL)

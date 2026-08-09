@@ -1,5 +1,5 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { apiClient } from '@/api'
 import {
   ACCEPT_EXTS,
@@ -18,7 +18,7 @@ import {
 const welcome: ChatMsg = {
   role: 'assistant',
   content:
-    '你好！我是 AI 助手，你的测试专属助手。\n\n我可以帮你：\n• 监控 H5/App 页面元素变化\n• 记住并检索测试流程（知识库）\n• 执行自动化工作流 / 生成报告\n\n直接说需求，或点下方快捷按钮开始。'
+    '你好！我是 AI 助手（千问）。\n\n我可以帮你：\n• 按问题检索「知识手册」短记并展示命中卡片\n• 记住并检索测试流程（知识库）\n• 拖入需求/截图后点「生成测试用例」\n• 监控 H5/App 页面元素变化\n\n直接说需求即可。例如：接口测试要覆盖哪些点？'
 }
 
 const TIPS_SEEN_KEY = 'codewords-agent-tips-seen'
@@ -48,6 +48,21 @@ export function useAgent() {
   const pendingFiles = ref<PendingFile[]>([])
   const dragOver = ref(false)
   const uploading = ref(false)
+  /** 最近一次生成的用例（右侧「用例」面板） */
+  const lastGeneratedCases = ref<{
+    page?: string
+    total?: number
+    category?: string
+    cases: Array<{
+      case_id?: string
+      caseId?: string
+      title?: string
+      priority?: string
+      type?: string
+      precondition?: string
+      steps?: Array<{ step?: number; action?: string; target?: string; expected?: string }>
+    }>
+  } | null>(null)
 
   const knowledgeCountDisplay = computed(
     () => status.value?.knowledgeCount ?? knowledgeItems.value.length
@@ -92,10 +107,12 @@ export function useAgent() {
       resp?.result ??
       (typeof resp === 'string' ? resp : formatJson(resp))
     const actions = resp?.actions_executed || resp?.actions || undefined
+    const handbookHits = Array.isArray(resp?.handbookHits) ? resp.handbookHits : undefined
     return {
       role: 'assistant',
       content: typeof content === 'string' ? content : formatJson(content),
-      actions: Array.isArray(actions) ? actions : undefined
+      actions: Array.isArray(actions) ? actions : undefined,
+      handbookHits
     }
   }
 
@@ -109,7 +126,7 @@ export function useAgent() {
     try {
       status.value = await apiClient.getCodeWordsStatus()
     } catch (e: any) {
-      ElMessage.error(e?.message || '获取 CodeWords 状态失败')
+      ElMessage.error(e?.message || '获取 AI 助手状态失败')
     }
   }
 
@@ -179,6 +196,10 @@ export function useAgent() {
   }
 
   function onChip(id: string) {
+    if (id === 'cases') {
+      void generateTestCasesFromAgent()
+      return
+    }
     const presets: Record<string, string> = {
       save: '记住：登录流程是 打开APP → 点击登录按钮 → 输入用户名密码 → 点击确认 → 跳转首页。测试时要验证 token 是否正确存储。',
       monitor: `帮我监控这个 H5 页面元素：${monitorUrl.value}`,
@@ -190,10 +211,179 @@ export function useAgent() {
   }
 
   function onQuick(id: string) {
+    if (id === 'cases') {
+      void generateTestCasesFromAgent()
+      return
+    }
     onChip(id)
     if (id === 'monitor') {
       activeMode.value = 'monitor'
       rightTab.value = 'monitor'
+    }
+  }
+
+  function guessPageName(text: string): string {
+    const m = text.match(/(?:页面|模块|功能)[：:]\s*([^\n，,。]{2,40})/)
+    if (m?.[1]) return m[1].trim()
+    const line = text
+      .split('\n')
+      .map((s) => s.trim())
+      .find((s) => s.length >= 2 && s.length <= 40 && !s.startsWith('请根据'))
+    if (line && line !== '测试页面') return line
+    return ''
+  }
+
+  async function askPageName(defaultName = ''): Promise<string | null> {
+    try {
+      const { value } = await ElMessageBox.prompt(
+        '请填写真实页面名（如：战绩详情页 / 击杀集锦页）',
+        '生成测试用例',
+        {
+          confirmButtonText: '开始生成',
+          cancelButtonText: '取消',
+          inputValue: defaultName || '战绩详情页',
+          inputPattern: /.{2,40}/,
+          inputErrorMessage: '请填写 2～40 字的页面名'
+        }
+      )
+      const v = String(value || '').trim()
+      return v || null
+    } catch {
+      return null
+    }
+  }
+
+  function pickTestCases(payload: any): any[] | null {
+    if (Array.isArray(payload?.test_cases) && payload.test_cases.length) return payload.test_cases
+    if (Array.isArray(payload?.data?.test_cases) && payload.data.test_cases.length) {
+      return payload.data.test_cases
+    }
+    if (Array.isArray(payload?.result?.test_cases) && payload.result.test_cases.length) {
+      return payload.result.test_cases
+    }
+    return null
+  }
+
+  function formatTestCasesMessage(cases: any[], page?: string, savedHint?: string): string {
+    let msg = `✅ 已生成 **${cases.length}** 条测试用例`
+    if (page) msg += `（${page}）`
+    msg += '：\n\n'
+    for (const c of cases) {
+      const id = c.case_id || c.caseId || 'TC'
+      const prio = c.priority || 'P1'
+      msg += `**${id}** ${c.title || ''} \`${prio}\`\n`
+      if (c.precondition) msg += `前置：${c.precondition}\n`
+      const steps = Array.isArray(c.steps) ? c.steps : []
+      for (const s of steps) {
+        msg += `  ${s.step ?? ''}. ${s.action || ''} → ${s.target || ''} → 预期：${s.expected || ''}\n`
+      }
+      msg += '\n'
+    }
+    if (savedHint) msg += savedHint
+    return msg
+  }
+
+  /**
+   * 快捷「生成测试用例」：输入框文字 + 待上传文件 → multipart（图转 base64）→ 聊天 + 右侧面板。
+   */
+  async function generateTestCasesFromAgent() {
+    if (loading.value || uploading.value) return
+    if (!status.value?.configured) {
+      ElMessage.warning('千问未配置：请在 application.yml 填写 diagnosis.ai.api-key')
+      return
+    }
+
+    const typed = input.value.trim()
+    const pending = [...pendingFiles.value]
+    if (!typed && !pending.length) {
+      ElMessage.warning('请先输入需求文字，或拖入/粘贴 PDF、Word、截图')
+      return
+    }
+
+    const guessed = guessPageName(typed)
+    const pageName = await askPageName(guessed)
+    if (!pageName) return
+
+    messages.value.push({
+      role: 'user',
+      content: typed
+        ? `【生成测试用例】页面：${pageName}\n${typed}`
+        : `【生成测试用例】页面：${pageName} · 已上传 ${pending.length} 个文件`
+    })
+    messages.value.push({ role: 'assistant', content: '正在生成测试用例…' })
+    input.value = ''
+    clearPendingFiles()
+    await scrollBottom()
+    loading.value = true
+    uploading.value = true
+
+    try {
+      const generated = await apiClient.generateAiTestCasesUpload({
+        page_name: pageName,
+        text_content: typed || undefined,
+        requirements: typed || undefined,
+        files: pending.map((p) => p.file)
+      })
+      const cases = pickTestCases(generated)
+      messages.value.pop()
+      if (!cases?.length) {
+        messages.value.push({
+          role: 'assistant',
+          content: '生成器未返回 test_cases，原始响应：\n' + formatJson(generated)
+        })
+        pushLog('测试用例生成', false)
+        await persistConversation()
+        await scrollBottom()
+        return
+      }
+
+      const category =
+        localStorage.getItem('ai-test-case-category') || 'wmpvp-android'
+      let savedHint = ''
+      try {
+        await apiClient.saveAiTestCasesBatch({
+          page_name: (generated as any)?.page || pageName,
+          category,
+          status: 'DRAFT',
+          test_cases: cases
+        })
+        savedHint = `\n已保存到用例库「${category}」，可在侧栏「测试用例」中查看。\n`
+      } catch (e: any) {
+        savedHint = `\n（落库失败：${e?.message || '未知错误'}，仍可在下方查看生成结果）\n`
+      }
+
+      lastGeneratedCases.value = {
+        page: (generated as any)?.page || pageName,
+        total: cases.length,
+        category,
+        cases
+      }
+      rightTab.value = 'cases'
+      messages.value.push({
+        role: 'assistant',
+        content: formatTestCasesMessage(
+          cases,
+          (generated as any)?.page || pageName,
+          savedHint
+        )
+      })
+      pushLog('测试用例生成', true)
+      await persistConversation()
+      ElMessage.success(`已生成 ${cases.length} 条用例`)
+    } catch (e: any) {
+      if (messages.value[messages.value.length - 1]?.content?.includes('正在生成')) {
+        messages.value.pop()
+      }
+      messages.value.push({
+        role: 'assistant',
+        content: `❌ 生成失败：${e?.message || '请检查网络与千问配置'}`
+      })
+      pushLog('测试用例生成', false)
+      await persistConversation()
+    } finally {
+      loading.value = false
+      uploading.value = false
+      await scrollBottom()
     }
   }
 
@@ -481,6 +671,7 @@ export function useAgent() {
     pendingFiles,
     dragOver,
     uploading,
+    lastGeneratedCases,
     switchMode,
     onRightTab,
     onChip,

@@ -6,6 +6,7 @@
         :key="c.id"
         type="button"
         class="xk-chip"
+        :class="{ primary: c.id === 'cases' }"
         @click="$emit('chip', c.id)"
       >
         {{ c.label }}
@@ -44,6 +45,14 @@
         </div>
         <div class="xk-file-actions">
           <button type="button" class="xk-chip" @click="fileInputRef?.click()">继续添加</button>
+          <button
+            type="button"
+            class="xk-chip primary"
+            :disabled="uploading || loading || !configured"
+            @click="$emit('chip', 'cases')"
+          >
+            生成测试用例
+          </button>
           <button
             type="button"
             class="xk-chip accent"
@@ -107,6 +116,7 @@ const emit = defineEmits<{
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
 const chips = [
+  { id: 'cases', label: '生成测试用例' },
   { id: 'save', label: '存入流程' },
   { id: 'monitor', label: '监控页面' },
   { id: 'query', label: '查询知识' },
@@ -132,11 +142,11 @@ function onKeydown(e: KeyboardEvent) {
   --panel: #eceff3;
   --panel-2: #e2e6eb;
   --line: #cdd3dc;
-  --text: #303133;
-  --muted: #606266;
-  --accent: #409eff;
+  --text: var(--app-text);
+  --muted: var(--app-text-secondary);
+  --accent: var(--app-primary);
   --accent-2: #337ecc;
-  --danger: #f56c6c;
+  --danger: var(--app-danger);
   flex-shrink: 0;
   background: #e8ebef;
   border-top: 1px solid var(--line);
@@ -160,7 +170,7 @@ function onKeydown(e: KeyboardEvent) {
 }
 .xk-drop.active {
   border-color: var(--accent);
-  background: rgba(64, 158, 255, 0.08);
+  background: rgba(24, 144, 255, 0.08);
 }
 .xk-drop.hasFiles {
   border-style: solid;
@@ -251,6 +261,16 @@ function onKeydown(e: KeyboardEvent) {
   color: var(--accent);
   border-color: var(--accent);
 }
+.xk-chip.primary {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.xk-chip.primary:hover {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+  color: #fff;
+}
 .xk-composer {
   display: flex;
   gap: 10px;
@@ -261,7 +281,7 @@ function onKeydown(e: KeyboardEvent) {
 .xk-input {
   flex: 1;
   resize: none;
-  background: #f5f7fa;
+  background: var(--app-surface);
   border: 1px solid var(--line);
   border-radius: 12px;
   color: var(--text);
