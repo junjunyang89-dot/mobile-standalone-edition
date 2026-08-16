@@ -17,6 +17,9 @@
     "build:mac": "vite build && electron-builder --mac",
     "build:mac:dmg": "vite build && electron-builder --mac --config.mac.target=dmg",
     "build:mac:zip": "vite build && electron-builder --mac --config.mac.target=zip",
+    "build:installer": "node scripts/build-installer.mjs mac",
+    "build:installer:mac": "node scripts/build-installer.mjs mac",
+    "build:installer:win": "node scripts/build-installer.mjs win",
     "build:server": "tsc -p server/tsconfig.json",
     "preview": "vite preview",
     "electron:dev": "concurrently \"npm run dev:server\" \"vite\" \"wait-on http://localhost:5173 && electron .\"",
@@ -71,6 +74,17 @@
     "directories": {
       "output": "release"
     },
+    "extraResources": [
+      {
+        "from": "resources/backend",
+        "to": "backend",
+        "filter": ["*.jar"]
+      },
+      {
+        "from": "resources/control-plane.json",
+        "to": "control-plane.json"
+      }
+    ],
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
@@ -88,7 +102,6 @@
     ],
     "asar": false,
     "mac": {
-      "icon": "build/icon.icns",
       "category": "public.app-category.developer-tools",
       "target": [
         "dmg",
@@ -99,7 +112,6 @@
       "identity": null
     },
     "win": {
-      "icon": "build/icon.ico",
       "target": [
         "nsis",
         "portable"
@@ -109,10 +121,10 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "include": "build/installer.nsh"
     },
     "linux": {
-      "icon": "build/icon.png",
       "target": [
         "AppImage",
         "deb"

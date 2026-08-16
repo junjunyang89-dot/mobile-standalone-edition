@@ -53,7 +53,14 @@
           <el-input v-model="form.nameZh" placeholder="如 完美世界电竞（国内）" />
         </el-form-item>
         <el-form-item label="Android 包名">
-          <el-input v-model="form.androidPackage" placeholder="如 com.pwrd.steam.esports" />
+          <el-input
+            v-model="form.androidPackage"
+            :placeholder="
+              form.id === 'DOMESTIC_ESPORTS_HARMONY'
+                ? '鸿蒙 bundle 名（该应用暂用此字段）'
+                : '如 com.pwrd.steam.esports'
+            "
+          />
         </el-form-item>
         <el-form-item label="iOS Bundle ID">
           <el-input v-model="form.iosBundleId" placeholder="如 com.wmzq.esportapp" />

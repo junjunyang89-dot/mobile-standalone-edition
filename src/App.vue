@@ -1,14 +1,34 @@
 <template>
   <el-config-provider :locale="locale">
-    <router-view />
+    <router-view v-if="ready" />
   </el-config-provider>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
+import { apiClient } from './api'
 
 const locale = ref(zhCn)
+const ready = ref(false)
+
+onMounted(async () => {
+  try {
+    const api = window.electronAPI
+    if (api?.isPackaged) {
+      const packaged = await api.isPackaged()
+      if (packaged) {
+        const cfg = await api.getNodeConfig()
+        if (cfg.controlPlaneUrl && !/127\.0\.0\.1|localhost|::1/i.test(cfg.controlPlaneUrl)) {
+          apiClient.setBaseUrl(cfg.controlPlaneUrl)
+        }
+        if (cfg.workerUrl) apiClient.setWorkerBaseUrl(cfg.workerUrl)
+      }
+    }
+  } finally {
+    ready.value = true
+  }
+})
 </script>
 
 <style>

@@ -1,6 +1,14 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { existsSync, mkdirSync } from 'fs'
+import {
+  disposeLocalWorker,
+  ensureLocalWorker,
+  loadNodeConfig,
+  localWorkerUrl,
+  restartLocalWorker,
+  saveNodeConfig
+} from './workerSidecar'
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 let mainWindow: BrowserWindow | null = null
@@ -91,6 +99,14 @@ app.whenReady().then(async () => {
 
   createWindow()
 
+  if (app.isPackaged) {
+    ensureLocalWorker().then((r) => {
+      console.log('[worker]', r.message, r.url)
+    }).catch((err) => {
+      console.error('[worker] start failed', err)
+    })
+  }
+
   // 延迟加载服务（在后台加载，避免阻塞启动）
   loadServices().catch(err => {
     console.error('Background service loading failed:', err)
@@ -104,12 +120,14 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => {
+  disposeLocalWorker()
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
 
 app.on('before-quit', () => {
+  disposeLocalWorker()
   if (deviceManager && typeof deviceManager.stop === 'function') {
     deviceManager.stop()
   }
@@ -123,6 +141,28 @@ function setupIpcHandlers() {
   ipcMain.handle('get-app-version', () => {
     return app.getVersion()
   })
+
+  ipcMain.handle('node:is-packaged', () => app.isPackaged)
+  const nodeConfigPayload = () => {
+    const cfg = loadNodeConfig()
+    return {
+      ...cfg,
+      workerUrl: localWorkerUrl(cfg),
+      packaged: app.isPackaged
+    }
+  }
+  ipcMain.handle('node:get-config', () => nodeConfigPayload())
+  ipcMain.on('node:get-config-sync', (event) => {
+    event.returnValue = nodeConfigPayload()
+  })
+  ipcMain.handle('node:set-control-plane', async (_, url: string) => {
+    saveNodeConfig({ controlPlaneUrl: String(url || '').trim() })
+    if (app.isPackaged) {
+      return restartLocalWorker()
+    }
+    return { ok: true, url: localWorkerUrl(), message: '开发模式未拉起安装包内的执行节点' }
+  })
+  ipcMain.handle('node:worker-status', () => ensureLocalWorker())
 
   // 设备管理（延迟加载；无 native 模块时返回空，不抛错，前端可依赖后端 HTTP 接口）
   ipcMain.handle('device:list', async () => {

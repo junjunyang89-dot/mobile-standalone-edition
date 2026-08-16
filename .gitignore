@@ -42,3 +42,7 @@ data/
 .env
 .env.local
 .env.*.local
+
+# 打进安装包的后端 jar（由 build-installer 脚本复制）
+resources/backend/*.jar
+

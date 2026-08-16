@@ -101,10 +101,13 @@
         </div>
       </div>
 
-      <!-- 这段是整个变量系统的用法说明，比任何字段都重要 -->
-      <el-alert type="info" :closable="false" class="howto">
-        <template #title>token 别在这里填死</template>
-        <div class="howto-body">
+      <!-- 用法说明默认收起：常驻占一整屏，配过的人每次进来都要滚过去 -->
+      <div class="howto" :class="{ open: howtoOpen }">
+        <button type="button" class="howto-toggle" @click="howtoOpen = !howtoOpen">
+          <span class="howto-toggle-title">token 别在这里填死</span>
+          <span class="howto-toggle-hint">{{ howtoOpen ? '收起' : '点击展开：登录抽 token、UI 流程怎么用变量' }}</span>
+        </button>
+        <div v-show="howtoOpen" class="howto-body">
           填死的 token 一过期，几百条用例集体变红，你得回来手动粘一个新的 —— 那就成了每次都要人管的事。
           正确做法是让登录用例把它抽出来：
           <ol>
@@ -113,14 +116,14 @@
             <li>其余用例的请求头写 <code v-pre>token: {{token}}</code></li>
           </ol>
           抽出来的值只在<strong>本次执行</strong>内有效，下一轮重新登录取新的。
-          <div style="margin-top: 10px">
+          <div class="howto-ui">
             <strong>APP UI 自动化同理。</strong>用例两边一样、<strong>数据两边不一样</strong>——
             测试环境和线上的登录手机号、搜索关键词、比赛 ID 都不是同一份。
             把它们配成变量（如 <code>phone</code>、<code>keyword</code>），流程里写
             <code v-pre>${phone}</code>，一条流程就能既跑线上包又跑测试包，流程本身一个字不用改。
           </div>
         </div>
-      </el-alert>
+      </div>
     </el-card>
 
     <el-dialog v-model="dialog" :title="editing ? '编辑变量' : '新增变量'" width="520px" destroy-on-close>
@@ -171,6 +174,8 @@ import { apiClient } from '../api'
  * 只管变量。baseUrl 归「URL 管理」（api_url_entries，按项目可配多个网关），这里只读地显示一下——
  * 同一个值有两个入口能改，迟早对不上，那种不一致查起来极其费时。
  */
+
+const howtoOpen = ref(false)
 
 const BUILTINS = [
   { name: '$timestamp', ref: '{{$timestamp}}', desc: '13 位毫秒时间戳' },
@@ -502,14 +507,43 @@ onMounted(async () => {
 .builtin-desc {
   color: var(--el-text-color-secondary);
 }
-.howto :deep(.el-alert__title) {
+.howto {
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--el-color-info) 6%, var(--el-bg-color));
+}
+.howto.open {
+  background: color-mix(in srgb, var(--el-color-info) 8%, var(--el-bg-color));
+}
+.howto-toggle {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.howto-toggle:hover .howto-toggle-title {
+  color: var(--el-color-primary);
+}
+.howto-toggle-title {
   font-size: 14px;
   font-weight: 600;
+  color: var(--el-text-color-primary);
+  white-space: nowrap;
+}
+.howto-toggle-hint {
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
 }
 .howto-body {
   font-size: 13px;
   line-height: 1.8;
-  margin-top: 6px;
+  padding: 0 16px 14px;
+  color: var(--el-text-color-regular);
 }
 .howto-body ol {
   margin: 8px 0 4px;
@@ -519,6 +553,9 @@ onMounted(async () => {
   padding: 1px 5px;
   border-radius: 4px;
   background: var(--el-fill-color);
+}
+.howto-ui {
+  margin-top: 10px;
 }
 .form-tip {
   margin-top: 6px;

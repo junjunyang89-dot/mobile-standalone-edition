@@ -1,6 +1,67 @@
 import type { SupportedDevicePlatform } from '@/utils/platform'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:3000/api'
+const API_BASE_STORAGE_KEY = 'apiBaseUrl'
+const WORKER_BASE_STORAGE_KEY = 'workerBaseUrl'
+const BAKED_CONTROL_PLANE_URL = String(import.meta.env.VITE_CONTROL_PLANE_URL || '').trim()
+const DEV_DEFAULT_API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:3000/api'
+const DEFAULT_API_BASE_URL = BAKED_CONTROL_PLANE_URL || DEV_DEFAULT_API_BASE_URL
+
+function isLoopbackApiUrl(url: string) {
+  try {
+    const host = new URL(url).hostname
+    return host === '127.0.0.1' || host === 'localhost' || host === '::1'
+  } catch {
+    return false
+  }
+}
+
+function normalizeApiBaseUrl(raw: string) {
+  const s = raw.trim().replace(/\/+$/, '')
+  if (!s) return DEFAULT_API_BASE_URL
+  return s.endsWith('/api') ? s : `${s}/api`
+}
+
+function readStoredUrl(key: string, fallback: string) {
+  try {
+    const saved = localStorage.getItem(key)
+    if (saved && saved.trim()) return normalizeApiBaseUrl(saved)
+  } catch {
+    /* 无 localStorage 时退回默认 */
+  }
+  return fallback
+}
+
+function bootControlPlaneUrl() {
+  try {
+    const url = String(window.bootNodeConfig?.controlPlaneUrl || '').trim()
+    if (url && !isLoopbackApiUrl(url)) return normalizeApiBaseUrl(url)
+  } catch {
+    /* 非 Electron 或 preload 未注入 */
+  }
+  return ''
+}
+
+function resolveApiBaseUrl() {
+  const boot = bootControlPlaneUrl()
+  const stored = readStoredUrl(API_BASE_STORAGE_KEY, '')
+  if (stored && !isLoopbackApiUrl(stored)) return stored
+  if (boot) return boot
+  if (
+    import.meta.env.PROD &&
+    stored &&
+    isLoopbackApiUrl(stored) &&
+    BAKED_CONTROL_PLANE_URL &&
+    !isLoopbackApiUrl(BAKED_CONTROL_PLANE_URL)
+  ) {
+    return normalizeApiBaseUrl(BAKED_CONTROL_PLANE_URL)
+  }
+  if (!stored) return boot || DEFAULT_API_BASE_URL
+  return stored
+}
+
+function resolveWorkerBaseUrl() {
+  return readStoredUrl(WORKER_BASE_STORAGE_KEY, resolveApiBaseUrl())
+}
 
 interface ApiResponse<T = any> {
   success: boolean
@@ -10,9 +71,11 @@ interface ApiResponse<T = any> {
 
 class ApiClient {
   private baseURL: string
+  private workerBaseURL: string
 
-  constructor(baseURL: string) {
+  constructor(baseURL: string, workerBaseURL?: string) {
     this.baseURL = baseURL
+    this.workerBaseURL = workerBaseURL || baseURL
   }
 
   /** 用于拼接步骤截图等相对路径：img src="{baseUrl}/{entry.screenshotUrl}" */
@@ -20,8 +83,43 @@ class ApiClient {
     return this.baseURL
   }
 
+  getWorkerBaseUrl(): string {
+    return this.workerBaseURL
+  }
+
+  setBaseUrl(url: string) {
+    let next = normalizeApiBaseUrl(url)
+    if (import.meta.env.PROD && isLoopbackApiUrl(next)) {
+      const keep = bootControlPlaneUrl() || BAKED_CONTROL_PLANE_URL
+      if (keep && !isLoopbackApiUrl(keep)) next = normalizeApiBaseUrl(keep)
+    }
+    this.baseURL = next
+    try {
+      localStorage.setItem(API_BASE_STORAGE_KEY, this.baseURL)
+    } catch {
+      /* ignore */
+    }
+  }
+
+  setWorkerBaseUrl(url: string) {
+    this.workerBaseURL = normalizeApiBaseUrl(url)
+    try {
+      localStorage.setItem(WORKER_BASE_STORAGE_KEY, this.workerBaseURL)
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** 设备扫描和真正跑流程必须打到插着手机的那台执行节点 */
+  private endpointUrl(endpoint: string) {
+    const path = endpoint.split('?')[0]
+    const useWorker = path.startsWith('/devices') || /\/ui-flows\/[^/]+\/execute$/.test(path)
+    const base = useWorker ? this.workerBaseURL : this.baseURL
+    return `${base}${endpoint}`
+  }
+
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const url = `${this.baseURL}${endpoint}`
+    const url = this.endpointUrl(endpoint)
     const response = await fetch(url, {
       ...options,
       headers: {
@@ -47,6 +145,32 @@ class ApiClient {
   async getVersion() {
     const result = await this.request<{ version: string }>('/health/version')
     return result
+  }
+
+  async pingHealth(baseUrl?: string) {
+    const base = normalizeApiBaseUrl(baseUrl || this.baseURL)
+    const response = await fetch(`${base}/health`)
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+    return response.json() as Promise<{
+      status?: string
+      nodeId?: string
+      nodeRole?: string
+      executesLocally?: boolean
+    }>
+  }
+
+  async listWorkerNodes() {
+    return this.request<Array<{
+      id: string
+      displayName?: string
+      hostname?: string
+      role?: string
+      baseUrl?: string
+      lastSeen?: string
+      devicesJson?: string
+    }>>('/worker-nodes')
   }
 
   /** 设备列表：GET {baseUrl}/devices，响应为 JSON 数组，无数据时为 [] */
@@ -694,10 +818,14 @@ class ApiClient {
     componentOnly?: boolean
     /** 线上回归可选用例：ONLINE/SHARED、启用、非组件 */
     forRegression?: boolean
+    /** true＝跑已发布的线上包，只列「已上线」的流程 */
+    releasedPackage?: boolean
     /** 环境：PROD（默认）/ TEST */
     environment?: string
     /** 批量执行轨道：REGRESSION（默认）/ AUTOMATION，与 forRegression 配合用 */
     track?: string
+    /** 流程名称模糊搜索 */
+    name?: string
   }) {
     const q = new URLSearchParams()
     if (params?.appId) q.append('appId', params.appId)
@@ -705,8 +833,10 @@ class ApiClient {
     if (params?.catalog) q.append('catalog', params.catalog)
     if (params?.componentOnly != null) q.append('componentOnly', String(params.componentOnly))
     if (params?.forRegression != null) q.append('forRegression', String(params.forRegression))
+    if (params?.releasedPackage != null) q.append('releasedPackage', String(params.releasedPackage))
     if (params?.environment) q.append('environment', params.environment)
     if (params?.track) q.append('track', params.track)
+    if (params?.name) q.append('name', params.name)
     const qs = q.toString()
     return this.request<any[]>(qs ? `/ui-flows?${qs}` : '/ui-flows')
   }
@@ -747,6 +877,23 @@ class ApiClient {
   /** 这条流程用到的定位变量名，执行对话框据此列输入框 */
   async getFlowLocatorVariables(flowId: string) {
     return this.request<string[]>(`/ui-flows/${encodeURIComponent(flowId)}/locator-variables`)
+  }
+
+  /** 扫这条流程里写死的环境数据（手机号 / 赛事 ID / 按文案定位），只报不改 */
+  async scanFlowEnvData(flowId: string) {
+    return this.request<{
+      flowId: string
+      flowName: string
+      summary: string
+      hits: Array<{
+        stepNo: string
+        paramName: string
+        value: string
+        kind: string
+        suggestVariable?: string
+        reason: string
+      }>
+    }>(`/ui-flows/${encodeURIComponent(flowId)}/env-data-scan`)
   }
 
   /** 执行流程：创建 UI_FLOW_TEST 任务并默认立即 run */
@@ -852,6 +999,64 @@ class ApiClient {
 
   async deleteUiH5Page(id: string) {
     return this.request<{ ok: boolean }>(`/ui-h5-pages/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  /** 版本需求归档 */
+  async listVersionArchives() {
+    return this.request<any[]>('/version-archives')
+  }
+
+  async getVersionArchive(id: string) {
+    return this.request<any>(`/version-archives/${encodeURIComponent(id)}`)
+  }
+
+  async syncVersionArchive(body: {
+    appVersion: string
+    releaseLabel: string
+    productLine?: string
+    releaseDate?: string
+  }) {
+    return this.request<any>('/version-archives/sync', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async closeVersionArchive(
+    id: string,
+    body: { dryRun?: boolean; confirm?: boolean; issueKeys?: string[]; comment?: string }
+  ) {
+    return this.request<any>(`/version-archives/${encodeURIComponent(id)}/close`, {
+      method: 'POST',
+      body: JSON.stringify(body || {})
+    })
+  }
+
+  async deleteVersionArchive(id: string) {
+    return this.request<{ ok: boolean }>(`/version-archives/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    })
+  }
+
+  async reopenAssignVersionIssue(
+    issueKey: string,
+    body: { username: string; comment?: string }
+  ) {
+    return this.request<{ ok: boolean; message?: string }>(
+      `/version-archives/jira/${encodeURIComponent(issueKey)}/reopen-assign`,
+      { method: 'POST', body: JSON.stringify(body) }
+    )
+  }
+
+  async reopenAssignVersionIssuesBatch(body: {
+    issueKeys: string[]
+    username: string
+    comment?: string
+  }) {
+    return this.request<{ ok: boolean; logs?: string[]; message?: string }>(
+      '/version-archives/jira/reopen-assign-batch',
+      { method: 'POST', body: JSON.stringify(body) }
+    )
   }
 
   /** 发版文档：预览抽取（不建 Wiki 页） */
@@ -1226,6 +1431,17 @@ class ApiClient {
   }
 
   // ---------- 流程覆盖了哪些用例（真相存在用例的 flowId 上，这里只是另一个编辑入口） ----------
+
+  /** 勾了这批流程还缺哪些前置；回归轨只提示不自动补 */
+  async resolveFlowDependencies(flowIds: string[]) {
+    return this.request<{
+      orderedIds: string[]
+      missing: Array<{ id: string; name: string }>
+    }>('/ui-flows/resolve-dependencies', {
+      method: 'POST',
+      body: JSON.stringify({ flowIds })
+    })
+  }
 
   async getFlowCases(flowId: string) {
     return this.request<any[]>(`/ui-flows/${encodeURIComponent(flowId)}/cases`)
@@ -2269,6 +2485,13 @@ class ApiClient {
     track?: string
     /** 复位流程：每条用例前先跑一次，把设备带回已知起点 */
     resetFlowId?: string
+    /**
+     * 批次级装包策略：NONE（默认，用设备上现有的包）/ LATEST / SPECIFIC / PREVIOUS_THEN_LATEST。
+     * 装包不作为流程步骤——它不是用例，跑通不说明任何功能是好的，混进步骤列表只会稀释通过率。
+     */
+    installStrategy?: string
+    /** installStrategy=SPECIFIC 时要装的蒲公英 buildKey */
+    installBuildKey?: string
   }) {
     return this.request<{
       id: string
@@ -2510,4 +2733,4 @@ export interface AiTestCaseDto {
   updatedAt?: string
 }
 
-export const apiClient = new ApiClient(API_BASE_URL)
+export const apiClient = new ApiClient(resolveApiBaseUrl(), resolveWorkerBaseUrl())

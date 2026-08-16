@@ -167,20 +167,29 @@
           </el-select>
         </el-form-item>
         <el-form-item label="项目" :required="formProjectRequired">
-          <el-select
-            v-model="form.project"
-            clearable
-            filterable
-            style="width: 100%"
-            :placeholder="formProjectRequired ? '业务类必选（来自项目管理）' : '可选，来自项目管理'"
-          >
-            <el-option
-              v-for="p in projectOptions"
-              :key="p.code"
-              :label="`${p.name || p.code}（${p.code}）`"
-              :value="p.code"
-            />
-          </el-select>
+          <div class="project-select-row">
+            <el-select
+              v-model="form.project"
+              clearable
+              filterable
+              style="flex: 1; min-width: 0"
+              :placeholder="formProjectRequired ? '业务类必选（来自项目管理）' : '可选，来自项目管理'"
+            >
+              <el-option
+                v-for="p in projectOptions"
+                :key="p.code"
+                :label="`${p.name || p.code}（${p.code}）`"
+                :value="p.code"
+              />
+              <template #empty>
+                <div class="project-select-empty">
+                  <p>暂无可用项目</p>
+                  <el-button type="primary" link size="small" @click="openQuickProject">新增项目</el-button>
+                </div>
+              </template>
+            </el-select>
+            <el-button type="primary" link @click="openQuickProject">新增项目</el-button>
+          </div>
         </el-form-item>
         <el-form-item label="标题" required>
           <el-input v-model="form.title" placeholder="一句话概括，方便列表识别" maxlength="255" />
@@ -240,6 +249,34 @@
         <el-button type="primary" :loading="saving" @click="save">保存</el-button>
       </template>
     </el-drawer>
+
+    <el-dialog
+      v-model="projectDialog"
+      title="新增项目"
+      width="420px"
+      append-to-body
+      destroy-on-close
+      :close-on-click-modal="false"
+    >
+      <el-form label-width="72px" size="small" @submit.prevent>
+        <el-form-item label="编码" required>
+          <el-input
+            v-model="projectForm.code"
+            placeholder="如 android-domestic-esports（创建后不可改）"
+          />
+        </el-form-item>
+        <el-form-item label="名称" required>
+          <el-input v-model="projectForm.name" placeholder="展示名称，如 Android · 国内电竞" />
+        </el-form-item>
+        <el-form-item label="说明">
+          <el-input v-model="projectForm.description" type="textarea" :rows="2" placeholder="可选" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="projectDialog = false">取消</el-button>
+        <el-button type="primary" :loading="projectSaving" @click="saveQuickProject">创建并选用</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -274,6 +311,13 @@ const filterProject = ref('')
 const projectOptions = ref<Array<{ code: string; name?: string }>>([])
 const draftText = ref('')
 const draftFiles = ref<File[]>([])
+const projectDialog = ref(false)
+const projectSaving = ref(false)
+const projectForm = reactive({
+  code: '',
+  name: '',
+  description: ''
+})
 
 const category = ref<HandbookCategoryCode>(DEFAULT_HANDBOOK_CATEGORY)
 
@@ -327,6 +371,40 @@ async function loadProjects() {
   }
 }
 
+function openQuickProject() {
+  projectForm.code = ''
+  projectForm.name = ''
+  projectForm.description = ''
+  projectDialog.value = true
+}
+
+async function saveQuickProject() {
+  const code = projectForm.code.trim()
+  const name = projectForm.name.trim()
+  if (!code || !name) {
+    ElMessage.warning('编码和名称必填')
+    return
+  }
+  projectSaving.value = true
+  try {
+    await apiClient.createApiProject({
+      code,
+      name,
+      description: projectForm.description.trim(),
+      enabled: true,
+      sortOrder: 100
+    })
+    ElMessage.success('项目已创建')
+    projectDialog.value = false
+    await loadProjects()
+    form.project = code
+  } catch (e: any) {
+    ElMessage.error(e?.message || '创建项目失败')
+  } finally {
+    projectSaving.value = false
+  }
+}
+
 async function load() {
   loading.value = true
   try {
@@ -354,6 +432,7 @@ function openCreate() {
   form.tags = ''
   form.imageUrl = ''
   resetDraft()
+  loadProjects()
   drawer.value = true
 }
 
@@ -368,6 +447,7 @@ function openEdit(row: any) {
   form.tags = row.tags || ''
   form.imageUrl = row.imageUrl || ''
   resetDraft()
+  loadProjects()
   drawer.value = true
 }
 
@@ -723,5 +803,23 @@ onMounted(async () => {
   max-height: 220px;
   border-radius: 6px;
   background: var(--app-surface);
+}
+
+.project-select-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.project-select-empty {
+  padding: 12px 8px;
+  text-align: center;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+}
+
+.project-select-empty p {
+  margin: 0 0 4px;
 }
 </style>

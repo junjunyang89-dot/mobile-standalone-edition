@@ -19,7 +19,16 @@
       </template>
 
       <div class="filter-bar">
-        <el-form :inline="true">
+        <el-form :inline="true" @submit.prevent>
+          <el-form-item label="名称">
+            <el-input
+              v-model="filterName"
+              clearable
+              placeholder="流程名称模糊搜索"
+              style="width: 200px"
+              @keyup.enter="loadList"
+            />
+          </el-form-item>
           <el-form-item label="应用">
             <el-select v-model="filterAppId" clearable filterable placeholder="选择应用" style="width: 220px">
               <el-option
@@ -46,6 +55,7 @@
               <el-option label="仅自动化编排" value="AUTOMATION" />
               <el-option label="仅回归" value="ONLINE" />
               <el-option label="仅性能测试" value="PERFORMANCE" />
+              <el-option label="装包准备（不是用例）" value="INSTALL" />
             </el-select>
           </el-form-item>
           <el-form-item label="仅组件">
@@ -85,9 +95,18 @@
             <span class="muted-dash" v-else>—</span>
           </template>
         </el-table-column>
-        <el-table-column prop="environment" label="环境" width="100">
+        <el-table-column prop="environment" label="环境" width="120">
           <template #default="{ row }">
             <el-tag
+              v-if="row.catalog !== 'AUTOMATION' && (row.envBound === false || row.envBound === 0)"
+              size="small"
+              type="info"
+              effect="plain"
+            >
+              不绑环境
+            </el-tag>
+            <el-tag
+              v-else
               size="small"
               :type="row.environment === 'TEST' ? 'warning' : 'success'"
               effect="plain"
@@ -96,11 +115,28 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="catalog" label="用途" width="140">
+        <el-table-column prop="catalog" label="用途" width="170">
           <template #default="{ row }">
             <el-tag size="small" :type="catalogTagType(row.catalog)" effect="light">
               {{ catalogLabel(row.catalog) }}
             </el-tag>
+            <!--
+              存量的装包流程都还标着「回归+自动化」。逐条翻几百行找出来是不现实的，
+              所以直接标出来：含安装步骤、用途却不是「装包准备」的，点一下就能改。
+            -->
+            <el-tooltip
+              v-if="looksLikeInstallFlow(row) && row.catalog !== 'INSTALL'"
+              content="这条流程包含安装步骤，但用途不是「装包准备」——它会混在回归勾选列表里稀释通过率。点击改用途"
+              placement="top"
+            >
+              <el-tag
+                size="small"
+                type="warning"
+                effect="plain"
+                class="catalog-suggest"
+                @click.stop="openEdit(row)"
+              >建议改为装包</el-tag>
+            </el-tooltip>
           </template>
         </el-table-column>
         <el-table-column prop="platform" label="平台" width="110">
@@ -124,9 +160,18 @@
             <span class="flow-desc">{{ row.description || '—' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column label="操作" width="290" fixed="right">
           <template #default="{ row }">
             <el-button type="success" link size="small" @click="openExecute(row)">执行</el-button>
+            <el-button
+              type="warning"
+              link
+              size="small"
+              :loading="scanningId === row.id"
+              @click="openEnvScan(row)"
+            >
+              环境检查
+            </el-button>
             <el-button type="primary" link size="small" @click="openEdit(row)">编辑</el-button>
             <el-button type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
           </template>
@@ -134,6 +179,35 @@
       </el-table>
       <el-empty v-if="!loading && list.length === 0" description="暂无流程，可新建一条「登录」试编排" />
     </el-card>
+
+    <!--
+      跨环境可用性：同一条流程要在测试环境和线上都跑，写死的手机号 / 赛事 ID 就是拦路石。
+      只报不改——那串数字是手机号还是订单号只有人知道，猜错了会把能跑的流程改坏。
+    -->
+    <el-dialog v-model="envScanVisible" width="720px" title="跨环境可用性检查" destroy-on-close>
+      <el-alert
+        :type="envScanHits.length ? 'warning' : 'success'"
+        :closable="false"
+        :title="envScanSummary"
+        show-icon
+      />
+      <div v-if="envScanHits.length" class="env-scan-list">
+        <div v-for="(h, i) in envScanHits" :key="i" class="env-scan-item">
+          <div class="env-scan-top">
+            <el-tag size="small" type="info">第 {{ h.stepNo }} 步</el-tag>
+            <span class="env-scan-param">{{ h.paramName }}</span>
+            <code class="env-scan-value">{{ h.value }}</code>
+            <el-tag v-if="h.suggestVariable" size="small" type="warning">
+              建议改成 {{ h.suggestVariable }}
+            </el-tag>
+          </div>
+          <div class="env-scan-reason">{{ h.reason }}</div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="envScanVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog
       v-model="execVisible"
@@ -381,7 +455,7 @@
     <el-drawer
       v-model="drawerVisible"
       class="ui-flow-drawer"
-      size="92%"
+      size="58%"
       destroy-on-close
       append-to-body
       :close-on-click-modal="false"
@@ -425,7 +499,7 @@
                 运行应用
                 <el-popover placement="top" :width="340" trigger="click">
                   <template #reference>
-                    <el-icon class="form-help-icon" @click.stop><QuestionFilled /></el-icon>
+                    <el-icon class="form-help-icon" @click.prevent.stop><QuestionFilled /></el-icon>
                   </template>
                   <div class="form-help-pop">
                     <p><strong>清空</strong>表示通用流程：回归选电竞/Pog 等都会列出；卸装/启动跟当次所选 APP（应用字典包名）。</p>
@@ -483,7 +557,7 @@
                 环境
                 <el-popover placement="top" :width="340" trigger="click">
                   <template #reference>
-                    <el-icon class="form-help-icon" @click.stop><QuestionFilled /></el-icon>
+                    <el-icon class="form-help-icon" @click.prevent.stop><QuestionFilled /></el-icon>
                   </template>
                   <div class="form-help-pop">
                     <template v-if="linksCases">
@@ -492,16 +566,43 @@
                     </template>
                     <template v-else>
                       <p>这条流程属于哪个环境的用例。<strong>环境和用途是两回事</strong>：环境说的是「验哪个包」，用途说的是「哪个入口用」。</p>
-                      <p>两个环境跑的是两批不同的流程，不会互相串。</p>
+                      <p v-if="form.envBound">开启「绑定环境」时，两个环境跑的是两批不同的流程，不会互相串（装包类请保持开启）。</p>
+                      <p v-else>已关闭「绑定环境」：这条功能验证流程会出现在两个环境的回归列表里。</p>
                     </template>
                   </div>
                 </el-popover>
               </span>
             </template>
-            <el-radio-group v-model="form.environment">
+            <el-radio-group v-model="form.environment" :disabled="!form.envBound && !linksCases">
               <el-radio-button label="PROD">生产</el-radio-button>
               <el-radio-button label="TEST">测试</el-radio-button>
             </el-radio-group>
+          </el-form-item>
+          <!--
+            回归用途下才有意义：装包类必须绑环境；纯功能验证可不绑，发版前线上回归能直接勾到测试侧写好的流程。
+            仅自动化编排本身就不绑环境，不必再开这个开关。
+          -->
+          <el-form-item v-if="!linksCases">
+            <template #label>
+              <span class="form-label-with-help">
+                绑定环境
+                <el-popover placement="top" :width="360" trigger="click">
+                  <template #reference>
+                    <el-icon class="form-help-icon" @click.prevent.stop><QuestionFilled /></el-icon>
+                  </template>
+                  <div class="form-help-pop">
+                    <p><strong>开（默认）</strong>：装包类流程——测试装蒲公英 debug、线上装渠道包，必须按环境隔离。</p>
+                    <p><strong>关</strong>：纯功能验证——登录、评论、赛程等，测试回归 / 发版前线上回归 / 线上巡检都能勾到，不用重写一遍。</p>
+                    <p>关掉后上面的「环境」只作登记参考，不参与回归筛选。</p>
+                  </div>
+                </el-popover>
+              </span>
+            </template>
+            <el-switch
+              v-model="form.envBound"
+              active-text="按环境隔离"
+              inactive-text="功能验证·不绑"
+            />
           </el-form-item>
           <el-form-item>
             <template #label>
@@ -509,7 +610,7 @@
                 用途
                 <el-popover placement="top" :width="360" trigger="click">
                   <template #reference>
-                    <el-icon class="form-help-icon" @click.stop><QuestionFilled /></el-icon>
+                    <el-icon class="form-help-icon" @click.prevent.stop><QuestionFilled /></el-icon>
                   </template>
                   <div class="form-help-pop">
                     <p>决定这条流程出现在哪个入口，<strong>不区分环境</strong>（环境单独选）：</p>
@@ -517,6 +618,12 @@
                     <p><strong>仅自动化编排</strong>：只在本页单跑，不进回归。<u>只有这一类能关联测试用例</u>。</p>
                     <p><strong>仅回归</strong>：只进回归批次。</p>
                     <p><strong>仅性能测试</strong>：只出现在安卓性能测试。请单独建，别和回归混。</p>
+                    <p>
+                      <strong>装包准备</strong>：装包不是用例，是把设备弄成可测状态的前置动作。
+                      标成这个之后<u>不再出现在回归/自动化的勾选列表里</u>——
+                      混在里面的话通过率会被稀释（两条装包通过不说明任何功能是好的），
+                      流程一多也找不着。执行时从批次的「装包」配置里选。
+                    </p>
                   </div>
                 </el-popover>
               </span>
@@ -526,6 +633,7 @@
               <el-option label="仅自动化编排" value="AUTOMATION" />
               <el-option label="仅回归" value="ONLINE" />
               <el-option label="仅性能测试" value="PERFORMANCE" />
+              <el-option label="装包准备（不是用例）" value="INSTALL" />
             </el-select>
             <button
               type="button"
@@ -550,6 +658,46 @@
           不对应任何用例——「安装+启动」硬要挂就得造一条假用例，
           而且一旦算进覆盖率，那个数字就不能看了。
         -->
+        <!--
+          场景是算出来的，不是第五个要选的字段。
+          但四个开关组合出四种结果、又没有任何反馈，人只能靠试：
+          建完去回归页看勾不勾得到，勾不到再回来改。这里把推导结果直接摆出来。
+        -->
+        <el-form-item label="会出现在">
+          <div v-if="flowScenes.length" class="flow-scene-list">
+            <el-tag v-for="sc in flowScenes" :key="sc" size="small" type="success" effect="plain">
+              {{ sc }}
+            </el-tag>
+          </div>
+          <div v-else class="exec-hint">
+            <strong>不进任何一轮回归。</strong>
+            {{ form.catalog === 'AUTOMATION'
+              ? '用途是「仅自动化编排」——只在流程编排页单跑，这是刻意的：它替代的是某条用例的人工执行，不是验包。'
+              : form.catalog === 'PERFORMANCE'
+                ? '用途是「仅性能测试」——只出现在性能测试入口。'
+                : form.catalog === 'INSTALL'
+                  ? '用途是「装包准备」——装包不是用例，不进回归的勾选列表；执行时从批次的「装包」配置里选。这样通过率不会被它稀释，流程多了也能按用途一眼筛出来。'
+                  : '把「用途」改成含回归的选项才会进回归批次。' }}
+          </div>
+          <div class="exec-hint" style="margin-top: 6px">
+            由下面的「用途 / 环境 / 绑定环境 / 功能阶段」四项推导出来，改任意一项这里都会跟着变。
+          </div>
+        </el-form-item>
+
+        <el-form-item label="功能阶段">
+          <div class="form-field-stack">
+            <el-radio-group v-model="form.releaseStage">
+              <el-radio-button value="TESTING">本版新功能</el-radio-button>
+              <el-radio-button value="ONLINE">已上线</el-radio-button>
+            </el-radio-group>
+            <div class="exec-hint">
+              决定这条流程<strong>会不会进「APP 线上回归」</strong>——那边跑的是上个版本的线上包。<br />
+              <strong>本版新功能</strong>：线上包里还没有这个功能，跑上去必然失败，所以只进测试环境回归和发版前线上回归（都是 debug 包）。<br />
+              <strong>已上线</strong>：三种回归都进。<br />
+              版本上线稳定后来这里改；或者直接去用例那边点「提升为线上版」，关联的流程会自动跟着提升。
+            </div>
+          </div>
+        </el-form-item>
         <el-form-item v-if="linksCases" label="覆盖用例">
           <el-select
             v-model="form.caseIds"
@@ -578,6 +726,8 @@
           <div v-if="helpOpen.cases" class="form-help-body">
             <strong>一条流程覆盖多条用例是常态</strong>——跑一遍登录流程，顺带把手机号登录、区号选择都验了。<br />
             勾上之后那几条用例的「是否已实现自动化」就变成已覆盖，执行状态也跟着这条流程走。<br />
+            <strong>只要这条流程执行了那条用例的步骤，就算覆盖</strong>——跟它进不进回归批次无关。
+            装包准备和仅性能测试除外：前者不执行任何用例步骤，后者采的是资源曲线。<br />
             列表里只有<strong>同平台、且没被别的流程占用</strong>的用例：两端用例是分开的两套，
             要把用例从别的流程转过来，请去用例那边明确改，免得原流程被悄悄抢走还没有提示。
             <template v-if="!editingId">
@@ -630,7 +780,7 @@
               排序
               <el-popover placement="top" :width="300" trigger="click">
                 <template #reference>
-                  <el-icon class="form-help-icon" @click.stop><QuestionFilled /></el-icon>
+                  <el-icon class="form-help-icon" @click.prevent.stop><QuestionFilled /></el-icon>
                 </template>
                 <div class="form-help-pop">
                   回归批次里的列表与执行顺序，数字越小越靠前（默认 100）。装包、登录这类前置流程排最前，后面的流程直接复用设备上的状态。
@@ -975,7 +1125,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { scenesForFlow } from '@/utils/appOnlineRegression'
 import { useRoute, useRouter } from 'vue-router'
 import KeywordParamFields from '../components/KeywordParamFields.vue'
 import ElementKeySelect from '../components/ElementKeySelect.vue'
@@ -1104,6 +1255,7 @@ const platforms = [
 const filterAppId = ref('')
 const filterPlatform = ref('')
 const filterCatalog = ref('')
+const filterName = ref('')
 /** 空＝全部环境。默认不过滤，免得新人以为用例丢了 */
 const filterEnvironment = ref('')
 const componentOnly = ref(false)
@@ -1323,11 +1475,25 @@ const dependencyCandidates = computed(() =>
  * 用途只讲「哪个入口用」，不带环境——环境是独立一列。
  * 列表里的标签要短，完整说明在编辑表单的下拉里。
  */
+/**
+ * 这条流程看着像不像「装包」。
+ *
+ * 存量流程都标着「回归+自动化」，几百条里逐条翻不现实。按步骤里有没有安装类关键字判断——
+ * 只做提示不自动改：有些流程<b>就是要测安装本身</b>（安装成功验证、渠道页安装），
+ * 那种留在回归里是对的，只有人能分清。
+ */
+function looksLikeInstallFlow(row: any): boolean {
+  const raw = typeof row?.steps === 'string' ? row.steps : JSON.stringify(row?.steps || '')
+  if (!raw) return false
+  return /INSTALL_APP|INSTALL_FROM_STORE|UNINSTALL_APP/.test(raw)
+}
+
 function catalogLabel(c: string) {
   if (c === 'AUTOMATION') return '仅自动化'
   if (c === 'ONLINE') return '仅回归'
   if (c === 'PERFORMANCE') return '仅性能'
   if (c === 'SHARED') return '回归+自动化'
+  if (c === 'INSTALL') return '装包准备'
   return c || '—'
 }
 
@@ -1645,6 +1811,7 @@ async function loadList() {
       platform: filterPlatform.value || undefined,
       catalog: filterCatalog.value || undefined,
       environment: filterEnvironment.value || undefined,
+      name: filterName.value.trim() || undefined,
       componentOnly: componentOnly.value || undefined
     })
   } catch (e: any) {
@@ -1696,6 +1863,11 @@ const formRef = ref<FormInstance>()
 const addKeywordCode = ref('CLICK')
 const steps = ref<FlowStep[]>([])
 const flowChartVisible = ref(false)
+const route = useRoute()
+const router = useRouter()
+/** 从外链跳入编辑时高亮列表行 */
+const highlightFlowId = ref('')
+let openingFromQuery = false
 
 function closeDrawer() {
   drawerVisible.value = false
@@ -1711,6 +1883,19 @@ function onDrawerClosed() {
   helpOpen.cases = false
   helpOpen.deps = false
   highlightFlowId.value = ''
+  try {
+    sessionStorage.removeItem('ui-flows-pending-edit')
+  } catch {
+    /* ignore */
+  }
+  // 关抽屉后再清 URL；若在打开时清 ?edit=，MainLayout 的 key=fullPath 会重挂载，抽屉当场被拆掉
+  if (route.query.edit || route.query.name || route.query._t) {
+    const q = { ...route.query }
+    delete q.edit
+    delete q.name
+    delete q._t
+    void router.replace({ path: '/ui-flows', query: q })
+  }
 }
 
 function openFlowChart() {
@@ -1726,8 +1911,13 @@ const form = reactive({
   appId: '',
   platform: '',
   catalog: 'SHARED',
+  releaseStage: 'TESTING' as 'TESTING' | 'ONLINE',
+  // 存量流程默认绑定环境，新建的也默认绑——装包类是多数，关错了会在生产装 debug 包
+  envBound: true,
   caseIds: [] as number[],
   environment: 'PROD',
+  /** 装包类默认 true；纯功能验证可关，跨环境出现在回归列表 */
+  envBound: true,
   dependsOn: [] as string[],
   isComponent: false,
   enabled: true,
@@ -1737,7 +1927,26 @@ const form = reactive({
  * 只有「仅自动化编排」的流程才谈覆盖用例。
  * 回归是独立的一套——「回归 + 自动化编排」也进回归批次，属于回归那边，不关联用例。
  */
-const linksCases = computed(() => form.catalog === 'AUTOMATION')
+/**
+ * 这条流程会出现在哪几轮回归——四个开关的推导结果，实时显示。
+ * 场景不是第五个字段，是算出来的；但没有反馈的话人只能靠试。
+ */
+const flowScenes = computed(() =>
+  scenesForFlow({
+    catalog: form.catalog,
+    environment: form.environment,
+    envBound: form.envBound,
+    releaseStage: form.releaseStage
+  })
+)
+
+/**
+ * 能不能关联用例——看这条流程<b>做没做那件事</b>，不看它出现在哪个入口。
+ * 排除的只有装包准备（不执行用例步骤）和仅性能测试（采资源曲线、不验功能）。
+ */
+const linksCases = computed(
+  () => form.catalog !== 'INSTALL' && form.catalog !== 'PERFORMANCE'
+)
 const linkableCases = ref<any[]>([])
 const loadingCases = ref(false)
 
@@ -1956,6 +2165,7 @@ async function openAdd() {
     catalog: filterCatalog.value || 'SHARED',
     // 新建时沿用当前筛选的环境，连着建同一批用例时不用每条都改
     environment: filterEnvironment.value || 'PROD',
+    envBound: true,
     dependsOn: [],
     isComponent: false,
     enabled: true,
@@ -1981,7 +2191,11 @@ async function openEdit(row: any) {
     appId: row.appId || '',
     platform: row.platform || '',
     catalog: row.catalog || 'SHARED',
+    releaseStage: row.releaseStage === 'TESTING' ? 'TESTING' : 'ONLINE',
+    envBound: row.envBound !== false,
     environment: row.environment === 'TEST' ? 'TEST' : 'PROD',
+    // 缺省按绑处理，跟库默认 1、存量行为一致
+    envBound: row.envBound !== false && row.envBound !== 0,
     dependsOn: parseDependsOn(row.dependsOn),
     isComponent: !!row.isComponent,
     enabled: row.enabled !== false,
@@ -2303,6 +2517,34 @@ function findLaunchAppConfigError(list: FlowStep[]): string | null {
     }
   }
   return null
+}
+
+const envScanVisible = ref(false)
+const envScanSummary = ref('')
+const envScanHits = ref<
+  Array<{
+    stepNo: string
+    paramName: string
+    value: string
+    kind: string
+    suggestVariable?: string
+    reason: string
+  }>
+>([])
+const scanningId = ref('')
+
+async function openEnvScan(row: any) {
+  scanningId.value = row.id
+  try {
+    const res = await apiClient.scanFlowEnvData(row.id)
+    envScanSummary.value = res.summary
+    envScanHits.value = res.hits || []
+    envScanVisible.value = true
+  } catch (e: any) {
+    ElMessage.error(e?.message || '检查失败')
+  } finally {
+    scanningId.value = ''
+  }
 }
 
 async function openExecute(row: any) {
@@ -2632,66 +2874,167 @@ async function handleDelete(row: any) {
   }
 }
 
-const route = useRoute()
-const router = useRouter()
-/** 从外链跳入编辑时高亮列表行 */
-const highlightFlowId = ref('')
-
 function flowRowClassName({ row }: { row: any }) {
   return row?.id && row.id === highlightFlowId.value ? 'flow-row-highlight' : ''
 }
 
-/** 支持 /ui-flows?edit=<flowId>&name=xxx：从 APP 回归等入口点芯片跳进编辑 */
-async function openEditFromQuery() {
-  const editId = String(route.query.edit || '').trim()
-  if (!editId) return
-  const hintName = String(route.query.name || '').trim()
+function consumePendingEdit(): { id: string; name: string } | null {
+  const fromQueryId = String(route.query.edit || '').trim()
+  const fromQueryName = String(route.query.name || '').trim()
+  if (fromQueryId) {
+    return { id: fromQueryId, name: fromQueryName }
+  }
   try {
-    let row = list.value.find((f) => f.id === editId)
-    if (!row) {
-      row = await apiClient.getUiFlow(editId)
+    const raw = sessionStorage.getItem('ui-flows-pending-edit')
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { id?: string; name?: string; at?: number }
+    const id = String(parsed?.id || '').trim()
+    if (!id) return null
+    if (parsed.at && Date.now() - parsed.at > 120_000) {
+      sessionStorage.removeItem('ui-flows-pending-edit')
+      return null
     }
+    return { id, name: String(parsed.name || '').trim() }
+  } catch {
+    return null
+  }
+}
+
+/** 支持 /ui-flows?edit=<id>：进页直接打开编辑抽屉（打开期间不要改 URL） */
+async function openEditFromQuery() {
+  if (openingFromQuery || drawerVisible.value) return
+  const pending = consumePendingEdit()
+  if (!pending) return
+  openingFromQuery = true
+  try {
+    const row = await apiClient.getUiFlow(pending.id)
     if (!row?.id) {
-      ElMessage.warning(`未找到流程：${hintName || editId}`)
+      ElMessage.warning(`未找到流程：${pending.name || pending.id}`)
       return
     }
-    // 把筛选对齐到这条流程，列表里也能对上是哪一条
-    if (row.appId) filterAppId.value = row.appId
-    if (row.platform) filterPlatform.value = row.platform
-    if (row.environment === 'TEST' || row.environment === 'PROD') {
-      filterEnvironment.value = row.environment
-    }
-    filterCatalog.value = ''
-    componentOnly.value = false
-    await loadList()
+    // 先打开抽屉，再慢慢补列表；loadMeta 失败也不能挡住打开
+    editingId.value = row.id
     highlightFlowId.value = row.id
-    await openEdit(row)
-    ElMessage.success(`正在编辑：${row.name || hintName || row.id}`)
+    Object.assign(form, {
+      name: row.name || pending.name || '',
+      description: row.description || '',
+      appId: row.appId || '',
+      platform: row.platform || '',
+      catalog: row.catalog || 'SHARED',
+      environment: row.environment === 'TEST' ? 'TEST' : 'PROD',
+      dependsOn: parseDependsOn(row.dependsOn),
+      isComponent: !!row.isComponent,
+      enabled: row.enabled !== false,
+      sortOrder: row.sortOrder ?? 100,
+      caseIds: []
+    })
+    steps.value = parseSteps(row.steps)
+    insertAfterStep.value = null
+    if (!form.appId) {
+      const launch = steps.value.find((s) => isAnyLaunchStep(s.keywordCode))
+      form.appId =
+        String(launch?.params?.appId || '').trim() ||
+        matchAppIdByPackage(String(launch?.params?.packageName || '')) ||
+        ''
+    }
+    if (!form.platform && form.appId) form.platform = 'ANDROID'
+    drawerVisible.value = true
+    await nextTick()
+    ElMessage.success(`正在编辑：${form.name || pending.id}`)
+
+    try {
+      await loadMeta()
+      loadLinkableCases()
+      if (row.appId) filterAppId.value = row.appId
+      if (row.platform) filterPlatform.value = row.platform
+      if (row.environment === 'TEST' || row.environment === 'PROD') {
+        filterEnvironment.value = row.environment
+      }
+      filterCatalog.value = ''
+      componentOnly.value = false
+      await loadList()
+    } catch (e) {
+      console.warn('编辑抽屉已打开，后台刷新列表失败', e)
+    }
   } catch (e: any) {
     ElMessage.error(e?.message || '打开流程失败')
   } finally {
-    const q = { ...route.query }
-    delete q.edit
-    delete q.name
-    await router.replace({ query: q })
+    openingFromQuery = false
+    // 故意不在这里清 ?edit=：MainLayout 用 fullPath 做 key，一改 query 会重挂载并关掉抽屉
   }
 }
 
 watch(
   () => route.query.edit,
   async (id) => {
-    if (id) await openEditFromQuery()
+    if (id && !drawerVisible.value) await openEditFromQuery()
   }
 )
 
 onMounted(async () => {
+  // 有待编辑目标时优先开抽屉，别先被 loadList 拖住
+  const pending = consumePendingEdit()
+  if (pending) {
+    // consume 只读 query 时不会删 sessionStorage；再写回去供 openEditFromQuery 使用
+    try {
+      sessionStorage.setItem(
+        'ui-flows-pending-edit',
+        JSON.stringify({ id: pending.id, name: pending.name, at: Date.now() })
+      )
+    } catch {
+      /* ignore */
+    }
+    await openEditFromQuery()
+    void loadMeta()
+    void loadList()
+    return
+  }
   await loadMeta()
   await loadList()
-  await openEditFromQuery()
 })
 </script>
 
 <style scoped>
+.env-scan-list {
+  margin-top: 12px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.env-scan-item {
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--el-border-color);
+}
+
+.env-scan-item:last-child {
+  border-bottom: none;
+}
+
+.env-scan-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.env-scan-param {
+  font-weight: 500;
+}
+
+.env-scan-value {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--el-fill-color-light);
+  font-family: monospace;
+}
+
+.env-scan-reason {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
+}
+
 .card-header {
   display: flex;
   align-items: flex-start;
@@ -2724,6 +3067,15 @@ onMounted(async () => {
   font-size: 12px;
   color: var(--el-text-color-placeholder);
   font-weight: normal;
+}
+.flow-scene-list {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.catalog-suggest {
+  margin-left: 6px;
+  cursor: pointer;
 }
 .exec-hint {
   margin-top: 6px;
@@ -2832,6 +3184,17 @@ onMounted(async () => {
   line-height: 1.3;
   color: #606266;
   font-weight: 500;
+}
+.form-field-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+}
+.form-field-stack .exec-hint {
+  margin: 0;
+  line-height: 1.55;
 }
 .flow-form-row {
   display: grid;

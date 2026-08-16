@@ -1,13 +1,20 @@
 /** APP 回归（线上 + 测试环境）：目标应用 / 预设 flowId / 账号池 */
 
-export type RegressionAppId = 'DOMESTIC_ESPORTS' | 'OVERSEAS_POGPOG'
+export type RegressionAppId =
+  | 'DOMESTIC_ESPORTS'
+  | 'DOMESTIC_ESPORTS_HARMONY'
+  | 'OVERSEAS_POGPOG'
 
 export interface RegressionAppOption {
   id: RegressionAppId
   name: string
   subtitle: string
-  /** 国内电竞走 ANDROID/IOS；海外 PogPog 走 POG 族平台标签，设备池仍为 Android/iOS */
-  platformHint: string
+  /** 图标角标文案 */
+  iconLabel: string
+  /** 图标色系 */
+  iconTone: 'domestic' | 'harmony' | 'overseas'
+  /** 底部标签 */
+  tags: Array<{ label: string; tone: 'region' | 'android' | 'ios' | 'harmony' | 'overseas' }>
   needsOverseasProxy: boolean
 }
 
@@ -28,18 +35,46 @@ export const REGRESSION_APPS: RegressionAppOption[] = [
   {
     id: 'DOMESTIC_ESPORTS',
     name: '国内电竞',
-    subtitle: 'iOS / Android（国内包）',
-    platformHint: '国内 · ANDROID & iOS',
+    subtitle: 'iOS / Android 双端国内包',
+    iconLabel: '电竞',
+    iconTone: 'domestic',
+    tags: [
+      { label: '国内', tone: 'region' },
+      { label: 'Android', tone: 'android' },
+      { label: 'iOS', tone: 'ios' }
+    ],
+    needsOverseasProxy: false
+  },
+  {
+    id: 'DOMESTIC_ESPORTS_HARMONY',
+    name: '国内电竞 · 鸿蒙',
+    subtitle: '纯血鸿蒙独立包',
+    iconLabel: '鸿蒙',
+    iconTone: 'harmony',
+    tags: [
+      { label: '国内', tone: 'region' },
+      { label: 'HarmonyOS', tone: 'harmony' }
+    ],
     needsOverseasProxy: false
   },
   {
     id: 'OVERSEAS_POGPOG',
     name: '海外 PogPog',
-    subtitle: 'iOS / Android（海外包）',
-    platformHint: '海外 · POG-Android & POG-iOS',
+    subtitle: 'iOS / Android 双端海外包',
+    iconLabel: 'Pog',
+    iconTone: 'overseas',
+    tags: [
+      { label: '海外', tone: 'overseas' },
+      { label: 'Android', tone: 'android' },
+      { label: 'iOS', tone: 'ios' }
+    ],
     needsOverseasProxy: true
   }
 ]
+
+export function isHarmonyRegressionApp(id: RegressionAppId | string | undefined): boolean {
+  return id === 'DOMESTIC_ESPORTS_HARMONY'
+}
 
 /** 种子流程 id（与后端 seed_online_regression_flows.sql 对齐；仅作预设引用） */
 export const SEED_FLOW_IDS = {

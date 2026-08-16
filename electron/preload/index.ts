@@ -1,9 +1,25 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
+function readBootNodeConfig() {
+  try {
+    return ipcRenderer.sendSync('node:get-config-sync')
+  } catch {
+    return null
+  }
+}
+
+const bootNodeConfig = readBootNodeConfig()
+
+contextBridge.exposeInMainWorld('bootNodeConfig', bootNodeConfig)
+
 // 暴露受保护的方法给渲染进程
 contextBridge.exposeInMainWorld('electronAPI', {
   // 应用信息
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  isPackaged: () => ipcRenderer.invoke('node:is-packaged'),
+  getNodeConfig: () => ipcRenderer.invoke('node:get-config'),
+  setControlPlane: (url: string) => ipcRenderer.invoke('node:set-control-plane', url),
+  getWorkerStatus: () => ipcRenderer.invoke('node:worker-status'),
 
   // 设备管理
   device: {

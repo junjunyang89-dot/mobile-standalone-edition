@@ -10,29 +10,67 @@
           </div>
         </template>
 
-        <!-- 步骤 0：环境。放在最前面是因为它决定了下面能选到哪批用例 -->
+        <!--
+          四个场景而不是两个开关。
+          环境（后端连哪边）和包（新 debug 还是线上正式）是两个正交维度，摆成两个开关时
+          人要自己组合，最容易漏的是「③ 老包 · 向后兼容」——后端已经发版、线上还跑着老 APP 包，
+          接口变更会不会把它搞挂。那一轮影响的是当下全部真实用户，比新包的问题严重得多。
+        -->
         <section class="cfg-section">
-          <div class="cfg-title">步骤 0 · 选择环境（决定候选用例来自哪一批流程）</div>
-          <el-radio-group v-model="environment">
-            <el-radio-button label="PROD">线上（生产包）</el-radio-button>
-            <el-radio-button label="TEST">测试环境（发版前）</el-radio-button>
-          </el-radio-group>
-          <div class="cfg-hint">
-            候选用例＝流程编排里<strong>环境</strong>等于这里所选、且<strong>用途</strong>为「仅回归」或「回归+自动化编排」的流程。
-            环境和用途是两个独立维度：环境决定验哪个包，用途决定出现在哪个入口。
+          <div class="cfg-title">步骤 0 · 这次跑的是哪一轮</div>
+          <div class="scene-grid">
+            <button
+              v-for="s in REGRESSION_SCENES"
+              :key="s.key"
+              type="button"
+              class="scene-card"
+              :class="{ active: sceneKey === s.key }"
+              @click="applyScene(s.key)"
+            >
+              <div class="scene-title">{{ s.title }}</div>
+              <div class="scene-sub">{{ s.sub }}</div>
+              <!--
+                只标「装哪个包」。后端连哪边是你在包里切的，平台并不控制它——
+                把它印在卡片上会让人以为选这张卡就切了后端。
+              -->
+              <div class="scene-meta">
+                <el-tag size="small" :type="s.releasedPackage ? 'info' : 'primary'" effect="plain">
+                  {{ s.releasedPackage ? '线上正式包' : '新版 debug 包' }}
+                </el-tag>
+              </div>
+            </button>
           </div>
+
+          <!-- 选了 ② 就提醒 ③，这一条是整块改造的目的 -->
           <el-alert
-            v-if="environment === 'TEST'"
+            v-if="sceneKey === 'PROD_NEW'"
             type="warning"
             :closable="false"
             show-icon
             class="cfg-alert"
-            title="测试环境：只列出环境=测试环境的回归用例。请确认第一条流程会装上待验的测试包，后续流程复用设备上的登录态。" />
+            title="别忘了还要跑「③ 老包 · 向后兼容」"
+          >
+            后端和 H5 已经发版，而线上还跑着上个版本的 APP 包。接口/H5 变更会不会把老包搞挂，
+            只有拿<strong>线上正式包</strong>跑一轮才知道——这一轮影响的是当下全部真实用户，
+            比新包的问题严重。跑完这轮记得切到 ③ 再跑一次。
+          </el-alert>
+
+          <div class="cfg-hint">
+            候选用例＝流程编排里用途为「仅回归」或「回归+自动化编排」的流程。
+            <strong>装包类</strong>按环境隔离；<strong>纯功能验证</strong>（流程上关掉「绑定环境」）两个环境都能勾到。
+            跑<strong>线上正式包</strong>时只列「已上线」的流程——本版新功能在那个包里还没有。
+          </div>
         </section>
 
         <!-- 步骤 1：目标 APP -->
         <section class="cfg-section">
-          <div class="cfg-title">步骤 1 · 选择目标 APP（单选，切换后用例列表会跟着变）</div>
+          <div class="step-head">
+            <span class="step-badge">步骤 1</span>
+            <div class="step-head-text">
+              <div class="step-head-title">选择目标 APP</div>
+              <div class="step-head-sub">单选 · 切换后下方用例列表会同步变化</div>
+            </div>
+          </div>
           <div class="app-cards">
             <button
               v-for="app in REGRESSION_APPS"
@@ -42,13 +80,24 @@
               :class="{ active: selectedApps.includes(app.id) }"
               @click="selectApp(app.id)"
             >
-              <div class="app-card-icon">{{ app.id === 'DOMESTIC_ESPORTS' ? '电竞' : 'Pog' }}</div>
+              <div class="app-card-top">
+                <div class="app-card-icon" :class="`tone-${app.iconTone}`">{{ app.iconLabel }}</div>
+                <span class="app-card-radio" :class="{ checked: selectedApps.includes(app.id) }" aria-hidden="true">
+                  <el-icon v-if="selectedApps.includes(app.id)"><Select /></el-icon>
+                </span>
+              </div>
               <div class="app-card-body">
                 <div class="app-card-name">{{ app.name }}</div>
                 <div class="app-card-sub">{{ app.subtitle }}</div>
-                <div class="app-card-hint">{{ app.platformHint }}</div>
+                <div class="app-card-tags">
+                  <span
+                    v-for="tag in app.tags"
+                    :key="tag.label"
+                    class="app-tag"
+                    :class="`tag-${tag.tone}`"
+                  >{{ tag.label }}</span>
+                </div>
               </div>
-              <el-icon v-if="selectedApps.includes(app.id)" class="app-check"><CircleCheckFilled /></el-icon>
             </button>
           </div>
           <el-alert
@@ -70,7 +119,7 @@
             </el-button>
           </div>
           <div class="device-groups" v-loading="deviceStore.loading">
-            <div class="device-group">
+            <div v-if="!harmonyAppSelected" class="device-group">
               <div class="device-group-label">Android</div>
               <el-checkbox-group v-model="selectedDeviceIds">
                 <el-checkbox
@@ -85,7 +134,7 @@
               </el-checkbox-group>
               <el-empty v-if="androidDevices.length === 0" description="暂无 Android 设备" :image-size="48" />
             </div>
-            <div class="device-group">
+            <div v-if="!harmonyAppSelected" class="device-group">
               <div class="device-group-label">iOS</div>
               <el-checkbox-group v-model="selectedDeviceIds">
                 <el-checkbox
@@ -100,6 +149,25 @@
               </el-checkbox-group>
               <el-empty v-if="iosDevices.length === 0" description="暂无 iOS 设备" :image-size="48" />
             </div>
+            <div v-if="harmonyAppSelected" class="device-group">
+              <div class="device-group-label">鸿蒙</div>
+              <el-checkbox-group v-model="selectedDeviceIds">
+                <el-checkbox
+                  v-for="d in harmonyDevices"
+                  :key="d.id"
+                  :value="d.id"
+                  :disabled="!isDeviceSelectable(d)"
+                >
+                  <span class="dev-name">{{ d.name || d.id }}</span>
+                  <span class="dev-status" :class="deviceStatusClass(d.status)">{{ deviceStatusDot(d.status) }} {{ deviceStatusText(d.status) }}</span>
+                </el-checkbox>
+              </el-checkbox-group>
+              <el-empty
+                v-if="harmonyDevices.length === 0"
+                description="暂无鸿蒙设备（连上数据线后点右上角「刷新设备」）"
+                :image-size="48"
+              />
+            </div>
           </div>
         </section>
 
@@ -109,13 +177,44 @@
             <div class="cfg-title">步骤 3 · 勾选回归用例（流程编排）</div>
             <div class="preset-btns">
               <el-button size="small" :loading="flowsLoading" @click="loadRegressionFlows">刷新用例</el-button>
-              <el-button size="small" link type="primary" @click="selectAllFlows">全选两端</el-button>
-              <el-button size="small" link @click="clearAllFlows">清空两端</el-button>
+              <el-button size="small" link type="primary" @click="selectAllFlows">全选全部</el-button>
+              <el-button size="small" link @click="clearAllFlows">清空全部</el-button>
             </div>
+
+          <!--
+            缺前置的提示。不自动补是刻意的——回归批次的顺序是人刻意排的，
+            静默塞流程进去会让人发现「勾了 12 条怎么跑了 14 条」。
+          -->
+          <el-alert
+            v-if="depError"
+            type="error"
+            :closable="false"
+            show-icon
+            class="cfg-alert"
+            :title="depError"
+          />
+          <el-alert
+            v-else-if="missingDeps.length"
+            type="warning"
+            :closable="false"
+            show-icon
+            class="cfg-alert"
+            title="有流程的前置没勾上"
+          >
+            <div class="dep-tip">
+              <span>
+                勾选的流程依赖
+                <b>{{ missingDeps.map((d) => d.name).join('、') }}</b>
+                ，但它们没被勾上。前置没跑的话，后面依赖它的流程会全部失败——
+                而失败现象看着像功能 bug，很难联想到是少跑了第一步。
+              </span>
+              <el-button size="small" type="primary" @click="fillMissingDeps">补上前置</el-button>
+            </div>
+          </el-alert>
           </div>
 
           <div class="flow-platform-panels" v-loading="flowsLoading">
-            <div class="flow-platform-panel">
+            <div v-if="!harmonyAppSelected" class="flow-platform-panel">
               <div class="flow-platform-head">
                 <div class="flow-platform-title">
                   <el-tag size="small" type="success" effect="plain">Android</el-tag>
@@ -163,30 +262,31 @@
                 :image-size="48"
               />
               <div v-if="androidOrderedPreview.length" class="order-preview order-preview-android">
-                <div class="order-label">Android 执行顺序（点芯片可编辑流程）：</div>
+                <div class="order-head">
+                  <span class="order-title">Android 执行顺序</span>
+                  <span class="order-hint">
+                    <el-icon><InfoFilled /></el-icon>
+                    点击可编辑对应流程
+                  </span>
+                </div>
                 <div class="order-chips">
-                  <el-tooltip
+                  <button
                     v-for="(s, i) in androidOrderedPreview"
                     :key="`a-${s.id}`"
-                    :content="`打开编辑：${i + 1}. ${s.label}`"
-                    placement="top"
-                    :show-after="200"
+                    type="button"
+                    class="order-chip-btn order-chip-btn-android"
+                    :title="`打开编辑：${s.label}`"
+                    @click.stop.prevent="openFlowEditor(s.id, s.label)"
                   >
-                    <el-tag
-                      size="small"
-                      type="success"
-                      effect="light"
-                      class="order-chip order-chip-android is-link"
-                      @click="openFlowEditor(s.id, s.label)"
-                    >
-                      {{ i + 1 }}. {{ s.label }}
-                    </el-tag>
-                  </el-tooltip>
+                    <span class="order-num">{{ i + 1 }}</span>
+                    <span class="order-name">{{ s.label }}</span>
+                    <el-icon class="order-jump"><TopRight /></el-icon>
+                  </button>
                 </div>
               </div>
             </div>
 
-            <div class="flow-platform-panel">
+            <div v-if="!harmonyAppSelected" class="flow-platform-panel">
               <div class="flow-platform-head">
                 <div class="flow-platform-title">
                   <el-tag size="small" type="info" effect="plain">iOS</el-tag>
@@ -234,25 +334,98 @@
                 :image-size="48"
               />
               <div v-if="iosOrderedPreview.length" class="order-preview order-preview-ios">
-                <div class="order-label">iOS 执行顺序（点芯片可编辑流程）：</div>
+                <div class="order-head">
+                  <span class="order-title">iOS 执行顺序</span>
+                  <span class="order-hint">
+                    <el-icon><InfoFilled /></el-icon>
+                    点击可编辑对应流程
+                  </span>
+                </div>
                 <div class="order-chips">
-                  <el-tooltip
+                  <button
                     v-for="(s, i) in iosOrderedPreview"
                     :key="`i-${s.id}`"
-                    :content="`打开编辑：${i + 1}. ${s.label}`"
-                    placement="top"
-                    :show-after="200"
+                    type="button"
+                    class="order-chip-btn order-chip-btn-ios"
+                    :title="`打开编辑：${s.label}`"
+                    @click.stop.prevent="openFlowEditor(s.id, s.label)"
                   >
-                    <el-tag
-                      size="small"
-                      type="primary"
-                      effect="light"
-                      class="order-chip order-chip-ios is-link"
-                      @click="openFlowEditor(s.id, s.label)"
+                    <span class="order-num">{{ i + 1 }}</span>
+                    <span class="order-name">{{ s.label }}</span>
+                    <el-icon class="order-jump"><TopRight /></el-icon>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 鸿蒙独立应用：切到鸿蒙卡才显示这一栏（空也是预期——元素还没采） -->
+            <div v-if="harmonyAppSelected" class="flow-platform-panel">
+              <div class="flow-platform-head">
+                <div class="flow-platform-title">
+                  <el-tag size="small" type="warning" effect="plain">鸿蒙</el-tag>
+                  <span>用例 · 勾选顺序 = 鸿蒙设备执行顺序</span>
+                </div>
+                <div class="preset-btns">
+                  <el-button size="small" link type="primary" @click="selectAllHarmonyFlows">全选</el-button>
+                  <el-button size="small" link @click="selectedHarmonyFlowIds = []">清空</el-button>
+                </div>
+              </div>
+              <el-checkbox-group v-model="selectedHarmonyFlowIds" class="feature-grid">
+                <el-checkbox
+                  v-for="(f, idx) in harmonyFlows"
+                  :key="f.id"
+                  :value="f.id"
+                  class="feature-item"
+                >
+                  <div class="feature-text">
+                    <div class="feature-title-row">
+                      <span class="feature-idx">h{{ idx + 1 }}</span>
+                      <el-tooltip :content="f.name" placement="top" :show-after="200">
+                        <div class="feature-name-wrap">
+                          <span class="feature-name">{{ f.name }}</span>
+                        </div>
+                      </el-tooltip>
+                      <div class="feature-meta">
+                        <el-tag size="small" effect="plain">{{ catalogLabel(f.catalog) }}</el-tag>
+                        <el-tag v-if="f.platform" size="small" type="warning" effect="plain">{{ f.platform }}</el-tag>
+                      </div>
+                    </div>
+                    <el-tooltip
+                      v-if="f.description"
+                      :content="f.description"
+                      placement="top"
+                      :show-after="200"
                     >
-                      {{ i + 1 }}. {{ s.label }}
-                    </el-tag>
-                  </el-tooltip>
+                      <div class="feature-desc">{{ f.description }}</div>
+                    </el-tooltip>
+                  </div>
+                </el-checkbox>
+              </el-checkbox-group>
+              <div v-if="!flowsLoading && harmonyFlows.length === 0" class="empty-hint">
+                还没有鸿蒙用例。纯血鸿蒙和安卓完全是两套控件，元素要单独采一遍：<br />
+                先去「资产管理 · 元素管理」选应用「完美世界电竞（鸿蒙）」、平台切到鸿蒙采集元素，再回流程编排建鸿蒙流程。
+              </div>
+              <div v-if="harmonyOrderedPreview.length" class="order-preview order-preview-harmony">
+                <div class="order-head">
+                  <span class="order-title">鸿蒙 执行顺序</span>
+                  <span class="order-hint">
+                    <el-icon><InfoFilled /></el-icon>
+                    点击可编辑对应流程
+                  </span>
+                </div>
+                <div class="order-chips">
+                  <button
+                    v-for="(s, i) in harmonyOrderedPreview"
+                    :key="`h-${s.id}`"
+                    type="button"
+                    class="order-chip-btn order-chip-btn-harmony"
+                    :title="`打开编辑：${s.label}`"
+                    @click.stop.prevent="openFlowEditor(s.id, s.label)"
+                  >
+                    <span class="order-num">{{ i + 1 }}</span>
+                    <span class="order-name">{{ s.label }}</span>
+                    <el-icon class="order-jump"><TopRight /></el-icon>
+                  </button>
                 </div>
               </div>
             </div>
@@ -362,6 +535,25 @@
                 </div>
               </div>
             </el-form-item>
+            <el-form-item label="装包">
+              <div class="install-strategy">
+                <el-select v-model="installStrategy" style="width: 260px">
+                  <el-option label="不装包，用设备上现有的" value="NONE" />
+                  <el-option label="装最新版（常规回归）" value="LATEST" />
+                  <el-option label="装指定版本" value="SPECIFIC" />
+                  <el-option label="升级测试：先装上一版，跑完再覆盖装最新版" value="PREVIOUS_THEN_LATEST" />
+                </el-select>
+                <el-input
+                  v-if="installStrategy === 'SPECIFIC'"
+                  v-model="installBuildKey"
+                  style="width: 240px"
+                  placeholder="蒲公英 buildKey"
+                />
+                <div v-if="installStrategyHint" class="install-strategy-hint">
+                  {{ installStrategyHint }}
+                </div>
+              </div>
+            </el-form-item>
             <el-form-item label="海外代理">
               <el-switch
                 v-model="enableOverseasProxy"
@@ -377,12 +569,35 @@
           <div class="cfg-title">APP × 设备矩阵（可移除单条以灵活配对）</div>
           <div class="matrix-list">
             <div v-for="job in matrixJobs" :key="job.key" class="matrix-row">
-              <el-tag size="small" :type="job.appId === 'DOMESTIC_ESPORTS' ? 'warning' : 'success'">
+              <el-tag
+                size="small"
+                :type="
+                  job.appId === 'OVERSEAS_POGPOG'
+                    ? 'success'
+                    : 'warning'
+                "
+              >
                 {{ job.appName }}
               </el-tag>
               <span class="matrix-arrow">×</span>
-              <el-tag size="small" :type="job.endpoint === 'android' ? 'success' : 'info'">
-                {{ job.endpoint === 'android' ? 'Android' : 'iOS' }} · {{ job.deviceName }}
+              <el-tag
+                size="small"
+                :type="
+                  job.endpoint === 'android'
+                    ? 'success'
+                    : job.endpoint === 'harmony'
+                      ? 'warning'
+                      : 'info'
+                "
+              >
+                {{
+                  job.endpoint === 'android'
+                    ? 'Android'
+                    : job.endpoint === 'harmony'
+                      ? '鸿蒙'
+                      : 'iOS'
+                }}
+                · {{ job.deviceName }}
               </el-tag>
               <el-button link type="danger" size="small" @click="excludeMatrixKey(job.key)">移除</el-button>
             </div>
@@ -518,13 +733,45 @@
           </el-button>
         </div>
 
+        <!-- 失败归类：一批红 20 条，先看清「其实是几个问题」，再逐条查 -->
+        <div v-if="failureClusters.length" class="fail-clusters">
+          <div class="fail-clusters-head" v-html="failureSummary"></div>
+          <div v-for="c in failureClusters" :key="c.rank" class="fail-cluster">
+            <div class="fail-cluster-top">
+              <el-tag size="small" :type="c.rank === 1 ? 'danger' : 'warning'">
+                {{ c.count }} 条
+              </el-tag>
+              <span class="fail-cluster-reason">{{ c.reason }}</span>
+            </div>
+            <div v-if="c.hint" class="fail-cluster-hint">{{ c.hint }}</div>
+            <div v-if="c.samples?.length" class="fail-cluster-samples">
+              涉及：{{ c.samples.join('、') }}<span v-if="c.count > c.samples.length"> 等 {{ c.count }} 条</span>
+            </div>
+          </div>
+        </div>
+
         <div v-for="group in currentReport.comparisonGroups" :key="group.stepId" class="compare-block">
           <div class="compare-title">{{ group.stepLabel }}</div>
           <div class="compare-grid">
             <div v-for="shot in group.shots" :key="shot.key" class="compare-item">
               <div class="compare-item-head">
-                <el-tag size="small" :type="shot.endpoint === 'android' ? 'success' : 'info'">
-                  {{ shot.endpoint === 'android' ? 'Android' : 'iOS' }}
+                <el-tag
+                  size="small"
+                  :type="
+                    shot.endpoint === 'android'
+                      ? 'success'
+                      : shot.endpoint === 'harmony'
+                        ? 'warning'
+                        : 'info'
+                  "
+                >
+                  {{
+                    shot.endpoint === 'android'
+                      ? 'Android'
+                      : shot.endpoint === 'harmony'
+                        ? '鸿蒙'
+                        : 'iOS'
+                  }}
                 </el-tag>
                 <span>{{ shot.appName }} · {{ shot.deviceName }}</span>
                 <el-tag size="small" :type="stepResultTagType(shot.status)">
@@ -624,7 +871,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { CircleCheckFilled, Refresh } from '@element-plus/icons-vue'
+import { InfoFilled, Refresh, Select, TopRight } from '@element-plus/icons-vue'
 import { apiClient } from '@/api'
 import { useDeviceStore, type Device } from '@/stores/device'
 import {
@@ -634,6 +881,7 @@ import {
   REGRESSION_APPS,
   SEED_FLOW_IDS,
   flowNeedsAccount,
+  isHarmonyRegressionApp,
   type RegressionAppId,
   type RegressionFlowOption
 } from '@/constants/appOnlineRegression'
@@ -641,8 +889,10 @@ import {
   buildAppDeviceMatrix,
   buildOrderedSteps,
   formatDurationMs,
+  flowPlatformBucket,
   mergePlatformOrderedFlowIds,
   partitionRegressionFlows,
+  regressionAppLabel,
   resolvePassRate,
   stepResultLabel,
   stepResultTagType
@@ -670,7 +920,7 @@ interface LiveJob {
   appName: string
   deviceId: string
   deviceName: string
-  endpoint: 'android' | 'ios' | 'other'
+  endpoint: 'android' | 'ios' | 'harmony' | 'other'
   endpointLabel: string
   status: JobRunStatus
   progress: number
@@ -683,7 +933,7 @@ interface LiveJob {
 
 interface CompareShot {
   key: string
-  endpoint: 'android' | 'ios' | 'other'
+  endpoint: 'android' | 'ios' | 'harmony' | 'other'
   appName: string
   deviceName: string
   status: StepRunStatus
@@ -729,6 +979,63 @@ const availableFlows = ref<RegressionFlowOption[]>([])
 const selectedAndroidFlowIds = ref<string[]>([])
 const selectedIosFlowIds = ref<string[]>([])
 const selectedSharedFlowIds = ref<string[]>([])
+// 鸿蒙独立一档：后端 platformMatches 里 ANDROID 只匹配 ANDROID/POG_ANDROID，
+// 鸿蒙流程混在 Android 栏里勾上，执行时会被静默跳过——勾了等于没勾，最难查
+const selectedHarmonyFlowIds = ref<string[]>([])
+/** 跑的是已发布的线上包（上个版本）还是本次待发布的包 */
+const releasedPackage = ref(false)
+
+/**
+ * 四个场景。
+ * 环境和包是两个正交维度，摆成两个开关时人要自己组合，最容易漏 ③——
+ * 而 ③ 恰恰是风险最大的一轮。
+ */
+const REGRESSION_SCENES = [
+  {
+    key: 'TEST_NEW',
+    title: '① 提测回归',
+    sub: '提测后第一轮，验新包的老功能 + 新功能',
+    environment: 'TEST' as const,
+    releasedPackage: false
+  },
+  {
+    key: 'PROD_NEW',
+    title: '② 新包 · 生产环境验证',
+    sub: '同一个 debug 包切到线上环境，再验一遍',
+    environment: 'PROD' as const,
+    releasedPackage: false
+  },
+  {
+    key: 'PROD_OLD',
+    title: '③ 老包 · 向后兼容',
+    sub: '线上还是上个版本的包，验后端/H5 发版后它有没有被搞挂',
+    environment: 'PROD' as const,
+    releasedPackage: true
+  },
+  {
+    key: 'PROD_DAILY',
+    title: '④ 日常线上回归',
+    sub: '线上正式包的例行巡检',
+    environment: 'PROD' as const,
+    releasedPackage: true
+  }
+]
+
+const sceneKey = ref('TEST_NEW')
+
+/**
+ * ③ 和 ④ 技术上一样（都是生产 + 线上包），分开列是因为<b>触发时机和关注点不同</b>：
+ * ③ 是后端发版当天必须补跑的一轮，④ 是例行巡检。合并成一个的话，
+ * ③ 就会被当成"日常那个我天天跑"而漏掉。
+ */
+function applyScene(key: string) {
+  const scene = REGRESSION_SCENES.find((x) => x.key === key)
+  if (!scene) return
+  sceneKey.value = key
+  environment.value = scene.environment
+  releasedPackage.value = scene.releasedPackage
+  loadFlows()
+}
 const flowsLoading = ref(false)
 const excludedMatrixKeys = ref<string[]>([])
 
@@ -736,6 +1043,23 @@ const selectedAccountIds = ref<string[]>(['', ''])
 const customPhones = ref<string[]>(['', ''])
 const customCodes = ref<string[]>(['', ''])
 const enableOverseasProxy = ref(false)
+/**
+ * 装包是批次级的，不是流程步骤。
+ * 默认「不装」——调试同一条流程时省掉每次重装的几分钟；正式跑一轮回归要手动选「装最新版」，
+ * 这个顺序是有意的：装错包跑出来的绿色比红色更糟，它验的是另一个包。
+ */
+const installStrategy = ref('NONE')
+const installBuildKey = ref('')
+
+const installStrategyHint = computed(() => {
+  if (installStrategy.value === 'NONE') {
+    return '设备上现在装的是哪个包，这轮验的就是哪个——正式回归记得改成「装最新版」'
+  }
+  if (installStrategy.value === 'PREVIOUS_THEN_LATEST') {
+    return '勾选列表前几条要能产生本地数据（登录、看一次赛程），否则覆盖装上去也没有旧数据可验'
+  }
+  return ''
+})
 const accountPool = ref([...DEFAULT_ACCOUNT_POOL])
 const activeRunId = ref('')
 let pollTimer: ReturnType<typeof setInterval> | null = null
@@ -805,6 +1129,10 @@ const needsOverseasProxy = computed(() =>
   selectedApps.value.includes('OVERSEAS_POGPOG')
 )
 
+const harmonyAppSelected = computed(() =>
+  selectedApps.value.some((id) => isHarmonyRegressionApp(id))
+)
+
 watch(needsOverseasProxy, (v) => {
   if (v) enableOverseasProxy.value = true
 })
@@ -815,6 +1143,10 @@ const androidDevices = computed(() =>
 const iosDevices = computed(() =>
   deviceStore.devices.filter((d) => isIosFamilyPlatform(d.platform))
 )
+/** 鸿蒙机两个 family 判定都不认，不单独列出来就等于这个页面看不见它 */
+const harmonyDevices = computed(() =>
+  deviceStore.devices.filter((d) => String(d.platform || '').toUpperCase().startsWith('HARMONY'))
+)
 
 const selectedDevices = computed(() =>
   deviceStore.devices.filter((d) => selectedDeviceIds.value.includes(d.id))
@@ -823,22 +1155,80 @@ const selectedDevices = computed(() =>
 const partitionedFlows = computed(() => partitionRegressionFlows(availableFlows.value))
 const androidFlows = computed(() => partitionedFlows.value.android)
 const iosFlows = computed(() => partitionedFlows.value.ios)
+const harmonyFlows = computed(() => partitionedFlows.value.harmony)
 const sharedFlows = computed(() => partitionedFlows.value.shared)
 
 /** 提交后端：Android 顺序 + 双端 + iOS 顺序（各端过滤后相对顺序独立） */
+/**
+ * 缺的前置流程。
+ *
+ * 回归轨刻意<b>不自动补</b>：批次有人盯着、顺序是刻意排的，静默塞两条进去会让人
+ * 发现「我勾了 12 条怎么跑了 14 条」。但忘勾「切环境」这类前置的话，后面十几条会全挂，
+ * 而失败现象看着像功能 bug——没人会联想到是少跑了第一步。所以当场提示，补不补由人定。
+ */
+const missingDeps = ref<Array<{ id: string; name: string }>>([])
+const depError = ref('')
+
+let depCheckSeq = 0
+async function checkDependencies() {
+  const ids = selectedFlowIds.value
+  const seq = ++depCheckSeq
+  if (!ids.length) {
+    missingDeps.value = []
+    depError.value = ''
+    return
+  }
+  try {
+    const res = await apiClient.resolveFlowDependencies(ids)
+    // 勾选变化很快，只认最后一次的结果，否则会闪回旧提示
+    if (seq !== depCheckSeq) return
+    missingDeps.value = res.missing || []
+    depError.value = ''
+  } catch (e: any) {
+    if (seq !== depCheckSeq) return
+    missingDeps.value = []
+    // 成环这类错要显示出来——它是配置错误，不补前置也解决不了
+    depError.value = e?.message || ''
+  }
+}
+
+/** 把缺的前置补进对应平台那一栏，放在最前面（前置就该先跑） */
+function fillMissingDeps() {
+  for (const dep of missingDeps.value) {
+    const flow = availableFlows.value.find((f) => f.id === dep.id)
+    const bucket = flow ? flowPlatformBucket(flow.platform) : 'shared'
+    const target =
+      bucket === 'android' ? selectedAndroidFlowIds
+      : bucket === 'ios' ? selectedIosFlowIds
+      : bucket === 'harmony' ? selectedHarmonyFlowIds
+      : selectedSharedFlowIds
+    if (!target.value.includes(dep.id)) {
+      target.value = [dep.id, ...target.value]
+    }
+  }
+  missingDeps.value = []
+}
+
 const selectedFlowIds = computed(() =>
   mergePlatformOrderedFlowIds(
     selectedAndroidFlowIds.value,
     selectedSharedFlowIds.value,
-    selectedIosFlowIds.value
+    selectedIosFlowIds.value,
+    selectedHarmonyFlowIds.value
   )
 )
+
+// 勾选一变就重新检查，不用等到点执行才发现缺前置
+watch(selectedFlowIds, checkDependencies)
 
 const androidOrderedPreview = computed(() =>
   buildOrderedSteps(selectedAndroidFlowIds.value, androidFlows.value)
 )
 const iosOrderedPreview = computed(() =>
   buildOrderedSteps(selectedIosFlowIds.value, iosFlows.value)
+)
+const harmonyOrderedPreview = computed(() =>
+  buildOrderedSteps(selectedHarmonyFlowIds.value, harmonyFlows.value)
 )
 
 const matrixJobs = computed(() =>
@@ -861,7 +1251,7 @@ const accountOptions = computed(() =>
     verificationCode: a.verificationCode,
     label: a.label,
     app: a.app,
-    appLabel: a.app === 'DOMESTIC_ESPORTS' ? '国内电竞' : '海外 PogPog'
+    appLabel: regressionAppLabel(a.app)
   }))
 )
 
@@ -886,14 +1276,33 @@ function catalogLabel(c?: string) {
   return c || '—'
 }
 
-/** 跳到流程编排并直接打开该流程的编辑抽屉（带流程名，标题一眼能认） */
+/** 跳到流程编排并直接打开该流程编辑抽屉 */
 function openFlowEditor(flowId: string, flowName?: string) {
   const id = String(flowId || '').trim()
-  if (!id) return
-  const query: Record<string, string> = { edit: id }
+  if (!id) {
+    ElMessage.warning('流程 ID 为空，无法打开编辑')
+    return
+  }
   const name = String(flowName || '').trim()
-  if (name) query.name = name
-  void router.push({ name: 'UiFlows', query })
+  try {
+    sessionStorage.setItem(
+      'ui-flows-pending-edit',
+      JSON.stringify({ id, name, at: Date.now() })
+    )
+  } catch {
+    /* ignore */
+  }
+  // 带 edit + 时间戳：强制 fullPath 变化以触发流程页挂载；
+  // 注意：打开编辑后不能立刻清 query，否则 key=fullPath 会重挂载把抽屉冲掉
+  void router
+    .push({
+      path: '/ui-flows',
+      query: { edit: id, ...(name ? { name } : {}), _t: String(Date.now()) }
+    })
+    .catch((e) => {
+      console.error(e)
+      ElMessage.error('跳转流程编排失败')
+    })
 }
 
 function mapFlowRow(row: any): RegressionFlowOption {
@@ -915,7 +1324,12 @@ async function loadRegressionFlows() {
     const apps = selectedApps.value.length ? selectedApps.value : (['DOMESTIC_ESPORTS'] as RegressionAppId[])
     const lists = await Promise.all(
       apps.map((appId) =>
-        apiClient.getUiFlows({ appId, forRegression: true, environment: environment.value })
+        apiClient.getUiFlows({
+          appId,
+          forRegression: true,
+          environment: environment.value,
+          releasedPackage: releasedPackage.value
+        })
       )
     )
     const byId = new Map<string, RegressionFlowOption>()
@@ -935,11 +1349,13 @@ async function loadRegressionFlows() {
     const keepAndroid = selectedAndroidFlowIds.value.filter((id) => visible.has(id))
     const keepIos = selectedIosFlowIds.value.filter((id) => visible.has(id))
     const keepShared = selectedSharedFlowIds.value.filter((id) => visible.has(id))
+    const keepHarmony = selectedHarmonyFlowIds.value.filter((id) => visible.has(id))
 
-    if (keepAndroid.length || keepIos.length || keepShared.length) {
+    if (keepAndroid.length || keepIos.length || keepShared.length || keepHarmony.length) {
       selectedAndroidFlowIds.value = keepAndroid
       selectedIosFlowIds.value = keepIos
       selectedSharedFlowIds.value = keepShared
+      selectedHarmonyFlowIds.value = keepHarmony
     } else {
       const androidDefaults = [
         SEED_FLOW_IDS.loginLogoutAndroid,
@@ -950,6 +1366,7 @@ async function loadRegressionFlows() {
         : parts.android.map((f) => f.id)
       selectedIosFlowIds.value = parts.ios.map((f) => f.id)
       selectedSharedFlowIds.value = parts.shared.map((f) => f.id)
+      selectedHarmonyFlowIds.value = parts.harmony.map((f) => f.id)
     }
   } catch (e: any) {
     ElMessage.error(e?.message || '加载回归用例失败')
@@ -965,27 +1382,50 @@ function selectAllAndroidFlows() {
 function selectAllIosFlows() {
   selectedIosFlowIds.value = iosFlows.value.map((f) => f.id)
 }
+function selectAllHarmonyFlows() {
+  selectedHarmonyFlowIds.value = harmonyFlows.value.map((f) => f.id)
+}
 function selectAllSharedFlows() {
   selectedSharedFlowIds.value = sharedFlows.value.map((f) => f.id)
 }
 function selectAllFlows() {
   selectAllAndroidFlows()
   selectAllIosFlows()
+  selectAllHarmonyFlows()
   selectAllSharedFlows()
 }
 function clearAllFlows() {
   selectedAndroidFlowIds.value = []
   selectedIosFlowIds.value = []
+  selectedHarmonyFlowIds.value = []
   selectedSharedFlowIds.value = []
 }
 
-/** 目标 APP 单选：点哪个就切到哪个（国内用例不会出现在海外列表） */
+/** 目标 APP 单选：点哪个就切到哪个；切卡时清掉对端设备勾选，避免矩阵错配 */
 function selectApp(id: RegressionAppId) {
   if (selectedApps.value.length === 1 && selectedApps.value[0] === id) return
   selectedApps.value = [id]
+  const keepHarmony = isHarmonyRegressionApp(id)
+  selectedDeviceIds.value = selectedDeviceIds.value.filter((did) => {
+    const d = deviceStore.devices.find((x) => x.id === did)
+    if (!d) return false
+    const p = String(d.platform || '').toUpperCase()
+    const isHarmony = p.startsWith('HARMONY')
+    return keepHarmony ? isHarmony : !isHarmony
+  })
+  if (keepHarmony) {
+    selectedAndroidFlowIds.value = []
+    selectedIosFlowIds.value = []
+    selectedSharedFlowIds.value = []
+  } else {
+    selectedHarmonyFlowIds.value = []
+  }
 }
 
 const flowsEmptyHint = computed(() => {
+  if (harmonyAppSelected.value) {
+    return '鸿蒙应用下暂无用例。请先在元素管理采集鸿蒙元素，再在流程编排为 DOMESTIC_ESPORTS_HARMONY 创建流程。'
+  }
   if (selectedApps.value.includes('OVERSEAS_POGPOG') && !selectedApps.value.includes('DOMESTIC_ESPORTS')) {
     return '海外 PogPog 暂无可用用例。国内「完美世界电竞」用例不会出现在此列表；请在流程编排中为 OVERSEAS_POGPOG 创建 ONLINE/SHARED 流程。'
   }
@@ -1229,6 +1669,8 @@ async function startRegression() {
       customPhone: accountPayload.customPhones[0] || undefined,
       customCode: accountPayload.customCodes[0] || undefined,
       enableOverseasProxy: enableOverseasProxy.value,
+      installStrategy: installStrategy.value,
+      installBuildKey: installStrategy.value === 'SPECIFIC' ? installBuildKey.value : undefined,
       environment: environment.value
     })
     activeRunId.value = res.id
@@ -1277,7 +1719,21 @@ async function startRegression() {
   }
 }
 
+interface FailureClusterVo {
+  reason: string
+  count: number
+  samples?: string[]
+  rank: number
+  hint?: string
+}
+
+/** 后端按「失败步骤 + 报错指纹」归的类，最多的一类排在前 */
+const failureClusters = ref<FailureClusterVo[]>([])
+const failureSummary = ref('')
+
 function applyRunSnapshot(detail: {
+  failureSummary?: string
+  failureClusters?: FailureClusterVo[]
   jobs: Array<{
     key: string
     appId: string
@@ -1293,6 +1749,8 @@ function applyRunSnapshot(detail: {
     steps: Array<{ id: string; stepId: string; label: string; status: string; error?: string; screenshotUrl?: string | null }>
   }>
 }) {
+  failureClusters.value = detail.failureClusters || []
+  failureSummary.value = detail.failureSummary || ''
   liveJobs.value = detail.jobs.map((job) => {
     const steps = (job.steps || []).map((s) => ({
       id: s.stepId || s.id,
@@ -1312,8 +1770,14 @@ function applyRunSnapshot(detail: {
       appName: job.appName,
       deviceId: job.deviceId,
       deviceName: job.deviceName,
-      endpoint: (job.endpoint === 'ios' ? 'ios' : 'android') as LiveJob['endpoint'],
-      endpointLabel: job.endpointLabel || (job.endpoint === 'ios' ? 'iOS' : 'Android'),
+      endpoint: (job.endpoint === 'ios'
+        ? 'ios'
+        : job.endpoint === 'harmony'
+          ? 'harmony'
+          : 'android') as LiveJob['endpoint'],
+      endpointLabel:
+        job.endpointLabel ||
+        (job.endpoint === 'ios' ? 'iOS' : job.endpoint === 'harmony' ? '鸿蒙' : 'Android'),
       status: (job.status || 'pending') as JobRunStatus,
       progress: job.progress || 0,
       currentStepLabel: job.currentStepLabel || '',
@@ -1605,6 +2069,61 @@ onUnmounted(() => {
 
 .config-card,
 .monitor-card,
+.fail-clusters {
+  margin: 4px 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--el-color-danger-light-7);
+  border-radius: 8px;
+  background: var(--el-color-danger-light-9);
+}
+
+.fail-clusters-head {
+  font-size: 14px;
+  margin-bottom: 10px;
+  color: var(--el-text-color-primary);
+}
+
+.fail-cluster {
+  padding: 8px 0;
+  border-top: 1px dashed var(--el-border-color);
+}
+
+.fail-cluster:first-of-type {
+  border-top: none;
+}
+
+.fail-cluster-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fail-cluster-reason {
+  font-weight: 500;
+}
+
+.fail-cluster-hint,
+.fail-cluster-samples {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.6;
+}
+
+.install-strategy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.install-strategy-hint {
+  flex-basis: 100%;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
+}
+
 .report-card {
   border-radius: 10px;
 }
@@ -1652,70 +2171,247 @@ onUnmounted(() => {
 
 .app-cards {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .app-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+.step-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.dep-tip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  line-height: 1.7;
+}
+.scene-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.scene-card {
+  text-align: left;
+  padding: 12px 14px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 10px;
+  background: var(--el-bg-color);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.scene-card:hover {
+  border-color: var(--el-color-primary-light-5);
+}
+.scene-card.active {
+  border-color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  box-shadow: 0 0 0 1px var(--el-color-primary-light-7);
+}
+.scene-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.scene-sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.6;
+}
+.scene-meta {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.pkg-stage-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.pkg-stage-hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.step-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #3b82f6;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  margin-top: 2px;
+}
+
+.step-head-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--app-text);
+  line-height: 1.3;
+}
+
+.step-head-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 .app-card {
   position: relative;
   display: flex;
+  flex-direction: column;
   gap: 12px;
-  align-items: flex-start;
   text-align: left;
   padding: 14px;
-  border-radius: 12px;
-  border: 1px solid var(--app-border);
-  background: #fafbfc;
+  border-radius: 14px;
+  border: 1.5px solid #e8edf3;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s, transform 0.15s;
 }
 
 .app-card:hover {
-  border-color: #a0cfff;
+  border-color: #93c5fd;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.08);
+  transform: translateY(-1px);
 }
 
 .app-card.active {
-  border-color: var(--el-color-primary);
-  background: var(--el-color-primary-light-9);
-  box-shadow: 0 0 0 1px var(--el-color-primary) inset;
+  border-color: #3b82f6;
+  background: #eff6ff;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25), 0 4px 12px rgba(59, 130, 246, 0.1);
+}
+
+.app-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .app-card-icon {
   width: 44px;
   height: 44px;
-  border-radius: 10px;
-  background: linear-gradient(145deg, #3a4a5c, #1f2a36);
+  border-radius: 12px;
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   flex-shrink: 0;
+  letter-spacing: 0.02em;
 }
 
-.app-card.active .app-card-icon {
-  background: linear-gradient(145deg, var(--el-color-primary), var(--el-color-primary-dark-2));
+.app-card-icon.tone-domestic {
+  background: #1e3a5f;
+}
+
+.app-card-icon.tone-harmony {
+  background: #60a5fa;
+}
+
+.app-card-icon.tone-overseas {
+  background: #7c3aed;
+}
+
+.app-card-radio {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid #cbd5e1;
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #fff;
+  font-size: 12px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.app-card-radio.checked {
+  border-color: #3b82f6;
+  background: #3b82f6;
+}
+
+.app-card-body {
+  min-width: 0;
 }
 
 .app-card-name {
+  font-size: 15px;
   font-weight: 700;
-  color: var(--app-text);
+  color: #0f172a;
+  line-height: 1.3;
 }
 
-.app-card-sub,
-.app-card-hint {
+.app-card-sub {
+  margin-top: 4px;
   font-size: 12px;
-  color: var(--el-text-color-placeholder);
-  margin-top: 2px;
+  color: #94a3b8;
+  line-height: 1.4;
 }
 
-.app-check {
-  position: absolute;
-  right: 10px;
-  top: 10px;
-  color: var(--el-color-primary);
-  font-size: 18px;
+.app-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.app-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.app-tag.tag-region {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.app-tag.tag-overseas {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.app-tag.tag-android {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.app-tag.tag-ios {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.app-tag.tag-harmony {
+  background: #e0f2fe;
+  color: #0284c7;
 }
 
 .device-groups {
@@ -1919,9 +2615,9 @@ onUnmounted(() => {
 
 .order-preview {
   margin-top: 12px;
-  padding: 10px 12px;
+  padding: 12px 14px;
   background: var(--app-surface);
-  border-radius: 8px;
+  border-radius: 10px;
 }
 
 .order-preview-android {
@@ -1934,48 +2630,176 @@ onUnmounted(() => {
   border: 1px solid #d9ecff;
 }
 
-.order-label {
+.order-preview-harmony {
+  background: #fdf6ec;
+  border: 1px solid #faecd8;
+}
+
+.order-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 10px;
+}
+
+.order-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.order-preview-android .order-title {
+  color: #529b2e;
+}
+
+.order-preview-ios .order-title {
+  color: #337ecc;
+}
+
+.order-preview-harmony .order-title {
+  color: #b88230;
+}
+
+.order-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 12px;
-  color: var(--app-text-secondary);
-  margin-bottom: 8px;
+  font-weight: 400;
 }
 
-.order-preview-android .order-label {
-  color: var(--app-success);
-  font-weight: 600;
+.order-preview-android .order-hint {
+  color: #85ce61;
 }
 
-.order-preview-ios .order-label {
-  color: var(--app-primary);
-  font-weight: 600;
+.order-preview-ios .order-hint {
+  color: #79bbff;
+}
+
+.order-preview-harmony .order-hint {
+  color: #e6a23c;
+}
+
+.order-hint .el-icon {
+  font-size: 14px;
 }
 
 .order-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 
-.order-chip-ios {
-  --el-tag-bg-color: var(--el-color-primary-light-9);
-  --el-tag-border-color: #a0cfff;
-  --el-tag-text-color: #337ecc;
-}
-
-.order-chip-android {
-  --el-tag-bg-color: #f0f9eb;
-  --el-tag-border-color: #b3e19d;
-  --el-tag-text-color: #529b2e;
-}
-
-.order-chip.is-link {
+.order-chip-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 8px;
+  padding: 6px 12px 6px 8px;
+  font-size: 13px;
+  line-height: 1.3;
   cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  max-width: 100%;
+  background: #fff;
+  transition: box-shadow 0.15s, border-color 0.15s, background 0.15s, color 0.15s, transform 0.15s;
 }
-.order-chip.is-link:hover {
-  filter: brightness(0.96);
-  box-shadow: 0 0 0 1px currentColor inset;
+
+.order-chip-btn-android {
+  border: 1px solid #b3e19d;
+  color: #529b2e;
+}
+
+.order-chip-btn-ios {
+  border: 1px solid #a0cfff;
+  color: #337ecc;
+}
+
+.order-chip-btn-harmony {
+  border: 1px solid #f3d19e;
+  color: #b88230;
+}
+
+.order-chip-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.order-chip-btn-android:hover {
+  border-color: #67c23a;
+  background: #e1f3d8;
+  color: #3d8b1e;
+}
+
+.order-chip-btn-ios:hover {
+  border-color: var(--el-color-primary);
+  background: #d9ecff;
+  color: #1d6fb8;
+}
+
+.order-chip-btn-harmony:hover {
+  border-color: #e6a23c;
+  background: #fdf6ec;
+  color: #a87016;
+}
+
+.order-chip-btn-android:hover .order-num {
+  background: #529b2e;
+}
+
+.order-chip-btn-ios:hover .order-num {
+  background: #337ecc;
+}
+
+.order-chip-btn-harmony:hover .order-num {
+  background: #b88230;
+}
+
+.order-num {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  transition: background 0.15s;
+}
+
+.order-chip-btn-android .order-num {
+  background: #67c23a;
+}
+
+.order-chip-btn-ios .order-num {
+  background: var(--el-color-primary);
+}
+
+.order-chip-btn-harmony .order-num {
+  background: #e6a23c;
+}
+
+.order-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.order-jump {
+  flex: 0 0 auto;
+  font-size: 14px;
+  opacity: 0.75;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.order-chip-btn:hover .order-jump {
+  opacity: 1;
+  transform: translate(1px, -1px);
 }
 
 .dual-accounts {

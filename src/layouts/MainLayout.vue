@@ -146,6 +146,7 @@
             <span>其他</span>
           </template>
           <el-menu-item index="/tracking-check">埋点校验</el-menu-item>
+          <el-menu-item index="/version-archives">版本需求归档</el-menu-item>
           <el-menu-item index="/release-doc">发版文档</el-menu-item>
           <el-menu-item index="/change-review">周改动漏测</el-menu-item>
           <el-menu-item index="/settings">设置</el-menu-item>
@@ -256,6 +257,7 @@ const defaultOpeneds = computed(() => {
   if (
     p.startsWith('/settings') ||
     p.startsWith('/tracking-check') ||
+    p.startsWith('/version-archives') ||
     p.startsWith('/release-doc') ||
     p.startsWith('/change-review')
   ) {
@@ -280,6 +282,7 @@ const titleMap: Record<string, string> = {
   '/performance-baseline': '安卓性能测试',
   '/special-report': '版本质量卡',
   '/release-doc': '发版文档与邮件管理',
+  '/version-archives': '版本需求归档',
   '/change-review': '本周改动 / 漏测看板',
   '/web-test': 'Web 端测试',
   '/api-testing': '概览',

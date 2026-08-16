@@ -1,5 +1,14 @@
 export interface ElectronAPI {
   getAppVersion: () => Promise<string>
+  isPackaged: () => Promise<boolean>
+  getNodeConfig: () => Promise<{
+    controlPlaneUrl: string
+    workerPort: number
+    workerUrl: string
+    packaged: boolean
+  }>
+  setControlPlane: (url: string) => Promise<{ ok: boolean; url: string; message: string }>
+  getWorkerStatus: () => Promise<{ ok: boolean; url: string; message: string }>
   device: {
     list: () => Promise<any[]>
     connect: (deviceId: string) => Promise<any>
@@ -30,5 +39,11 @@ export interface ElectronAPI {
 declare global {
   interface Window {
     electronAPI: ElectronAPI
+    bootNodeConfig?: {
+      controlPlaneUrl: string
+      workerPort: number
+      workerUrl: string
+      packaged: boolean
+    } | null
   }
 }

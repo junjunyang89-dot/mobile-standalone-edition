@@ -68,6 +68,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'APP回归' }
       },
       {
+        path: 'version-archives',
+        name: 'VersionArchives',
+        component: () => import('../views/VersionArchive.vue'),
+        meta: { title: '版本需求归档' }
+      },
+      {
         path: 'release-doc',
         name: 'ReleaseDoc',
         component: () => import('../views/ReleaseDoc.vue'),

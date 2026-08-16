@@ -593,9 +593,9 @@
             </el-select>
             <div class="ced-hint is-link">
               「是否已实现自动化」由这里推导——关联的流程被停用或删除，标记会自动变回「未覆盖」。<br />
-              这里<strong>只列用途为「仅自动化编排」的流程</strong>。回归是独立的一套——
-              包括「回归 + 自动化编排」在内，只要进回归批次就属于回归，验的是「这个包能不能用」，
-              不对应任何一条用例。
+              <strong>只要流程执行了这条用例的步骤就算覆盖</strong>，跟它进不进回归批次无关。
+              这里不列的只有<strong>装包准备</strong>（不执行用例步骤）和<strong>仅性能测试</strong>
+              （采资源曲线、不验功能）——那两类挂上去必然是假覆盖。
               <template v-if="editingPlatform">同时只列 {{ editingPlatform }} 的流程。</template>
             </div>
           </label>
@@ -1418,7 +1418,9 @@ async function loadFlowOptions() {
     const rows = await apiClient.getUiFlows({})
     flowOptions.value = (Array.isArray(rows) ? rows : [])
       .filter((f: any) => f?.id && !f.isComponent)
-      .filter((f: any) => f.catalog === 'AUTOMATION')
+      // 只要流程执行了这条用例的步骤就算覆盖，跟它进不进回归批次无关。
+      // 排除的只有装包准备（不执行用例步骤）和仅性能测试（采资源曲线、不验功能）
+      .filter((f: any) => f.catalog !== 'INSTALL' && f.catalog !== 'PERFORMANCE')
       .map((f: any) => ({ id: f.id, name: f.name || f.id, platform: f.platform || '' }))
   } catch {
     // 拉不到流程不该挡住录用例：关联留空即可，回头再挂
@@ -2104,7 +2106,7 @@ onBeforeUnmount(() => {
   display: grid;
   /* 勾选 / TC 编号 / 标题 / 优先级 / 复核 / 自动化 / 操作。
      列数必须和行里的子元素个数对上——多一个就会换行，操作列会掉到下一行最左边 */
-  grid-template-columns: 22px 88px minmax(0, 1fr) 56px 78px 72px 188px;
+  grid-template-columns: 22px 120px minmax(0, 1fr) 56px 78px 72px 188px;
   column-gap: 10px;
   align-items: center;
   padding: 6px 14px;
@@ -2190,6 +2192,7 @@ onBeforeUnmount(() => {
 .c-id {
   display: inline-block;
   width: fit-content;
+  max-width: 100%;
   font-family: 'JetBrains Mono', ui-monospace, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
   color: #0284c7;
@@ -2197,6 +2200,9 @@ onBeforeUnmount(() => {
   border-radius: 3px;
   padding: 2px 5px;
   font-weight: 600;
+  word-break: break-all;
+  white-space: normal;
+  line-height: 1.4;
 }
 .case-row.active .c-id { background: #dbeafe; color: #1d4ed8; }
 .c-title {
