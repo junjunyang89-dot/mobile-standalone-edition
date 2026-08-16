@@ -1355,6 +1355,13 @@ class ApiClient {
     })
   }
 
+  async setApiTestScheduleEnabled(id: string, enabled: boolean) {
+    return this.request<any>(`/api-test/schedules/${encodeURIComponent(id)}/enabled`, {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled })
+    })
+  }
+
   async runApiTestScheduleNow(id: string) {
     return this.request<any>(`/api-test/schedules/${encodeURIComponent(id)}/run`, { method: 'POST' })
   }

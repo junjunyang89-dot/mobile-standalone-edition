@@ -14,7 +14,9 @@
         </div>
       </template>
 
-      <el-empty v-if="!loading && !rows.length" description="还没有定时任务" />
+      <el-empty v-if="!loading && !rows.length" description="还没有定时任务">
+        <el-button type="primary" @click="openCreate">新建第一条</el-button>
+      </el-empty>
 
       <div v-loading="loading">
         <div v-for="s in rows" :key="s.id" class="sch-card" :class="{ off: !s.enabled }">
@@ -34,7 +36,16 @@
               <span class="dot">·</span>
               <span>{{ s.collectionName || '全部用例' }} · {{ s.caseCount ?? 0 }} 条</span>
               <span v-if="s.lastRunAt" class="dot">·</span>
-              <span v-if="s.lastRunAt">上次 {{ fmt(s.lastRunAt) }}</span>
+              <el-button
+                v-if="s.lastRunId"
+                link
+                type="primary"
+                class="last-run"
+                @click="openReport(s.lastRunId)"
+              >
+                上次 {{ fmt(s.lastRunAt) }}
+              </el-button>
+              <span v-else-if="s.lastRunAt">上次 {{ fmt(s.lastRunAt) }}</span>
             </div>
             <div v-if="s.lastStatus === 'ERROR' && s.lastMessage" class="sch-error">
               {{ s.lastMessage }}
@@ -45,6 +56,7 @@
             <div class="next-time">{{ s.enabled ? fmt(s.nextRunAt) || '—' : '已暂停' }}</div>
           </div>
           <div class="sch-actions">
+            <el-switch :model-value="!!s.enabled" @change="(v) => toggle(s, !!v)" />
             <el-tooltip content="立即跑一次，不影响下次定时" placement="top">
               <el-button link type="primary" :loading="runningId === s.id" @click="runNow(s)">
                 <el-icon><VideoPlay /></el-icon>
@@ -120,6 +132,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { VideoPlay, VideoPause } from '@element-plus/icons-vue'
 import { apiClient } from '../api'
@@ -129,6 +142,8 @@ import { apiClient } from '../api'
  *
  * 没做 webhook 触发那块：现在没有 CI 往这里打，做了也没人用。
  */
+
+const router = useRouter()
 
 const PRESETS = [
   { label: '每天 8 点', cron: '0 0 8 * * ?' },
@@ -181,9 +196,11 @@ function statusText(status: string) {
 async function load() {
   loading.value = true
   try {
-    rows.value = await apiClient.getApiTestSchedules()
+    const list = await apiClient.getApiTestSchedules()
+    rows.value = Array.isArray(list) ? list : []
   } catch (e: any) {
     ElMessage.error(e?.message || '加载失败')
+    rows.value = []
   } finally {
     loading.value = false
   }
@@ -231,15 +248,29 @@ async function save() {
   }
   saving.value = true
   try {
-    await apiClient.saveApiTestSchedule({ ...form.value, id: form.value.id || undefined })
+    const saved = await apiClient.saveApiTestSchedule({ ...form.value, id: form.value.id || undefined })
     dialog.value = false
-    ElMessage.success('已保存')
+    ElMessage.success(saved?.nextRunAt ? `已保存，下次 ${fmt(saved.nextRunAt)}` : '已保存')
     await load()
   } catch (e: any) {
     ElMessage.error(e?.message || '保存失败')
   } finally {
     saving.value = false
   }
+}
+
+async function toggle(s: any, enabled: boolean) {
+  try {
+    await apiClient.setApiTestScheduleEnabled(s.id, enabled)
+    ElMessage.success(enabled ? '已启用' : '已暂停')
+    await load()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '更新失败')
+  }
+}
+
+function openReport(runId: string) {
+  router.push({ path: '/api-reports', query: { runId } })
 }
 
 async function runNow(s: any) {
@@ -382,7 +413,13 @@ onMounted(async () => {
 .sch-actions {
   display: flex;
   align-items: center;
+  gap: 4px;
   flex: none;
+}
+.last-run {
+  padding: 0;
+  height: auto;
+  font-size: 12px;
 }
 .tip {
   margin-top: 6px;
