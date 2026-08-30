@@ -1760,72 +1760,16 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="bugVisible" :title="bugForm.id ? '编辑 Bug' : '记一条 Bug'" width="640px">
-      <p class="bug-tip">
-        字段和 wiki 那张表一一对应（所属模块 / 问题描述 / 截图 / 开发 / 测试 / 是否修复 /
-        是否验证 / 备注），到内网后点「复制成 wiki 表格」直接粘过去。
-      </p>
-      <el-form label-width="88px" size="small">
-        <el-form-item label="所属模块">
-          <el-input v-model="bugForm.module" placeholder="如 好友PK" />
-        </el-form-item>
-        <el-form-item label="问题描述" required>
-          <el-input
-            v-model="bugForm.description"
-            type="textarea"
-            :rows="3"
-            placeholder="如：二者均有天梯数据，点击PK后提示无天梯数据"
-          />
-        </el-form-item>
-        <el-form-item label="截图">
-          <input
-            ref="bugFileInput"
-            type="file"
-            accept="image/*"
-            multiple
-            style="display: none"
-            @change="onBugFiles"
-          />
-          <div class="bug-shots-edit">
-            <el-image
-              v-for="(u, i) in bugForm.images"
-              :key="i"
-              :src="u"
-              :preview-src-list="bugForm.images"
-              :initial-index="i"
-              fit="cover"
-              class="bug-shot"
-              preview-teleported
-            />
-            <el-button size="small" plain :loading="bugUploading" @click="bugFileInput?.click()">
-              + 传截图
-            </el-button>
-          </div>
-          <div class="bug-tip">可以多张（问题现场 + 原型对照）。单张 10MB 以内</div>
-        </el-form-item>
-        <el-form-item label="开发 / 测试">
-          <div class="bug-two">
-            <el-input v-model="bugForm.developer" placeholder="如 IOS" />
-            <el-input v-model="bugForm.tester" placeholder="如 yjj" />
-          </div>
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-checkbox v-model="bugForm.fixed">已修复</el-checkbox>
-          <el-checkbox v-model="bugForm.verified">已验证</el-checkbox>
-          <div class="bug-tip">
-            「已修复」不等于「已验证」—— 开发说改好了、而没人回去点一遍，
-            是最容易漏的一档，所以列表上会单独标出来
-          </div>
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="bugForm.note" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="bugVisible = false">取消</el-button>
-        <el-button type="primary" :loading="bugSaving" @click="saveBug">保存</el-button>
-      </template>
-    </el-dialog>
+    <BugSubmitDialog
+      v-if="bugVisible"
+      v-model="bugVisible"
+      :mode="bugDialogValue.id ? 'edit' : 'create'"
+      :value="bugDialogValue"
+      :user-options="bugUserOptions"
+      :version-options="bugVersionOptions"
+      :submitting="bugSaving"
+      @submit="onBugDialogSubmit"
+    />
 
     <el-dialog v-model="epGenVisible" title="生成这条接口的用例" width="560px" destroy-on-close>
       <div v-if="genEp" class="gen-target">
@@ -1898,6 +1842,12 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { EditPen, FolderOpened, InfoFilled, UploadFilled, WarningFilled, ArrowDown } from '@element-plus/icons-vue'
 import { apiClient, type AiTestCaseDto, type AiTestCaseStep } from '../api'
+import BugSubmitDialog from '../components/BugSubmitDialog.vue'
+import {
+  apiRowToBugValue,
+  defaultBugValue,
+  type BugSubmitValue
+} from '../utils/bugSubmit'
 import { findTestCaseSuite, TEST_CASE_SUITES } from '../constants/testCaseSuites'
 import { logout, user } from '../stores/auth'
 
@@ -2861,20 +2811,11 @@ const bugSummaries = ref<Record<string, any>>({})
 
 const bugVisible = ref(false)
 const bugSaving = ref(false)
-const bugUploading = ref(false)
-const bugFileInput = ref<HTMLInputElement>()
-const bugForm = reactive({
-  id: '',
-  caseId: '',
-  requirementNo: '',
-  module: '',
-  description: '',
-  images: [] as string[],
-  developer: '',
-  tester: '',
-  fixed: false,
-  verified: false,
-  note: ''
+const bugDialogValue = ref<BugSubmitValue>(defaultBugValue())
+const bugUserOptions = ref<string[]>([])
+const bugVersionOptions = computed(() => {
+  const v = filterVersion.value
+  return v ? [v, 'V3.6', 'V3.5', 'V3.4'] : ['V3.6', 'V3.5', 'V3.4']
 })
 
 function bugImages(b: Record<string, any>): string[] {
@@ -2916,10 +2857,12 @@ function bugFromBrowseCase(row: Record<string, any>) {
     return
   }
   openBugDialog(reqNo)
-  // 页面/模块带过去——这几个字每次手打，记两条就不想记了
-  bugForm.module = row.pageName || row.moduleName || ''
-  bugForm.description = row.title ? `【${row.title}】` : ''
-  bugForm.caseId = row.id || ''
+  bugDialogValue.value = {
+    ...bugDialogValue.value,
+    modules: [row.pageName || row.moduleName || ''].filter(Boolean),
+    summary: row.title || '',
+    caseId: row.id || ''
+  }
 }
 
 function bugFromCase(row: Record<string, any>, mod: Record<string, any>) {
@@ -2929,91 +2872,46 @@ function bugFromCase(row: Record<string, any>, mod: Record<string, any>) {
     return
   }
   openBugDialog(reqNo)
-  bugForm.module = row.pageName || row.moduleName || mod.moduleName || ''
-  bugForm.description = row.title ? `【${row.title}】` : ''
-  bugForm.caseId = row.id || ''
+  bugDialogValue.value = {
+    ...bugDialogValue.value,
+    modules: [row.pageName || row.moduleName || mod.moduleName || ''].filter(Boolean),
+    summary: row.title || '',
+    caseId: row.id || ''
+  }
 }
 
 function openBugDialog(reqNo: string) {
-  Object.assign(bugForm, {
-    id: '',
+  bugDialogValue.value = defaultBugValue({
     requirementNo: reqNo,
-    module: '',
-    description: '',
-    images: [],
-    // 开发/测试预填上次填过的：一个版本里这两列基本不变，每条都重打很烦
-    caseId: '',
-    developer: bugs.value[0]?.developer || '',
-    tester: bugs.value[0]?.tester || user.value?.displayName || '',
-    fixed: false,
-    verified: false,
-    note: ''
+    reporter: user.value?.displayName || user.value?.username || bugs.value[0]?.tester || '',
+    assignee: bugs.value[0]?.developer || '',
+    appVersion: filterVersion.value || '',
+    environment: releaseTab.value === 'ONLINE' ? 'PROD' : 'TEST'
   })
   bugVisible.value = true
 }
 
 function editBug(b: Record<string, any>) {
-  Object.assign(bugForm, {
-    id: b.id,
-    requirementNo: b.requirementNo,
-    module: b.module || '',
-    description: b.description || '',
-    images: bugImages(b),
-    developer: b.developer || '',
-    tester: b.tester || '',
-    fixed: !!b.fixed,
-    verified: !!b.verified,
-    note: b.note || ''
-  })
+  bugDialogValue.value = apiRowToBugValue(b)
   bugVisible.value = true
 }
 
-async function onBugFiles(e: Event) {
-  const files = Array.from((e.target as HTMLInputElement).files || [])
-  if (!files.length) return
-  bugUploading.value = true
-  try {
-    const r = await apiClient.uploadBugImages(files)
-    bugForm.images = [...bugForm.images, ...r.urls]
-  } catch (err: any) {
-    ElMessage.error(err?.message || '截图上传失败')
-  } finally {
-    bugUploading.value = false
-    if (bugFileInput.value) bugFileInput.value.value = ''
-  }
-}
-
-async function saveBug() {
-  if (!bugForm.description.trim()) {
-    ElMessage.warning('问题描述必填 —— 只有截图没有描述，过两周谁也想不起来是什么问题')
-    return
-  }
+async function onBugDialogSubmit(body: Record<string, unknown>) {
   bugSaving.value = true
   try {
-    const body = {
-      requirementNo: bugForm.requirementNo,
-      appVersion: filterVersion.value || undefined,
-      module: bugForm.module,
-      caseId: bugForm.caseId || undefined,
-      description: bugForm.description.trim(),
-      images: JSON.stringify(bugForm.images),
-      developer: bugForm.developer,
-      tester: bugForm.tester,
-      fixed: bugForm.fixed,
-      verified: bugForm.verified,
-      note: bugForm.note,
-      environment: releaseTab.value === 'ONLINE' ? 'PROD' : 'TEST'
+    body.environment = releaseTab.value === 'ONLINE' ? 'PROD' : 'TEST'
+    if (!body.appVersion && filterVersion.value) {
+      body.appVersion = filterVersion.value
     }
-    if (bugForm.id) {
-      await apiClient.updateBug(bugForm.id, body)
+    if (body.id) {
+      await apiClient.updateBug(String(body.id), body)
     } else {
       await apiClient.createBug(body)
     }
     bugVisible.value = false
-    // 存完把面板展开：从用例行提的 bug，面板本来是收着的，
-    // 不展开的话人看不到刚记的那条，会以为没存上
-    bugsOf.value = bugForm.requirementNo
-    await loadBugs(bugForm.requirementNo)
+    bugsOf.value = String(body.requirementNo || bugsOf.value)
+    await loadBugs(String(body.requirementNo || bugsOf.value))
+    ElMessage.success(body.id ? '已保存' : 'Bug 已提交')
   } catch (e: any) {
     ElMessage.error(e?.message || '保存失败')
   } finally {
@@ -4533,6 +4431,9 @@ onMounted(() => {
   loadOpenQuestions()
   loadRequirements()
   loadReqEndpointCounts()
+  apiClient.fetchPlatformUsers().then((rows) => {
+    bugUserOptions.value = rows.map((u) => u.displayName || u.username).filter(Boolean) as string[]
+  }).catch(() => {})
 })
 
 onBeforeUnmount(() => {

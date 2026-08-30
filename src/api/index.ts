@@ -1621,8 +1621,11 @@ class ApiClient {
 
   async updateApiProjectCategory(key: string, body: { label: string; sortOrder?: number }) {
     return this.request<{ key: string; label: string; sortOrder?: number; builtin?: boolean }>(
-      `/api-projects/categories/${encodeURIComponent(key)}`,
-      { method: 'PUT', body: JSON.stringify(body) }
+      '/api-projects/categories',
+      {
+        method: 'POST',
+        body: JSON.stringify({ key, label: body.label, sortOrder: body.sortOrder })
+      }
     )
   }
 
@@ -2678,11 +2681,27 @@ class ApiClient {
     if (params?.assignee) q.set('assignee', params.assignee)
     if (params?.q) q.set('q', params.q)
     const qs = q.toString()
-    return this.request<{
-      bugs: Array<Record<string, any>>
-      assignees: string[]
-      statusCounts: Record<string, number>
-    }>(`/requirement-bugs/manage${qs ? `?${qs}` : ''}`)
+    const path = qs ? `/requirement-bugs?${qs}` : '/requirement-bugs'
+    try {
+      return await this.request<{
+        bugs: Array<Record<string, any>>
+        assignees: string[]
+        statusCounts: Record<string, number>
+      }>(path)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      if (!msg.includes('not supported') && !msg.includes('requirementNo')) {
+        throw e
+      }
+      return this.request<{
+        bugs: Array<Record<string, any>>
+        assignees: string[]
+        statusCounts: Record<string, number>
+      }>('/requirement-bugs/manage', {
+        method: 'POST',
+        body: JSON.stringify(params || {})
+      })
+    }
   }
 
   /** 某个需求单下测出来的 bug。字段对齐 wiki 那张表，搬过去不用重新映射 */

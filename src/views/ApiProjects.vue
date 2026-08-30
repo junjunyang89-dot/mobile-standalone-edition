@@ -215,6 +215,7 @@
       <el-form label-width="80px" size="small">
         <el-form-item v-if="categoryDialogMode === 'rename'" label="标识">
           <code>{{ categoryForm.key }}</code>
+          <div class="tip">只改显示名称，标识不变；不会新建分类。</div>
         </el-form-item>
         <el-form-item label="名称" required>
           <el-input v-model="categoryForm.label" placeholder="如：开放平台、中间件" maxlength="64" show-word-limit />
@@ -405,7 +406,12 @@ async function saveCategory() {
   categorySaving.value = true
   try {
     if (categoryDialogMode.value === 'rename') {
-      await apiClient.updateApiProjectCategory(categoryForm.key, {
+      const key = String(categoryForm.key || '').trim()
+      if (!key) {
+        ElMessage.warning('分类标识缺失，请关闭后重试')
+        return
+      }
+      await apiClient.updateApiProjectCategory(key, {
         label,
         sortOrder: categoryForm.sortOrder
       })

@@ -193,58 +193,16 @@
       </main>
     </div>
 
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="680px" destroy-on-close>
-      <el-form label-width="88px" size="small">
-        <el-form-item label="需求单" required>
-          <el-input v-model="form.requirementNo" placeholder="如 APP-8999" :disabled="!!form.id" />
-        </el-form-item>
-        <el-form-item label="所属模块">
-          <el-input v-model="form.module" placeholder="如 好友PK" />
-        </el-form-item>
-        <el-form-item label="优先级">
-          <el-select v-model="form.priority" style="width: 100%">
-            <el-option v-for="p in priorityOptions" :key="p.value" :label="p.label" :value="p.value" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="form.status" style="width: 100%">
-            <el-option v-for="s in statusOptions" :key="s.value" :label="s.label" :value="s.value" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="问题描述" required>
-          <el-input v-model="form.description" type="textarea" :rows="4" />
-        </el-form-item>
-        <el-form-item label="截图">
-          <input ref="fileInput" type="file" accept="image/*" multiple style="display: none" @change="onFiles" />
-          <div class="shots">
-            <el-image
-              v-for="(u, i) in form.images"
-              :key="i"
-              :src="resolveImage(u)"
-              :preview-src-list="form.images.map(resolveImage)"
-              :initial-index="i"
-              fit="cover"
-              class="shot"
-              preview-teleported
-            />
-            <el-button size="small" plain :loading="uploading" @click="fileInput?.click()">+ 传截图</el-button>
-          </div>
-        </el-form-item>
-        <el-form-item label="负责人">
-          <el-input v-model="form.developer" placeholder="开发负责人" />
-        </el-form-item>
-        <el-form-item label="测试">
-          <el-input v-model="form.tester" placeholder="测试人员" />
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="form.note" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="saveBug">保存</el-button>
-      </template>
-    </el-dialog>
+    <BugSubmitDialog
+      v-if="dialogVisible"
+      v-model="dialogVisible"
+      :mode="dialogMode === 'create' ? 'create' : 'edit'"
+      :value="bugDialogValue"
+      :show-requirement="true"
+      :user-options="userOptions"
+      :submitting="saving"
+      @submit="onBugDialogSubmit"
+    />
   </div>
 </template>
 
@@ -253,8 +211,11 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
+import BugSubmitDialog from '../components/BugSubmitDialog.vue'
 import { apiClient } from '../api'
 import { logout, user } from '../stores/auth'
+import { apiRowToBugValue, defaultBugValue, type BugSubmitValue } from '../utils/bugSubmit'
+import { BUG_PRIORITIES, bugPriorityLabel } from '../utils/bugPriority'
 
 type BugRow = {
   id: string
@@ -291,11 +252,10 @@ type TreeNode = {
 const router = useRouter()
 const loading = ref(false)
 const saving = ref(false)
-const uploading = ref(false)
-const fileInput = ref<HTMLInputElement>()
 const environment = ref<'TEST' | 'PROD'>('TEST')
 const allBugs = ref<BugRow[]>([])
 const assigneeOptions = ref<string[]>([])
+const userOptions = ref<string[]>([])
 const statusCounts = ref<Record<string, number>>({})
 const selectedKey = ref('')
 const expanded = ref<Record<string, boolean>>({})
@@ -303,6 +263,7 @@ const statusTab = ref('ALL')
 const selectedIds = ref<string[]>([])
 const dialogVisible = ref(false)
 const dialogMode = ref<'create' | 'view' | 'edit'>('create')
+const bugDialogValue = ref<BugSubmitValue>(defaultBugValue())
 
 const filters = reactive({
   priority: '',
@@ -311,26 +272,7 @@ const filters = reactive({
   q: ''
 })
 
-const form = reactive({
-  id: '',
-  requirementNo: '',
-  module: '',
-  description: '',
-  images: [] as string[],
-  developer: '',
-  tester: '',
-  priority: 'MEDIUM',
-  status: 'OPEN',
-  note: '',
-  environment: 'TEST'
-})
-
-const priorityOptions = [
-  { value: 'CRITICAL', label: 'CRITICAL' },
-  { value: 'HIGH', label: 'HIGH' },
-  { value: 'MEDIUM', label: 'MEDIUM' },
-  { value: 'LOW', label: 'LOW' }
-]
+const priorityOptions = BUG_PRIORITIES.map((p) => ({ value: p.value, label: p.label }))
 
 const statusOptions = [
   { value: 'OPEN', label: '待修复' },
@@ -338,12 +280,6 @@ const statusOptions = [
   { value: 'TO_VERIFY', label: '待验证' },
   { value: 'CLOSED', label: '已关闭' }
 ]
-
-const dialogTitle = computed(() => {
-  if (dialogMode.value === 'create') return '新建 Bug'
-  if (dialogMode.value === 'view') return 'Bug 详情'
-  return '编辑 Bug'
-})
 
 const filteredBugs = computed(() => {
   let rows = allBugs.value.filter((b) => (b.environment || 'TEST') === environment.value)
@@ -421,6 +357,7 @@ async function load() {
     })
     allBugs.value = (data.bugs || []) as BugRow[]
     assigneeOptions.value = data.assignees || []
+    userOptions.value = [...new Set([...userOptions.value, ...assigneeOptions.value])]
     statusCounts.value = data.statusCounts || {}
     if (treeNodes.value.length && !selectedKey.value) {
       const first = treeNodes.value[0]
@@ -598,7 +535,7 @@ function toggleRow(id: string) {
 }
 
 function priorityLabel(p: string) {
-  return p || 'MEDIUM'
+  return bugPriorityLabel(p)
 }
 
 function summaryTitle(desc: string) {
@@ -619,17 +556,10 @@ function resolveImage(u: string) {
 function openCreate() {
   dialogMode.value = 'create'
   const node = findNode(treeNodes.value, selectedKey.value)
-  Object.assign(form, {
-    id: '',
+  bugDialogValue.value = defaultBugValue({
     requirementNo: node?.requirementNo || '',
-    module: '',
-    description: '',
-    images: [],
-    developer: '',
-    tester: user.value?.displayName || '',
-    priority: 'MEDIUM',
-    status: 'OPEN',
-    note: '',
+    reporter: user.value?.displayName || user.value?.username || '',
+    assignee: '',
     environment: environment.value
   })
   dialogVisible.value = true
@@ -637,71 +567,19 @@ function openCreate() {
 
 function openDetail(row: BugRow) {
   dialogMode.value = 'edit'
-  Object.assign(form, {
-    id: row.id,
-    requirementNo: row.requirementNo,
-    module: row.module || '',
-    description: row.description || '',
-    images: parseImages(row.images),
-    developer: row.developer || '',
-    tester: row.tester || '',
-    priority: row.priority || 'MEDIUM',
-    status: row.status || 'OPEN',
-    note: (row as any).note || '',
-    environment: row.environment || environment.value
+  bugDialogValue.value = apiRowToBugValue({
+    ...row,
+    images: row.images,
+    note: (row as any).note
   })
   dialogVisible.value = true
 }
 
-function parseImages(raw?: string): string[] {
-  try {
-    const v = JSON.parse(raw || '[]')
-    return Array.isArray(v) ? v : []
-  } catch {
-    return []
-  }
-}
-
-async function onFiles(e: Event) {
-  const files = Array.from((e.target as HTMLInputElement).files || [])
-  if (!files.length) return
-  uploading.value = true
-  try {
-    const r = await apiClient.uploadBugImages(files)
-    form.images = [...form.images, ...r.urls]
-  } catch (err: any) {
-    ElMessage.error(err?.message || '上传失败')
-  } finally {
-    uploading.value = false
-    if (fileInput.value) fileInput.value.value = ''
-  }
-}
-
-async function saveBug() {
-  if (!form.requirementNo.trim()) {
-    ElMessage.warning('请填写需求单')
-    return
-  }
-  if (!form.description.trim()) {
-    ElMessage.warning('请填写问题描述')
-    return
-  }
+async function onBugDialogSubmit(body: Record<string, unknown>) {
   saving.value = true
   try {
-    const body = {
-      requirementNo: form.requirementNo.trim(),
-      module: form.module,
-      description: form.description.trim(),
-      images: JSON.stringify(form.images),
-      developer: form.developer,
-      tester: form.tester,
-      priority: form.priority,
-      status: form.status,
-      note: form.note,
-      environment: form.environment
-    }
-    if (form.id) {
-      await apiClient.updateBug(form.id, body)
+    if (body.id) {
+      await apiClient.updateBug(String(body.id), body)
       ElMessage.success('已保存')
     } else {
       await apiClient.createBug(body)
@@ -746,7 +624,22 @@ async function exportBugs() {
   }
 }
 
-onMounted(load)
+async function loadPlatformUsers() {
+  try {
+    const rows = await apiClient.fetchPlatformUsers()
+    const names = rows
+      .map((u) => u.displayName || u.username)
+      .filter(Boolean) as string[]
+    userOptions.value = [...new Set([...names, ...assigneeOptions.value])]
+  } catch {
+    userOptions.value = [...assigneeOptions.value]
+  }
+}
+
+onMounted(async () => {
+  await load()
+  await loadPlatformUsers()
+})
 </script>
 
 <style scoped>
