@@ -599,7 +599,7 @@
                 }}
                 · {{ job.deviceName }}
               </el-tag>
-              <el-button link type="danger" size="small" @click="excludeMatrixKey(job.key)">移除</el-button>
+              <el-button v-perm:delete link type="danger" size="small" @click="excludeMatrixKey(job.key)">移除</el-button>
             </div>
           </div>
           <el-button v-if="excludedMatrixKeys.length" size="small" link @click="excludedMatrixKeys = []">
@@ -2068,7 +2068,11 @@ onUnmounted(() => {
 }
 
 .config-card,
-.monitor-card,
+.monitor-card {
+  margin: 4px 0 18px;
+}
+
+/* 失败聚类才用浅红提醒；别套到配置/看板整块背景上 */
 .fail-clusters {
   margin: 4px 0 18px;
   padding: 12px 14px;

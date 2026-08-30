@@ -1,4 +1,5 @@
 import { createApp } from 'vue'
+import permDirective from './directives/perm'
 import { createPinia } from 'pinia'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
@@ -18,6 +19,7 @@ for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
 
 app.use(createPinia())
 app.use(router)
+app.use(permDirective)
 app.use(ElementPlus, {
   locale: zhCn,
 })

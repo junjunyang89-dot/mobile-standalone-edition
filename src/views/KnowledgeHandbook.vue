@@ -92,7 +92,7 @@
         <el-table-column label="操作" width="140" fixed="right">
           <template #default="{ row }">
             <el-button size="small" link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button size="small" link type="danger" @click="remove(row)">删</el-button>
+            <el-button v-perm:delete size="small" link type="danger" @click="remove(row)">删</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -146,7 +146,7 @@
         <div v-if="draftFiles.length" class="draft-files">
           <div v-for="(f, i) in draftFiles" :key="i" class="draft-file">
             <span class="draft-file-name">{{ f.name }}</span>
-            <el-button link type="danger" size="small" @click="removeDraftFile(i)">移除</el-button>
+            <el-button v-perm:delete link type="danger" size="small" @click="removeDraftFile(i)">移除</el-button>
           </div>
         </div>
       </div>
@@ -227,7 +227,7 @@
             >
               <el-button :loading="uploading">上传图片</el-button>
             </el-upload>
-            <el-button v-if="form.imageUrl" link type="danger" @click="clearImage">清除</el-button>
+            <el-button v-perm:delete v-if="form.imageUrl" link type="danger" @click="clearImage">清除</el-button>
             <span class="image-hint">选填；AI 汇总若带图会自动填入</span>
           </div>
           <el-image

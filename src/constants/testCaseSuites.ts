@@ -6,18 +6,26 @@ export interface TestCaseSuite {
   /** 悬停完整说明（可选） */
   fullTitle?: string
   hint: string
+  /**
+   * 这个集合按 APP 版本分组看。
+   * <p>
+   * 只有版本迭代集需要——其余集合是长期沉淀的功能用例，加个版本筛选只会多一个永远选「全部」的控件。
+   */
+  byVersion?: boolean
 }
 
 export const TEST_CASE_SUITES: TestCaseSuite[] = [
   {
+    key: 'app-release',
+    title: 'APP版本迭代',
+    fullTitle: 'APP 版本迭代（按版本看本次要测什么）',
+    hint: '每个版本的新需求用例，按版本分开看。版本测完后，需要长期回归的可以再并进对应的功能集',
+    byVersion: true
+  },
+  {
     key: 'performance',
     title: '性能',
     hint: '性能场景相关用例文档'
-  },
-  {
-    key: 'domestic-api',
-    title: '国内接口',
-    hint: '国内接口 / 服务端用例文档'
   },
   {
     key: 'wmpvp-ios',

@@ -129,7 +129,7 @@
                 只要任一平台下还挂着元素就删不掉（后端会拒），按钮摆在那只会让人白点一次。
                 g.total 是后端给的跨平台总数；拿不到时（后端未重启）退回按当前视图判断。
               -->
-              <el-button
+              <el-button v-perm:delete
                 v-if="g.pageId && (g.total === 0 || (g.total === null && !g.items.length))"
                 type="danger"
                 link
@@ -170,7 +170,7 @@
                   size="small"
                   @click="promoteActive(row)"
                 >选用</el-button>
-                <el-button type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
+                <el-button v-perm:delete type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -255,7 +255,7 @@
               size="small"
               @click="promoteActive(row)"
             >选用</el-button>
-            <el-button type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
+            <el-button v-perm:delete type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -412,7 +412,7 @@
             >
               <el-button :loading="uploadingPreview">上传图片</el-button>
             </el-upload>
-            <el-button v-if="form.previewImage" link type="danger" @click="clearPreview">清除</el-button>
+            <el-button v-perm:delete v-if="form.previewImage" link type="danger" @click="clearPreview">清除</el-button>
             <span class="preview-hint">选填，方便辨认元素</span>
           </div>
           <el-image
@@ -550,7 +550,7 @@
         </el-table-column>
         <el-table-column label="操作" width="70" align="right">
           <template #default="{ $index }">
-            <el-button link type="danger" size="small" @click="shotDrafts.splice($index, 1)">删</el-button>
+            <el-button v-perm:delete link type="danger" size="small" @click="shotDrafts.splice($index, 1)">删</el-button>
           </template>
         </el-table-column>
       </el-table>

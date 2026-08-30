@@ -45,51 +45,62 @@
           </template>
           <el-menu-item index="/api-projects">项目管理</el-menu-item>
           <el-menu-item index="/api-urls">URL 管理</el-menu-item>
-          <el-sub-menu index="asset-app">
-            <template #title>
-              <span>完美世界电竞</span>
-            </template>
-            <el-menu-item index="/devices">设备管理</el-menu-item>
-            <el-menu-item index="/ui-apps">应用字典</el-menu-item>
-            <el-menu-item index="/ui-keywords">关键字库</el-menu-item>
-            <el-menu-item index="/ui-elements">元素管理</el-menu-item>
-            <el-menu-item index="/ui-inspector-import">Inspector XML 导入</el-menu-item>
-            <el-menu-item index="/ui-h5-pages">H5 页面</el-menu-item>
-          </el-sub-menu>
+          <el-menu-item v-if="canVisit('/devices')" index="/devices">设备管理</el-menu-item>
+          <el-menu-item v-if="canVisit('/ui-apps')" index="/ui-apps">应用管理</el-menu-item>
         </el-sub-menu>
 
-        <el-sub-menu index="func-test">
+        <el-sub-menu index="api-test">
+          <template #title>
+            <el-icon><Link /></el-icon>
+            <span>接口测试</span>
+          </template>
+          <el-menu-item index="/api-testing">概览</el-menu-item>
+          <el-menu-item index="/api-collections">用例集合</el-menu-item>
+          <!--
+            原来叫「接口清单」「接口列表」，中文里几乎同义，谁也分不出哪个是哪个。
+            一个是「有哪些接口」（事实）；用例在「用例集合」里按接口管理，不再单独开「接口用例」页
+          -->
+          <el-menu-item index="/api-endpoints">接口清单</el-menu-item>
+          <el-menu-item v-if="canVisit('/api-environments')" index="/api-environments">环境变量</el-menu-item>
+          <el-menu-item v-if="canVisit('/api-schedules')" index="/api-schedules">定时执行</el-menu-item>
+          <el-menu-item index="/api-reports">执行报告</el-menu-item>
+          <el-menu-item index="/api-changes">接口对比分析</el-menu-item>
+        </el-sub-menu>
+
+        <el-sub-menu v-if="showWebTestMenu" index="web-test-menu">
+          <template #title>
+            <el-icon><Monitor /></el-icon>
+            <span>Web 端测试</span>
+          </template>
+          <el-menu-item index="/web-test">Web 测试</el-menu-item>
+          <el-menu-item v-if="canVisit('/ui-h5-pages')" index="/ui-h5-pages">H5 页面</el-menu-item>
+        </el-sub-menu>
+
+        <el-sub-menu v-if="showAppAutoMenu" index="app-auto">
           <template #title>
             <el-icon><VideoPlay /></el-icon>
-            <span>功能测试</span>
+            <span>APP 自动化</span>
           </template>
-          <el-sub-menu index="func-app">
-            <template #title>
-              <span>完美世界电竞</span>
-            </template>
-            <el-menu-item index="/ui-flows">流程编排</el-menu-item>
-          </el-sub-menu>
-          <el-menu-item index="/web-test">Web 端测试</el-menu-item>
-          <el-sub-menu index="func-api">
-            <template #title>
-              <span>接口测试</span>
-            </template>
-            <el-menu-item index="/api-testing">概览</el-menu-item>
-            <el-menu-item index="/api-collections">用例集合</el-menu-item>
-            <el-menu-item index="/api-test">接口列表</el-menu-item>
-            <el-menu-item index="/api-environments">环境变量</el-menu-item>
-            <el-menu-item index="/api-schedules">定时执行</el-menu-item>
-            <el-menu-item index="/api-reports">执行报告</el-menu-item>
-            <el-menu-item index="/api-changes">接口对比分析</el-menu-item>
-          </el-sub-menu>
+          <el-menu-item v-if="canVisit('/ui-flows')" index="/ui-flows">流程编排</el-menu-item>
+          <el-menu-item v-if="canVisit('/ui-elements')" index="/ui-elements">元素管理</el-menu-item>
+          <el-menu-item v-if="canVisit('/ui-inspector-import')" index="/ui-inspector-import">Inspector XML 导入</el-menu-item>
+          <el-menu-item v-if="canVisit('/ui-keywords')" index="/ui-keywords">关键字库</el-menu-item>
         </el-sub-menu>
 
-        <el-sub-menu index="regression">
+        <el-sub-menu v-if="canVisit('/app-online-regression')" index="regression">
           <template #title>
             <el-icon><Cellphone /></el-icon>
             <span>回归测试</span>
           </template>
           <el-menu-item index="/app-online-regression">APP回归</el-menu-item>
+        </el-sub-menu>
+
+        <el-sub-menu index="tools">
+          <template #title>
+            <el-icon><Connection /></el-icon>
+            <span>测试工具</span>
+          </template>
+          <el-menu-item index="/packet-capture">抓包</el-menu-item>
         </el-sub-menu>
 
         <el-sub-menu index="reports">
@@ -149,29 +160,69 @@
           <el-menu-item index="/version-archives">版本需求归档</el-menu-item>
           <el-menu-item index="/release-doc">发版文档</el-menu-item>
           <el-menu-item index="/change-review">周改动漏测</el-menu-item>
+          <el-menu-item v-if="canManageUsers" index="/platform-users">账号与权限</el-menu-item>
           <el-menu-item index="/settings">设置</el-menu-item>
         </el-sub-menu>
       </el-menu>
     </el-aside>
     <el-container>
-      <el-header class="header">
+      <el-header v-if="!isApiReportsPage" class="header">
         <div class="header-content">
           <h3>{{ currentTitle }}</h3>
+          <div v-if="user" class="header-user">
+            <el-tag size="small" :type="roleTagType">{{ user.roleLabel }}</el-tag>
+            <el-dropdown trigger="click" @command="onUserCommand">
+              <span class="header-user-name">
+                {{ user.displayName || user.username }}
+                <el-icon><ArrowDown /></el-icon>
+              </span>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item v-if="!user.bootstrapping" command="password">
+                    修改密码
+                  </el-dropdown-item>
+                  <el-dropdown-item v-if="!user.bootstrapping" command="logout" divided>
+                    退出登录
+                  </el-dropdown-item>
+                  <el-dropdown-item v-else disabled>还未启用账号权限</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
         </div>
       </el-header>
       <el-main
         class="main-content"
-        :class="{ 'is-agent': isAgentPage, 'is-test-cases': isTestCasesPage }"
+        :class="{ 'is-agent': isAgentPage, 'is-test-cases': isTestCasesPage, 'is-api-collections': isApiCollectionsPage, 'is-api-reports': isApiReportsPage }"
       >
         <router-view :key="route.fullPath" />
       </el-main>
     </el-container>
+
+    <el-dialog v-model="pwdVisible" title="修改密码" width="420px">
+      <el-form label-width="90px">
+        <el-form-item label="原密码">
+          <el-input v-model="pwdForm.oldPassword" type="password" show-password />
+        </el-form-item>
+        <el-form-item label="新密码">
+          <el-input v-model="pwdForm.newPassword" type="password" show-password placeholder="至少 6 位" />
+        </el-form-item>
+        <el-form-item label="再输一次">
+          <el-input v-model="pwdForm.confirm" type="password" show-password />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="pwdVisible = false">取消</el-button>
+        <el-button type="primary" :loading="pwdSaving" @click="submitPassword">确定</el-button>
+      </template>
+    </el-dialog>
   </el-container>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import {
   HomeFilled,
   DocumentCopy,
@@ -180,12 +231,80 @@ import {
   Setting,
   VideoPlay,
   Cellphone,
-  Notebook
+  Connection,
+  Link,
+  Monitor,
+  Notebook,
+  ArrowDown
 } from '@element-plus/icons-vue'
+import { apiClient } from '../api'
+import { canManageUsers, canVisit, logout, user } from '../stores/auth'
 import { findTestCaseSuite, TEST_CASE_SUITES } from '../constants/testCaseSuites'
 import { HANDBOOK_GROUPS, handbookCategoryLabel, handbookGroupIdForCategory, normalizeHandbookCategory } from '../constants/handbookCategories'
 
 const route = useRoute()
+const router = useRouter()
+
+const roleTagType = computed(() => {
+  const r = user.value?.role
+  if (user.value?.bootstrapping) return 'info'
+  if (r === 'ADMIN') return 'danger'
+  if (r === 'TESTER') return 'warning'
+  return 'info'
+})
+
+const showAppAutoMenu = computed(
+  () =>
+    canVisit('/ui-flows') ||
+    canVisit('/ui-elements') ||
+    canVisit('/ui-inspector-import') ||
+    canVisit('/ui-keywords')
+)
+
+const showWebTestMenu = computed(
+  () => canVisit('/web-test') || canVisit('/ui-h5-pages')
+)
+
+const pwdVisible = ref(false)
+const pwdSaving = ref(false)
+const pwdForm = reactive({ oldPassword: '', newPassword: '', confirm: '' })
+
+function onUserCommand(cmd: string) {
+  if (cmd === 'logout') {
+    logout()
+    router.replace('/login')
+    return
+  }
+  if (cmd === 'password') {
+    pwdForm.oldPassword = ''
+    pwdForm.newPassword = ''
+    pwdForm.confirm = ''
+    pwdVisible.value = true
+  }
+}
+
+async function submitPassword() {
+  if (pwdForm.newPassword.length < 6) {
+    ElMessage.warning('新密码至少 6 位')
+    return
+  }
+  if (pwdForm.newPassword !== pwdForm.confirm) {
+    ElMessage.warning('两次输入的新密码不一致')
+    return
+  }
+  pwdSaving.value = true
+  try {
+    await apiClient.changeOwnPassword(pwdForm.oldPassword, pwdForm.newPassword)
+    pwdVisible.value = false
+    // 改完密码不强制重新登录：令牌是签名的、不存服务端，旧令牌本来就还有效，
+    // 假装把人踢下线只是多一步操作，并不真的收回了什么
+    ElMessage.success('密码已修改')
+  } catch (e: any) {
+    ElMessage.error(e?.message || '修改失败')
+  } finally {
+    pwdSaving.value = false
+  }
+}
 
 const activeMenu = computed(() => {
   const p = route.path
@@ -214,29 +333,29 @@ const defaultOpeneds = computed(() => {
   if (p.startsWith('/test-cases') || p.startsWith('/ai-test-cases')) {
     return ['test-cases']
   }
-  if (p.startsWith('/api-projects') || p.startsWith('/api-urls')) {
+  if (
+    p.startsWith('/api-projects') ||
+    p.startsWith('/api-urls') ||
+    p.startsWith('/devices') ||
+    p.startsWith('/ui-apps')
+  ) {
     return ['assets']
   }
+  if (p.startsWith('/web-test') || p.startsWith('/ui-h5-pages')) {
+    return ['web-test-menu']
+  }
   if (
-    p.startsWith('/devices') ||
-    p.startsWith('/ui-apps') ||
+    p.startsWith('/ui-flows') ||
     p.startsWith('/ui-keywords') ||
     p.startsWith('/ui-elements') ||
-    p.startsWith('/ui-inspector-import') ||
-    p.startsWith('/ui-h5-pages')
+    p.startsWith('/ui-inspector-import')
   ) {
-    return ['assets', 'asset-app']
+    return ['app-auto']
   }
-  if (p.startsWith('/ui-flows')) {
-    return ['func-test', 'func-app']
-  }
-  if (p.startsWith('/web-test')) {
-    return ['func-test']
-  }
-  // 接口测试下所有页面都以 /api- 开头（列表、集合、环境变量、定时、报告、对比分析）。
-  // 逐个列前缀的话，每加一个页面就会漏一次——现象是「点进去侧栏自己收起来了」，很难联想到是这里
+  // 接口测试下所有页面都以 /api- 开头（概览、集合、清单、环境变量、定时、报告、对比分析）。
+  // api-projects / api-urls 在资产管理下，已在上面单独处理
   if (p.startsWith('/api-')) {
-    return ['func-test', 'func-api']
+    return ['api-test']
   }
   if (p.startsWith('/app-online-regression')) {
     return ['regression']
@@ -263,7 +382,7 @@ const defaultOpeneds = computed(() => {
   ) {
     return ['other']
   }
-  return ['main', 'assets', 'asset-app']
+  return ['main', 'assets']
 })
 
 const titleMap: Record<string, string> = {
@@ -271,11 +390,13 @@ const titleMap: Record<string, string> = {
   '/tasks': 'APP测试任务',
   '/codewords-agent': 'AI助手',
   '/ui-elements': '元素管理',
+  '/ui-keywords': '关键字库',
   '/ui-inspector-import': 'Inspector XML 导入',
   '/ui-h5-pages': 'H5 页面',
   '/api-projects': '项目管理',
   '/api-urls': 'URL 管理',
   '/devices': '设备管理',
+  '/ui-apps': '应用管理',
   '/reports': 'APP UI测试报告',
   '/reports/esports/performance': '完美世界电竞 · 性能报告',
   '/performance': '性能监控',
@@ -286,7 +407,6 @@ const titleMap: Record<string, string> = {
   '/change-review': '本周改动 / 漏测看板',
   '/web-test': 'Web 端测试',
   '/api-testing': '概览',
-  '/api-test': '接口列表',
   '/api-collections': '用例集合',
   '/api-schedules': '定时执行',
   '/api-reports': '执行报告',
@@ -312,6 +432,8 @@ const isAgentPage = computed(() => route.path.includes('codewords-agent'))
 const isTestCasesPage = computed(
   () => route.path.startsWith('/test-cases') || route.path.startsWith('/ai-test-cases')
 )
+const isApiCollectionsPage = computed(() => route.path.startsWith('/api-collections'))
+const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
 </script>
 
 <style scoped>
@@ -484,11 +606,41 @@ const isTestCasesPage = computed(
 .header-content {
   -webkit-app-region: drag;
   app-region: drag;
-  max-width: 50%;
+  max-width: 70%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+/*
+  拖拽区会吞掉点击事件，下拉菜单必须单独设回 no-drag——
+  否则在打包后的 Electron 里这个菜单是点不动的，而浏览器里调试完全正常
+*/
+.header-user {
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-user-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--app-text);
+  outline: none;
 }
 
 .header-content h3 {
   margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 15px;
   font-weight: 500;
   color: var(--app-text);
@@ -501,12 +653,24 @@ const isTestCasesPage = computed(
 }
 
 .main-content.is-agent,
-.main-content.is-test-cases {
+.main-content.is-test-cases,
+.main-content.is-api-collections,
+.main-content.is-api-reports {
   padding: 0;
   overflow: hidden;
   height: calc(100vh - 60px);
   display: flex;
   flex-direction: column;
+}
+
+.main-content.is-api-reports {
+  height: 100vh;
+}
+
+.main-content.is-api-reports :deep(.reports-page) {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
 }
 
 .main-content.is-agent {

@@ -105,6 +105,20 @@
           <span class="summary-ref">{{ report.baseRef }} → <b>{{ report.headRef }}</b></span>
           <span class="summary-files">共 {{ report.changedFiles }} 个文件有差异</span>
         </div>
+
+        <!--
+          同步是跟着分析自动做的，但不显示出来的话「同步没同步过」只能靠猜，
+          而猜错的方向是「以为同步了其实没有」——那会让人拿着上一版的清单去排测试
+        -->
+        <div v-if="report.catalogSync" class="catalog-sync">
+          已同步到<a class="catalog-link" @click="goCatalog">接口清单</a>：
+          <template v-if="syncTotal > 0">
+            <b v-if="report.catalogSync.created">新增 {{ report.catalogSync.created }}</b>
+            <b v-if="report.catalogSync.updated">标记变更 {{ report.catalogSync.updated }}</b>
+            <b v-if="report.catalogSync.deprecated">标废弃 {{ report.catalogSync.deprecated }}</b>
+          </template>
+          <span v-else>本次没有接口变更，清单里上一轮的标记已清空</span>
+        </div>
         <div class="stat-row">
           <a
             v-for="s in statCards"
@@ -461,7 +475,7 @@
         </el-table-column>
         <el-table-column label="操作" width="70">
           <template #default="{ row }">
-            <el-button link type="danger" size="small" @click="removeDir(row)">删除</el-button>
+            <el-button v-perm:delete link type="danger" size="small" @click="removeDir(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -525,7 +539,7 @@
             <div class="history-refs">{{ row.baseRef || '?' }} → {{ row.headRef || '?' }}</div>
             <div class="history-summary">{{ row.summary || '无摘要' }}</div>
           </div>
-          <el-button type="danger" link @click.stop="removeHistory(row.id)">删除</el-button>
+          <el-button v-perm:delete type="danger" link @click.stop="removeHistory(row.id)">删除</el-button>
         </div>
       </div>
     </el-drawer>
@@ -534,8 +548,11 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { apiClient } from '@/api'
+
+const router = useRouter()
 
 /** branch=从 git 仓库读分支比；dir=两个本地目录直接比（拿不到内网时用） */
 const mode = ref<'branch' | 'dir'>('branch')
@@ -570,6 +587,15 @@ async function analyzeDirs() {
 }
 
 /** 顶部统计：点一下跳到对应章节。数字为 0 的置灰，一眼看出哪几节不用看 */
+const syncTotal = computed(() => {
+  const c = report.value?.catalogSync
+  return c ? (c.created || 0) + (c.updated || 0) + (c.deprecated || 0) : 0
+})
+
+function goCatalog() {
+  router.push({ path: '/api-endpoints', query: { project: report.value?.project } })
+}
+
 const statCards = computed(() => {
   const r: any = report.value || {}
   return [
@@ -968,6 +994,27 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.catalog-sync {
+  margin: 8px 0 4px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--el-color-success-light-9);
+  border: 1px solid var(--el-color-success-light-7);
+  font-size: 13px;
+}
+
+.catalog-sync b {
+  margin-right: 10px;
+  font-weight: 600;
+}
+
+.catalog-link {
+  margin: 0 2px;
+  color: var(--el-color-primary);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
 .api-changes {
   padding: 16px;
 }

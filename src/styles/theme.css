@@ -157,6 +157,15 @@ body {
   font-size: var(--el-font-size-base);
 }
 
+/* small 尺寸应与 el-select--small / el-button--small 一致，勿被上面的 base 撑大 */
+.el-input--small .el-input__wrapper,
+.el-input--small .el-input__inner {
+  font-size: 12px;
+}
+.el-select--small .el-select__wrapper {
+  font-size: 12px;
+}
+
 .el-card {
   --el-card-bg-color: var(--app-card-bg);
   --el-card-border-color: var(--app-border);

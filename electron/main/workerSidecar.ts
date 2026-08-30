@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { spawn, spawnSync, type ChildProcess } from 'child_process'
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync, createWriteStream } from 'fs'
 import { join } from 'path'
 
 const WORKER_PORT = 3001
@@ -113,6 +113,14 @@ async function healthOk(url: string) {
   }
 }
 
+function workerLogPath() {
+  return join(app.getPath('userData'), 'worker.log')
+}
+
+export function localWorkerLogPath() {
+  return workerLogPath()
+}
+
 function workerPidPath() {
   return join(app.getPath('userData'), 'worker.pid')
 }
@@ -200,6 +208,17 @@ export async function ensureLocalWorker(): Promise<{ ok: boolean; url: string; m
 
   stopWorker()
   const advertise = url
+  const logFile = workerLogPath()
+  try {
+    writeFileSync(
+      logFile,
+      `\n--- worker start ${new Date().toISOString()} port=${cfg.workerPort} db=${dbHostFromControlPlane(cfg.controlPlaneUrl)} ---\n`,
+      { flag: 'a' }
+    )
+  } catch {
+    /* ignore */
+  }
+  const logStream = createWriteStream(logFile, { flags: 'a' })
   workerProc = spawn('java', [
     '-jar', jar,
     '--spring.profiles.active=worker',
@@ -213,8 +232,17 @@ export async function ensureLocalWorker(): Promise<{ ok: boolean; url: string; m
       APP_NODE_ADVERTISE_URL: advertise,
       DB_HOST: dbHostFromControlPlane(cfg.controlPlaneUrl)
     },
-    stdio: 'ignore',
+    stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true
+  })
+  workerProc.stdout?.pipe(logStream)
+  workerProc.stderr?.pipe(logStream)
+  workerProc.on('error', (err) => {
+    try {
+      logStream.write(`\n[spawn error] ${err.message}\n`)
+    } catch {
+      /* ignore */
+    }
   })
   const spawnedPid = workerProc.pid
   if (spawnedPid) rememberWorkerPid(spawnedPid)
@@ -230,7 +258,13 @@ export async function ensureLocalWorker(): Promise<{ ok: boolean; url: string; m
     }
     await new Promise((r) => setTimeout(r, 800))
   }
-  return { ok: false, url, message: '本机执行节点启动超时。请确认已安装 Java 17，且控制面 MySQL 可连' }
+  return {
+    ok: false,
+    url,
+    message:
+      '本机执行节点启动超时。请确认已安装 Java 17，且 Mac 上 MySQL 允许本机访问（3306）。' +
+      ` 日志：${logFile}`
+  }
 }
 
 export async function restartLocalWorker() {

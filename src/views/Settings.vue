@@ -47,6 +47,7 @@
         </el-form-item>
         <el-form-item>
           <el-button :loading="testing" @click="testConnection">测试连接</el-button>
+          <el-button :loading="wikiTesting" @click="testWiki">测试 Wiki</el-button>
           <el-button type="primary" @click="saveSettings">保存</el-button>
         </el-form-item>
         <el-form-item v-if="testHint" label="状态">
@@ -63,6 +64,7 @@ import { ElMessage } from 'element-plus'
 import { apiClient } from '../api'
 
 const testing = ref(false)
+const wikiTesting = ref(false)
 const testHint = ref('')
 const packaged = ref(false)
 const workerOk = ref(false)
@@ -124,13 +126,28 @@ async function testConnection() {
   try {
     const controlHealth = await apiClient.pingHealth(apiClient.getBaseUrl())
     const workerHealth = await apiClient.pingHealth(apiClient.getWorkerBaseUrl())
-    testHint.value = `控制面 ${controlHealth.nodeRole || ''} · 本机 ${workerHealth.nodeRole || ''} ${workerHealth.nodeId || ''}`
+    testHint.value =
+      `控制面 ${controlHealth.nodeRole || ''} · 本机 ${workerHealth.nodeRole || ''} ${workerHealth.nodeId || ''} · Wiki/JIRA 走控制面`
     workerOk.value = workerHealth.executesLocally !== false
     ElMessage.success('已连通')
   } catch (e: any) {
     ElMessage.error(e?.message || '连不上，请确认控制面已启动')
   } finally {
     testing.value = false
+  }
+}
+
+async function testWiki() {
+  await saveSettings()
+  wikiTesting.value = true
+  try {
+    const r = await apiClient.pingReleaseDocWiki()
+    testHint.value = `Wiki 连通正常（经控制面）· ${r.message || ''}`
+    ElMessage.success(r.message || 'Wiki 连通正常')
+  } catch (e: any) {
+    ElMessage.error(e?.message || 'Wiki 连不上')
+  } finally {
+    wikiTesting.value = false
   }
 }
 </script>

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron'
 import { join } from 'path'
 import { existsSync, mkdirSync } from 'fs'
 import {
@@ -91,9 +91,26 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null
   })
+
+  // 安装包也允许开 DevTools，方便看 Network / Console 报错（F12 或 Ctrl+Shift+I）
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    const toggle =
+      input.type === 'keyDown' &&
+      (input.key === 'F12' ||
+        (input.control && input.shift && input.key.toLowerCase() === 'i'))
+    if (toggle) {
+      mainWindow?.webContents.toggleDevTools()
+    }
+  })
 }
 
 app.whenReady().then(async () => {
+  // Windows/Linux 会画出 Electron 默认 File/Edit/View 菜单栏，跟侧栏功能重复且碍眼。
+  // macOS 菜单在系统栏，保留默认即可（Cmd+Q / 复制粘贴等）。
+  if (process.platform !== 'darwin') {
+    Menu.setApplicationMenu(null)
+  }
+
   // 设置 IPC 处理器（不依赖本地服务）
   setupIpcHandlers()
 

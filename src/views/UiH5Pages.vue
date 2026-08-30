@@ -50,7 +50,7 @@
           <template #default="{ row }">
             <el-button type="primary" link @click.stop="openViewer(row)">打开</el-button>
             <el-button link @click.stop="openEdit(row)">编辑</el-button>
-            <el-button type="danger" link @click.stop="remove(row)">删除</el-button>
+            <el-button v-perm:delete type="danger" link @click.stop="remove(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>

@@ -242,9 +242,9 @@ async function runAll() {
 
 function goCases(project?: string) {
   if (project && project !== '(未分组)') {
-    router.push({ path: '/api-test', query: { project } })
+    router.push({ path: '/api-collections', query: { project } })
   } else {
-    router.push('/api-test')
+    router.push('/api-collections')
   }
 }
 

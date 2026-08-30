@@ -72,7 +72,7 @@
           :disabled="pi === popups.length - 1"
           @click="movePopup(pi, 1)"
         >下移</el-button>
-        <el-button type="danger" link size="small" @click="removePopup(pi)">删除</el-button>
+        <el-button v-perm:delete type="danger" link size="small" @click="removePopup(pi)">删除</el-button>
       </div>
 
       <el-form label-width="140px" class="step-form">

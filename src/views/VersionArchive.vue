@@ -37,7 +37,7 @@
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click.stop="openDetail(row)">详情</el-button>
             <el-button link type="success" size="small" @click.stop="resync(row)">再同步</el-button>
-            <el-button link type="danger" size="small" @click.stop="remove(row)">删</el-button>
+            <el-button v-perm:delete link type="danger" size="small" @click.stop="remove(row)">删</el-button>
           </template>
         </el-table-column>
       </el-table>

@@ -4,7 +4,7 @@
       <template #header>
         <div class="card-header">
           <div>
-            <span class="title">接口列表</span>
+            <span class="title">接口用例</span>
             <p class="sub">
               按<strong>项目 + 环境</strong>看用例。顶栏切换测试/线上会筛选对应用例（含「双环境」）。
               网关在「资产管理 → URL 管理」；用例可绑定 URL。列表已分页。
@@ -150,7 +150,7 @@
           <template #default="{ row }">
             <el-button size="small" link type="primary" @click="openEdit(row)">编辑</el-button>
             <el-button size="small" link type="success" @click="runOne(row)">执行</el-button>
-            <el-button size="small" link type="danger" @click="removeCase(row)">删</el-button>
+            <el-button v-perm:delete size="small" link type="danger" @click="removeCase(row)">删</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -199,14 +199,45 @@
             </template>
           </el-table-column>
         </el-table>
+        <!--
+          光给一句「断言失败」，人还得自己猜发了什么、收到了什么，
+          于是拿 Postman 再手工重放一遍——那一步正是这套东西本该省掉的
+        -->
         <el-collapse v-if="hasBodyPreview" class="mt">
-          <el-collapse-item title="响应预览" name="body">
-            <pre
-              v-for="row in (result.cases || []).filter((c: any) => c.bodyPreview)"
-              :key="row.id"
-              class="body-pre"
-            >{{ row.name }}
-{{ row.bodyPreview }}</pre>
+          <el-collapse-item
+            v-for="row in (result.cases || []).filter((c: any) => c.bodyPreview || c.reqHeaders)"
+            :key="row.id"
+            :name="row.id"
+          >
+            <template #title>
+              <span :class="row.status === 'PASSED' ? 'ok' : 'bad'">
+                {{ row.status === 'PASSED' ? '✓' : '✗' }}
+              </span>
+              &nbsp;{{ row.name }}
+              <span class="dim">&nbsp;{{ row.method }} {{ row.httpStatus }}</span>
+            </template>
+            <div class="detail-grid">
+              <div v-if="row.url" class="detail-block">
+                <div class="detail-label">请求 URL</div>
+                <pre class="body-pre">{{ row.url }}</pre>
+              </div>
+              <div v-if="row.reqHeaders" class="detail-block">
+                <div class="detail-label">请求头</div>
+                <pre class="body-pre">{{ kvText(row.reqHeaders) }}</pre>
+              </div>
+              <div v-if="row.reqBody" class="detail-block">
+                <div class="detail-label">请求体</div>
+                <pre class="body-pre">{{ pretty(row.reqBody) }}</pre>
+              </div>
+              <div v-if="row.respHeaders" class="detail-block">
+                <div class="detail-label">响应头</div>
+                <pre class="body-pre">{{ kvText(row.respHeaders) }}</pre>
+              </div>
+              <div v-if="row.bodyPreview" class="detail-block">
+                <div class="detail-label">响应体</div>
+                <pre class="body-pre">{{ pretty(row.bodyPreview) }}</pre>
+              </div>
+            </div>
           </el-collapse-item>
         </el-collapse>
       </div>
@@ -316,8 +347,24 @@
             :rows="5"
             placeholder='[{"type":"status","equals":200},{"type":"jsonPath","path":"$.code","equals":0}]'
           />
+          <div class="assert-tools">
+            <span class="assert-tools-label">插入：</span>
+            <el-button size="small" @click="insertAssert('jsonPath')">字段断言</el-button>
+            <el-button size="small" @click="insertAssert('db')">数据库断言</el-button>
+            <el-button size="small" @click="insertAssert('dbDelta')">数据库增量</el-button>
+          </div>
           <div class="form-tip">
-            支持 status / bodyIncludes / jsonPath（$.a.b、$.list[0].id）。
+            支持 status / bodyIncludes / header / responseTime / jsonPath（$.a.b、$.list[0].id）
+            / <b>db</b> / <b>dbDelta</b>。
+            算子写在 <code>op</code> 里：
+            <code>eq ne gt gte lt lte contains notContains exists notEmpty matches</code>（matches 是正则）。
+            <br />
+            <strong>db / dbDelta 是查库断言</strong> —— 「接口返回 200」不等于「数据对了」，
+            最常见的漏测就是接口报成功但没写库、或者状态没流转。
+            <code>dbDelta</code> 会在发请求<b>之前</b>先查一次基线，比的是前后差值（比如「关注后应该多 1 条」）。
+            库连接在<el-link type="primary" :underline="false" @click="$router.push('/api-environments')">环境变量</el-link>里按环境配，
+            只放行单条 SELECT。
+            <br />
             <strong>项目里配了业务成功码时会自动追加一条</strong>（如 $.code == 0）——
             这几个后端业务失败也是 HTTP 200，只断言 status 等于没测。
             想刻意测某个错误码，自己写一条同路径的断言即可覆盖
@@ -433,7 +480,7 @@ const envHint = computed(() => {
 })
 
 const hasBodyPreview = computed(() =>
-  (result.value?.cases || []).some((c: any) => !!c.bodyPreview)
+  (result.value?.cases || []).some((c: any) => !!c.bodyPreview || !!c.reqHeaders)
 )
 
 function methodTag(m: string) {
@@ -484,7 +531,9 @@ function urlLabel(id?: string) {
 
 async function loadCollections() {
   try {
-    collectionList.value = await apiClient.getApiTestCollections(filterProject.value || undefined)
+    collectionList.value = await apiClient.getApiTestCollections(
+      filterProject.value ? { project: filterProject.value } : undefined
+    )
   } catch {
     // 集合是可选的组织方式，拿不到就当没有，不该挡住用例列表
     collectionList.value = []
@@ -575,6 +624,48 @@ async function saveEnv(e: any) {
     ElMessage.error(err?.message || '保存环境失败')
   } finally {
     envSaving.value = false
+  }
+}
+
+/**
+ * 往断言里插一条模板。
+ *
+ * 数据库断言的 SQL 要写在 JSON 字符串里，手写很容易漏引号——
+ * 而写错的结果是「断言解析异常」，看不出是哪一条错了。给个能跑的骨架最省事。
+ */
+function insertAssert(kind: 'jsonPath' | 'db' | 'dbDelta') {
+  const tpl: Record<string, any> = {
+    jsonPath: { type: 'jsonPath', path: '$.data.total', op: 'gte', value: '1' },
+    db: { type: 'db', sql: 'SELECT COUNT(*) FROM 表名 WHERE 条件', op: 'eq', value: '1' },
+    dbDelta: { type: 'dbDelta', sql: 'SELECT COUNT(*) FROM 表名 WHERE 条件', op: 'eq', value: '1' }
+  }
+  let list: any[] = []
+  try {
+    const parsed = JSON.parse(form.assertions || '[]')
+    list = Array.isArray(parsed) ? parsed : []
+  } catch {
+    // 原来的内容不是合法 JSON 就不动它——直接覆盖会把人写了一半的东西弄丢
+    ElMessage.warning('当前断言不是合法 JSON，先修好再插入')
+    return
+  }
+  list.push(tpl[kind])
+  form.assertions = JSON.stringify(list, null, 2)
+}
+
+function kvText(h?: Record<string, string>) {
+  if (!h) return ''
+  return Object.entries(h)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join('\n')
+}
+
+/** JSON 格式化一下再看——一整行挤在一起的响应，看和不看没区别 */
+function pretty(raw?: string) {
+  if (!raw) return ''
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2)
+  } catch {
+    return raw
   }
 }
 
@@ -826,4 +917,37 @@ onMounted(async () => {
   margin-top: 4px;
   line-height: 1.4;
 }
+.assert-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 6px;
+}
+
+.assert-tools-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.detail-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detail-label {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--el-text-color-secondary);
+}
+
+.ok {
+  color: var(--el-color-success);
+}
+
+.bad {
+  color: var(--el-color-danger);
+}
+
 </style>

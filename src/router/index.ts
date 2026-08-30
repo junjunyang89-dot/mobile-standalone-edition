@@ -1,5 +1,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { canVisit, isLoaded, isLoggedIn, loadCurrentUser } from '../stores/auth'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -169,9 +171,7 @@ const routes: RouteRecordRaw[] = [
       },
       {
         path: 'api-test',
-        name: 'ApiTest',
-        component: () => import('../views/ApiTest.vue'),
-        meta: { title: '接口列表' }
+        redirect: { name: 'ApiCollections' }
       },
       {
         path: 'special-report',
@@ -238,14 +238,64 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'specialized-testing',
         redirect: '/ui-flows'
+      },
+      {
+        path: 'api-endpoints',
+        name: 'ApiEndpoints',
+        component: () => import('../views/ApiEndpoints.vue'),
+        meta: { title: '接口清单' }
+      },
+      {
+        path: 'packet-capture',
+        name: 'PacketCapture',
+        component: () => import('../views/PacketCapture.vue'),
+        meta: { title: '抓包' }
+      },
+      {
+        path: 'platform-users',
+        name: 'PlatformUsers',
+        component: () => import('../views/PlatformUsers.vue'),
+        meta: { title: '账号与权限' }
       }
     ]
+  },
+  {
+    // 登录页在布局之外：还没登录的时候不该看到侧边栏菜单
+    path: '/login',
+    name: 'Login',
+    component: () => import('../views/Login.vue'),
+    meta: { title: '登录', public: true }
   }
 ]
 
 const router = createRouter({
   history: createWebHashHistory(),
   routes
+})
+
+/**
+ * 路由守卫。
+ *
+ * 它只负责「别让人走到看不了的页面」，不是安全边界——
+ * 真正的边界在后端 AuthFilter。客户端是 Electron 打包分发的，
+ * 前端这一层随便就能绕过去，这里做的是体验，不是防护。
+ */
+router.beforeEach(async (to) => {
+  if (to.meta?.public) {
+    return true
+  }
+  if (!isLoaded()) {
+    await loadCurrentUser()
+  }
+  if (!isLoggedIn.value) {
+    // 带上 redirect，登录完直接回到他本来要去的页面
+    return { path: '/login', query: to.fullPath === '/' ? {} : { redirect: to.fullPath } }
+  }
+  if (!canVisit(to.path)) {
+    ElMessage.warning('当前账号没有这个页面的权限')
+    return { path: '/home' }
+  }
+  return true
 })
 
 export default router

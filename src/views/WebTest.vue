@@ -72,7 +72,7 @@
           <template #default="{ row }">
             <el-button size="small" link type="primary" @click="openEdit(row)">编辑</el-button>
             <el-button size="small" link type="success" @click="runOne(row)">执行</el-button>
-            <el-button size="small" link type="danger" @click="removeCase(row)">删</el-button>
+            <el-button v-perm:delete size="small" link type="danger" @click="removeCase(row)">删</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -181,7 +181,7 @@
               >
                 下移
               </el-button>
-              <el-button size="small" link type="danger" @click="form.steps.splice(idx, 1)">删</el-button>
+              <el-button v-perm:delete size="small" link type="danger" @click="form.steps.splice(idx, 1)">删</el-button>
             </div>
           </div>
           <p class="step-hint">{{ keywordDesc(s.keywordCode) }}</p>

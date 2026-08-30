@@ -1,5 +1,156 @@
 import type { SupportedDevicePlatform } from '@/utils/platform'
 
+/** 抓到的一条流水。字段对齐手机抓包工具的 General 页，方便两边对照 */
+export interface CapturedFlow {
+  seq: number
+  method: string
+  path: string
+  host: string
+  url: string
+  query: string
+  httpVersion: string
+  /** 对端 ip:port；连接复用时可能拿不到 */
+  remote: string
+  status: number
+  reason: string
+  durationMs: number
+  at: number
+  traceId?: string | null
+  reqContentType: string
+  respContentType: string
+  /** 整个报文大小（含头），和抓包工具的 Request/Response Package 对得上 */
+  reqBytes: number
+  respBytes: number
+  respKind: string
+  respTruncated: boolean
+  /** 二进制响应没有 body，这里说明为什么 */
+  bodyNote: string
+  hasDetail: boolean
+}
+
+export interface CapturedDetail {
+  reqHeaders: Record<string, string>
+  reqCookies: Record<string, string>
+  reqBody: string
+  respHeaders: Record<string, string>
+  respCookies: Record<string, string>
+  respBody: string
+  bodyNote: string
+}
+
+export interface CurrentUserVo {
+  bootstrapping: boolean
+  id?: string
+  username: string
+  displayName?: string
+  role: string
+  roleLabel: string
+  canWrite?: boolean
+  canDelete?: boolean
+  canManageUsers?: boolean
+  hiddenRoutes: string[]
+}
+
+export interface ApiEndpointVo {
+  id: string
+  project: string
+  httpMethod: string
+  path: string
+  handler?: string
+  summary?: string
+  caseCount: number
+  /** 其中真正验了返回字段的有几条；0 表示这个接口的用例全是只验 200 的 */
+  strongCaseCount: number
+  /** 其中启用中的有几条；0 表示用例全停用了，等于没人在验 */
+  enabledCaseCount: number
+  changeFlag?: string
+  changeNote?: string
+  sourceBranch?: string
+  lastSyncedAt?: string
+  statusCode: string
+  statusLabel: string
+  statusHint: string
+  actionable: boolean
+  hasCaptureMeta?: boolean
+  hasDocMeta?: boolean
+  sourceBranch?: string
+}
+
+export interface PlatformUserVo {
+  id: string
+  username: string
+  displayName?: string
+  role: string
+  roleLabel: string
+  enabled: boolean
+  lastLoginAt?: string
+  createdAt?: string
+}
+
+const AUTH_TOKEN_STORAGE_KEY = 'platform-auth-token'
+
+/**
+ * 直接读 localStorage，不 import auth store——api 被 auth store 引用，
+ * 反向再引会绕成循环依赖，打包后的表现是某个模块变成 undefined，
+ * 而报错位置和真正的原因隔着十万八千里。
+ */
+function readAuthToken(): string {
+  try {
+    return localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || ''
+  } catch {
+    return ''
+  }
+}
+
+/** Spring Boot 500 时 message 经常是类名；DevTools 热更后常见 PermissionRules 找不到 */
+function formatBackendError(error: Record<string, unknown>, status: number): string {
+  const msg = String(error.message || error.error || '').trim()
+  const trace = String(error.trace || '')
+  if (
+    trace.includes('NoClassDefFoundError') ||
+    trace.includes('ClassNotFoundException') ||
+    msg.includes('PermissionRules')
+  ) {
+    return '后端需要完整重启：请在 IDEA 里 Stop 再 Run（DevTools 热更新导致类加载异常，不是接口逻辑问题）'
+  }
+  return msg || `HTTP error! status: ${status}`
+}
+
+/**
+ * 带登录态的 fetch。
+ * <p>
+ * 传 FormData 的接口没法走 request()——那里写死了 Content-Type: application/json，
+ * 而 multipart 需要浏览器自己生成 boundary。于是这些接口只能裸 fetch，
+ * 也就集体漏掉了 Authorization。<b>鉴权一开，上传类功能会全部 401</b>，
+ * 而报错是「上传失败」，完全看不出跟登录有关。
+ * <p>
+ * 所以裸 fetch 也必须走这一个口子，不要再直接调 fetch。
+ */
+async function authFetch(url: string, init: RequestInit = {}) {
+  const token = readAuthToken()
+  const res = await fetch(url, {
+    ...init,
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init.headers || {})
+    }
+  })
+  if (res.status === 401) {
+    notifyUnauthorized()
+  }
+  return res
+}
+
+/** 同理，用事件通知而不是直接调 auth store */
+function notifyUnauthorized() {
+  try {
+    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
+  } catch {
+    /* ignore */
+  }
+  window.dispatchEvent(new CustomEvent('platform-unauthorized'))
+}
+
 const API_BASE_STORAGE_KEY = 'apiBaseUrl'
 const WORKER_BASE_STORAGE_KEY = 'workerBaseUrl'
 const BAKED_CONTROL_PLANE_URL = String(import.meta.env.VITE_CONTROL_PLANE_URL || '').trim()
@@ -110,27 +261,60 @@ class ApiClient {
     }
   }
 
-  /** 设备扫描和真正跑流程必须打到插着手机的那台执行节点 */
-  private endpointUrl(endpoint: string) {
+  /** 设备扫描、流程执行走本机 worker；其余（含 Wiki/JIRA）走控制面 */
+  private usesWorker(endpoint: string) {
     const path = endpoint.split('?')[0]
-    const useWorker = path.startsWith('/devices') || /\/ui-flows\/[^/]+\/execute$/.test(path)
-    const base = useWorker ? this.workerBaseURL : this.baseURL
+    return (
+      path.startsWith('/devices') ||
+      /\/ui-flows\/[^/]+\/execute$/.test(path)
+    )
+  }
+
+  private endpointUrl(endpoint: string) {
+    const base = this.usesWorker(endpoint) ? this.workerBaseURL : this.baseURL
     return `${base}${endpoint}`
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = this.endpointUrl(endpoint)
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
+    const onWorker = this.usesWorker(endpoint)
+    // 登录态挂在唯一的出口上。逐个接口加请求头一定会漏，而漏掉的那个
+    // 表现是「偶尔弹一次重新登录」，比全都不带还难查
+    const token = readAuthToken()
+    let response: Response
+    try {
+      response = await fetch(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...options.headers
+        }
+      })
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      if (onWorker) {
+        throw new Error(
+          `连不上本机执行节点（${this.workerBaseURL}）。` +
+            '请到「设置」确认 worker 为「已随应用启动」；Windows 需安装 Java 17；' +
+            '且 Mac 上 MySQL 要允许本机 IP 访问 3306。' +
+            (msg === 'Failed to fetch' ? '' : ` 原始错误：${msg}`)
+        )
       }
-    })
+      throw new Error(
+        `连不上 ${url}。请确认控制面已启动、地址正确，且与本机在同一局域网。` +
+          (msg === 'Failed to fetch' ? '' : ` 原始错误：${msg}`)
+      )
+    }
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: 'Network error' }))
-      throw new Error(error.message || error.error || `HTTP error! status: ${response.status}`)
+      if (response.status === 401) {
+        // 令牌过期或账号被停用：清掉登录态跳登录页。
+        // 不这么做的话，页面会持续弹「未登录」而用户找不到重新登录的入口
+        notifyUnauthorized()
+      }
+      throw new Error(formatBackendError(error, response.status))
     }
 
     const data = await response.json()
@@ -139,6 +323,85 @@ class ApiClient {
       return data.data as T
     }
     return data as T
+  }
+
+  // ---------------- 账号与权限 ----------------
+
+  /** 平台还没建账号时返回 bootstrapping=true，登录页据此显示「创建第一个管理员」 */
+  async fetchBootstrapStatus() {
+    return this.request<{ bootstrapping: boolean; message: string }>('/auth/bootstrap-status')
+  }
+
+  async login(username: string, password: string) {
+    return this.request<{ token: string; user: CurrentUserVo }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password })
+    })
+  }
+
+  /** 创建第一个管理员。有账号之后这个接口就永久关闭 */
+  async bootstrapAdmin(username: string, displayName: string, password: string) {
+    return this.request<{ token: string; user: CurrentUserVo }>('/auth/bootstrap-admin', {
+      method: 'POST',
+      body: JSON.stringify({ username, displayName, password })
+    })
+  }
+
+  async fetchCurrentUser() {
+    return this.request<CurrentUserVo>('/auth/me')
+  }
+
+  async changeOwnPassword(oldPassword: string, newPassword: string) {
+    return this.request<{ success: boolean }>('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ oldPassword, newPassword })
+    })
+  }
+
+  async fetchPlatformUsers() {
+    return this.request<PlatformUserVo[]>('/platform-users')
+  }
+
+  /** 角色字典由后端下发，不在前端硬编码三个中文名 */
+  async fetchPlatformRoles() {
+    return this.request<Array<{ code: string; label: string; description: string }>>(
+      '/platform-users/roles'
+    )
+  }
+
+  async createPlatformUser(body: {
+    username: string
+    displayName?: string
+    password: string
+    role: string
+  }) {
+    return this.request<PlatformUserVo>('/platform-users', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async updatePlatformUser(
+    id: string,
+    body: { displayName?: string; role?: string; enabled?: boolean }
+  ) {
+    return this.request<PlatformUserVo>(`/platform-users/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async resetPlatformUserPassword(id: string, password: string) {
+    return this.request<{ success: boolean }>(
+      `/platform-users/${encodeURIComponent(id)}/reset-password`,
+      { method: 'POST', body: JSON.stringify({ password }) }
+    )
+  }
+
+  async deletePlatformUser(id: string) {
+    return this.request<{ success: boolean }>(`/platform-users/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    })
   }
 
   // 应用信息
@@ -586,7 +849,7 @@ class ApiClient {
   /** 表单字段需含 file、deviceId；platform 为 ANDROID / IOS / HARMONYOS。POST {baseUrl}/applications/upload */
   async uploadAndInstallApp(formData: FormData) {
     const url = `${this.baseURL}/applications/upload`
-    const response = await fetch(url, {
+    const response = await authFetch(url, {
       method: 'POST',
       body: formData
     })
@@ -775,7 +1038,7 @@ class ApiClient {
     const form = new FormData()
     form.append('file', file)
     const url = `${this.baseURL}/ui-elements/preview/upload`
-    const response = await fetch(url, { method: 'POST', body: form })
+    const response = await authFetch(url, { method: 'POST', body: form })
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: '上传失败' }))
       throw new Error(error.message || error.error || `HTTP ${response.status}`)
@@ -1059,6 +1322,11 @@ class ApiClient {
     )
   }
 
+  /** 测试 Wiki 连通（经控制面） */
+  async pingReleaseDocWiki() {
+    return this.request<{ ok: boolean; message: string }>('/release-doc/ping')
+  }
+
   /** 发版文档：预览抽取（不建 Wiki 页） */
   async previewReleaseDoc(body: { title: string; version: string }) {
     return this.request<any>('/release-doc/preview', {
@@ -1183,9 +1451,105 @@ class ApiClient {
     return this.request<{ ok: boolean }>(`/web-test/cases/${encodeURIComponent(id)}`, { method: 'DELETE' })
   }
 
-  async getApiProjects(params?: { enabledOnly?: boolean }) {
+  /** 接口清单：有哪些接口、覆盖到没有 */
+  async fetchApiEndpoints(params: { project?: string; keyword?: string; changeFlag?: string }) {
+    const q = new URLSearchParams()
+    if (params.project) q.set('project', params.project)
+    if (params.keyword) q.set('keyword', params.keyword)
+    if (params.changeFlag) q.set('changeFlag', params.changeFlag)
+    return this.request<{
+      total: number
+      counts: Record<string, number>
+      items: ApiEndpointVo[]
+    }>(`/api-endpoints?${q.toString()}`)
+  }
+
+  /** 从接口清单生成一条用例骨架。凑不出有意义断言时后端会生成为「停用」 */
+  async generateCaseFromEndpoint(endpointId: string) {
+    return this.request<{
+      case: { id: string; name: string }
+      enabled: boolean
+      note: string
+    }>(`/api-endpoints/${encodeURIComponent(endpointId)}/generate-case`, { method: 'POST' })
+  }
+
+  /**
+   * 单个接口详情，带每条用例「还差什么」。
+   * 生成的用例是停用的，补完之后没人知道它已经能启用了——清单上就一直挂着
+   * 「有用例 · 但没在验」，而人以为自己还没补完。
+   */
+  async getApiEndpointDetail(id: string) {
+    return this.request<{
+      endpoint: any
+      statusCode: string
+      statusLabel: string
+      statusHint: string
+      cases: Array<{ id: string; name: string; enabled: boolean; ready: boolean; todos: string[] }>
+    }>(`/api-endpoints/${encodeURIComponent(id)}`)
+  }
+
+  /**
+   * 接口清单的树：APP 后端 / PVP · 客户端 / WEB / 其他 → 项目 → 接口数。
+   * 二十多个项目铺成一张平表，人第一眼找不到自己那块。
+   */
+  /** 接口清单左侧 catalog 树：APP / PVP / WEB → 项目 + 接口数 */
+  async fetchApiEndpointTree() {
+    return this.request<{
+      categories: Array<{
+        key: string
+        label: string
+        total: number
+        pending?: number
+        children: Array<{
+          project: string
+          label?: string
+          total: number
+          pending?: number
+          configured?: boolean
+          missing?: boolean
+        }>
+      }>
+    }>('/api-endpoints/tree')
+  }
+
+
+  /**
+   * 上传开发给的接口文档（Confluence 导出的 .docx）。
+   * 文档补的是抓包补不了的那一半：必填、默认值、枚举回落、边界、哪些字段可空。
+   */
+  async importInterfaceDoc(project: string, file: File) {
+    const form = new FormData()
+    form.append('project', project)
+    form.append('file', file)
+    const response = await authFetch(`${this.baseURL}/api-endpoints/import-doc`, {
+      method: 'POST',
+      body: form
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ message: '导入失败' }))
+      throw new Error(err.message || `HTTP ${response.status}`)
+    }
+    return response.json() as Promise<{
+      matched: number
+      unmatched: string[]
+      /** 按「同名透传」推断着套过去的路径。是推断不是文档写的，所以单独列 */
+      aliasApplied: string[]
+      branches: string[]
+      details: Array<{ httpMethod: string; path: string; params: number; fields: number; nullableFields: number }>
+    }>
+  }
+
+  /** 状态字典由后端下发，前端不硬编码这几个中文名 */
+  async fetchApiEndpointStatuses() {
+    return this.request<Array<{ code: string; label: string; hint: string; actionable: boolean }>>(
+      '/api-endpoints/statuses'
+    )
+  }
+
+  async getApiProjects(params?: { enabledOnly?: boolean; catalogOnly?: boolean }) {
     const q = new URLSearchParams()
     if (params?.enabledOnly != null) q.set('enabledOnly', String(params.enabledOnly))
+    if (params?.catalogOnly != null) q.set('catalogOnly', String(params.catalogOnly))
     const qs = q.toString()
     return this.request<
       Array<{
@@ -1194,8 +1558,35 @@ class ApiClient {
         description?: string
         enabled?: boolean
         sortOrder?: number
+        successCodePath?: string
+        successCodeValue?: string
       }>
     >(qs ? `/api-projects?${qs}` : '/api-projects')
+  }
+
+  async getApiProjectsTree(params?: { enabledOnly?: boolean }) {
+    const q = new URLSearchParams()
+    if (params?.enabledOnly != null) q.set('enabledOnly', String(params.enabledOnly))
+    const qs = q.toString()
+    return this.request<{
+      categories: Array<{
+        key: string
+        label: string
+        count: number
+        projects: Array<{
+          code: string
+          name: string
+          description?: string
+          kind?: string
+          enabled?: boolean
+          sortOrder?: number
+          successCodePath?: string
+          successCodeValue?: string
+          category?: string
+          missing?: boolean
+        }>
+      }>
+    }>(qs ? `/api-projects/tree?${qs}` : '/api-projects/tree')
   }
 
   async createApiProject(body: Record<string, unknown>) {
@@ -1249,6 +1640,12 @@ class ApiClient {
         baseUrl: string
         defaultHeaders?: string
         defaultToken?: string
+        /** 数据库断言用的只读库。密码回显成遮罩，原样传回即保持不变 */
+        dbHost?: string
+        dbPort?: number
+        dbName?: string
+        dbUser?: string
+        dbPassword?: string
         enabled?: boolean
       }>
     >('/api-test/envs')
@@ -1261,6 +1658,11 @@ class ApiClient {
       baseUrl: string
       defaultHeaders?: string
       defaultToken?: string
+      dbHost?: string
+      dbPort?: number
+      dbName?: string
+      dbUser?: string
+      dbPassword?: string
       enabled?: boolean
     }
   ) {
@@ -1270,10 +1672,28 @@ class ApiClient {
     })
   }
 
+  /** 试一下数据库断言的库连不连得上——配完不试就只能靠跑用例来发现连不上 */
+  async checkApiTestEnvDb(environment: string) {
+    return this.request<{ ok: boolean; message: string }>(
+      `/api-test/envs/${encodeURIComponent(environment)}/db-check`,
+      { method: 'POST' }
+    )
+  }
+
   // ---------- 用例集合 ----------
 
-  async getApiTestCollections(project?: string) {
-    const qs = project ? `?project=${encodeURIComponent(project)}` : ''
+  async getApiTestCollections(params?: {
+    project?: string
+    scope?: 'TEST' | 'LIVE'
+    includeArchived?: boolean
+    appVersion?: string
+  }) {
+    const q = new URLSearchParams()
+    if (params?.project) q.set('project', params.project)
+    if (params?.scope) q.set('scope', params.scope)
+    if (params?.includeArchived != null) q.set('includeArchived', String(params.includeArchived))
+    if (params?.appVersion) q.set('appVersion', params.appVersion)
+    const qs = q.toString()
     return this.request<
       Array<{
         id: string
@@ -1282,12 +1702,91 @@ class ApiClient {
         description?: string
         enabled?: boolean
         sortOrder?: number
+        scope?: string
+        lifecycle?: string
+        requirementNo?: string
+        appVersion?: string
         caseCount?: number
         passRate?: number | null
         lastRunAt?: string | null
         lastRunId?: string | null
       }>
-    >(`/api-test/collections${qs}`)
+    >(qs ? `/api-test/collections?${qs}` : '/api-test/collections')
+  }
+
+  async getApiTestCollectionTree(params?: {
+    scope?: 'TEST' | 'LIVE'
+    appVersion?: string
+    includeArchived?: boolean
+  }) {
+    const q = new URLSearchParams()
+    if (params?.scope) q.set('scope', params.scope)
+    if (params?.appVersion) q.set('appVersion', params.appVersion)
+    if (params?.includeArchived != null) q.set('includeArchived', String(params.includeArchived))
+    const qs = q.toString()
+    return this.request<{
+      treeMode?: 'TEST' | 'LIVE'
+      scope: string
+      appVersion: string
+      categories: Array<{
+        key: string
+        label: string
+        projects: Array<{
+          code: string
+          label: string
+          collectionCount?: number
+          caseCount?: number
+          runCollectionId?: string
+          groups?: Array<{
+            key?: string
+            kind?: string
+            label: string
+            project?: string
+            collections?: Array<Record<string, unknown>>
+          }>
+          controllers?: Array<{
+            key?: string
+            kind?: string
+            label: string
+            handler?: string
+            caseCount?: number
+            statusTag?: string
+            previews?: Array<{ method?: string; path?: string; label?: string }>
+          }>
+          collections?: Array<Record<string, unknown>>
+        }>
+      }>
+    }>(`/api-test/collections/tree?${qs}`)
+  }
+
+  async getApiTestProjectLiveCases(project: string, params?: { includeArchived?: boolean }) {
+    const q = new URLSearchParams()
+    if (params?.includeArchived != null) q.set('includeArchived', String(params.includeArchived))
+    const qs = q.toString()
+    return this.request<Array<{ id: string; name: string; method: string; path: string; enabled?: boolean; controller?: string }>>(
+      qs
+        ? `/api-test/projects/${encodeURIComponent(project)}/live-cases?${qs}`
+        : `/api-test/projects/${encodeURIComponent(project)}/live-cases`
+    )
+  }
+
+  async getApiTestCollectionCases(collectionId: string) {
+    return this.request<Array<{ id: string; name: string; method: string; path: string; enabled?: boolean; controller?: string }>>(
+      `/api-test/collections/${encodeURIComponent(collectionId)}/cases`
+    )
+  }
+
+  async archiveApiTestCollection(id: string) {
+    return this.request<{ ok: boolean }>(`/api-test/collections/${encodeURIComponent(id)}/archive`, {
+      method: 'POST'
+    })
+  }
+
+  async releaseApiTestRequirement(requirementNo: string) {
+    return this.request<{ requirementNo: string; collectionsArchived: number; endpointsArchived: number }>(
+      `/api-test/requirements/${encodeURIComponent(requirementNo)}/release`,
+      { method: 'POST' }
+    )
   }
 
   async createApiTestCollection(body: Record<string, unknown>) {
@@ -1388,6 +1887,42 @@ class ApiClient {
         createdAt: string
       }>
     >(`/api-test/runs${qs ? '?' + qs : ''}`)
+  }
+
+  async browseApiTestRuns(limit = 200) {
+    return this.request<
+      Array<{
+        id: string
+        environment: string
+        collectionId?: string | null
+        collectionName?: string | null
+        collectionProject?: string | null
+        requirementNo?: string | null
+        sourceBranch?: string | null
+        collectionScope?: string | null
+        total: number
+        passed: number
+        failed: number
+        durationMs: number
+        ok: boolean | number
+        message?: string
+        createdAt: string
+        interfaces: Array<{ project: string; method: string; path: string }>
+      }>
+    >(`/api-test/runs/browse?limit=${limit}`)
+  }
+
+  async deleteApiTestRun(runId: string) {
+    return this.request<{ ok: boolean }>(`/api-test/runs/${encodeURIComponent(runId)}`, {
+      method: 'DELETE'
+    })
+  }
+
+  async deleteApiTestRuns(ids: string[]) {
+    return this.request<{ ok: boolean; deleted: number }>(`/api-test/runs`, {
+      method: 'DELETE',
+      body: JSON.stringify({ ids })
+    })
   }
 
   async getApiTestRunDetail(runId: string) {
@@ -1562,6 +2097,10 @@ class ApiClient {
         error?: string
         assertionResults?: string[]
         bodyPreview?: string
+        /** 实际发出去的和实际收到的——没有它，人只能拿 Postman 再手工重放一遍 */
+        reqHeaders?: Record<string, string>
+        reqBody?: string
+        respHeaders?: Record<string, string>
       }>
     }>('/api-test/run', {
       method: 'POST',
@@ -1675,7 +2214,7 @@ class ApiClient {
   async readInspectorShots(files: File[]) {
     const fd = new FormData()
     files.forEach((f) => fd.append('files', f))
-    const res = await fetch(`${this.baseURL}/ui-elements/read-inspector-shot`, {
+    const res = await authFetch(`${this.baseURL}/ui-elements/read-inspector-shot`, {
       method: 'POST',
       body: fd
     })
@@ -1699,15 +2238,34 @@ class ApiClient {
    * 用千问生成用例（不落库）。截图/需求文档直接传文件，不用先放到公网。
    * 替代原来按次计费的 CodeWords 工作流，产出格式一致。
    */
-  async generateTestCasesByQwen(params: { pageName: string; text?: string; files?: File[] }) {
+  async generateTestCasesByQwen(params: {
+    pageName: string
+    text?: string
+    files?: File[]
+    /** PAGE_SHOT（默认）/ REQUIREMENT_DOC —— 两种素材的提示词是相反的 */
+    materialKind?: 'PAGE_SHOT' | 'REQUIREMENT_DOC'
+  }) {
     const fd = new FormData()
     fd.append('pageName', params.pageName)
     if (params.text) fd.append('text', params.text)
+    if (params.materialKind) fd.append('materialKind', params.materialKind)
     ;(params.files || []).forEach((f) => fd.append('files', f))
-    const res = await fetch(`${this.baseURL}/ai-test-cases/generate`, { method: 'POST', body: fd })
+    // 这里必须走裸 fetch：request() 会写死 Content-Type: application/json，
+    // 而 FormData 需要浏览器自己带上 multipart 的 boundary。
+    // 但登录态得手动补上——漏了的话鉴权一开这个功能就整个用不了
+    const res = await authFetch(`${this.baseURL}/ai-test-cases/generate`, {
+      method: 'POST',
+      body: fd
+    })
     const data = await res.json().catch(() => ({ message: '生成失败' }))
     if (!res.ok) throw new Error(data.message || '生成失败')
-    return data as { page: string; total: number; model: string; test_cases: any[] }
+    return data as {
+      page: string
+      total: number
+      model: string
+      test_cases: any[]
+      open_questions?: Array<Record<string, any>>
+    }
   }
 
   // —— 接口变更分析（分支 vs 基线）——
@@ -1814,7 +2372,7 @@ class ApiClient {
   async parseTestCaseSheet(file: File) {
     const fd = new FormData()
     fd.append('file', file)
-    const res = await fetch(`${this.baseURL}/ai-test-cases/import/parse`, { method: 'POST', body: fd })
+    const res = await authFetch(`${this.baseURL}/ai-test-cases/import/parse`, { method: 'POST', body: fd })
     const data = await res.json().catch(() => ({ message: '解析失败' }))
     if (!res.ok) throw new Error(data.message || '解析失败')
     return data as { rows: any[]; raw: any[]; warnings: string[] }
@@ -1844,6 +2402,339 @@ class ApiClient {
   /** 编辑用例：只传要改的字段。flowId 传空串＝解除流程关联，不传＝不动 */
   async updateAiTestCase(id: number, body: Record<string, unknown>) {
     return this.request<any>(`/ai-test-cases/${id}`, { method: 'PUT', body: JSON.stringify(body) })
+  }
+
+  /** 端的字典：客户端 / H5 / 后端 / 管理后台 */
+  async fetchSides() {
+    return this.request<Array<{ code: string; label: string; hint: string }>>('/ai-test-cases/sides')
+  }
+
+  /** 某个需求单涉及的接口（分支改动 + 人工补充） */
+  async fetchRequirementEndpoints(requirementNo: string) {
+    return this.request<Array<{
+      id: string
+      project?: string
+      endpointId?: string
+      httpMethod: string
+      path: string
+      summary?: string
+      changeFlag?: string
+      changeNote?: string
+      sourceBranch?: string
+      /** SYNC＝对比分析关联的，MANUAL＝人工补的 */
+      source?: string
+    }>>(`/ai-test-cases/requirement-endpoints?requirementNo=${encodeURIComponent(requirementNo)}`)
+  }
+
+  /** 各需求单关联接口数量，供清单「涉及接口 · N」 */
+  async fetchRequirementEndpointCounts() {
+    return this.request<Array<{ requirementNo: string; total: number }>>(
+      '/ai-test-cases/requirement-endpoint-counts'
+    )
+  }
+
+  /** 需求单提测覆盖：客户端 / H5 / 后端接口 */
+  async fetchRequirementCoverage(requirementNo: string, category?: string) {
+    const q = new URLSearchParams({ requirementNo })
+    if (category) q.set('category', category)
+    return this.request<{
+      requirementNo: string
+      ready: boolean
+      summary: string
+      dimensions: Array<Record<string, any>>
+    }>(`/ai-test-cases/requirement-coverage?${q.toString()}`)
+  }
+
+  async waiveRequirementCoverage(body: { requirementNo: string; dimension: string; reason: string }) {
+    return this.request<{ success: boolean }>('/ai-test-cases/requirement-coverage/waive', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async clearRequirementCoverageWaiver(requirementNo: string, dimension: string) {
+    return this.request<{ success: boolean }>(
+      `/ai-test-cases/requirement-coverage/waive?requirementNo=${encodeURIComponent(requirementNo)}&dimension=${encodeURIComponent(dimension)}`,
+      { method: 'DELETE' }
+    )
+  }
+
+  // —— 抓包：安卓走 USB（adb reverse），iOS 要 WiFi 代理 ——
+
+  async startCapture(body: {
+    deviceId: string
+    platform: string
+    requirementNo?: string
+    hosts?: string
+  }) {
+    return this.request<{
+      sessionId: string
+      platform: string
+      hosts: string
+      /** iOS 才有：要人手动去设置里填什么 */
+      manualProxyTip?: string | null
+    }>('/packet-capture/start', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  /** 抓包过程中实时看——不然你不知道代理到底通没通，白操作一遍 */
+  async peekCapture(sessionId: string) {
+    return this.request<{
+      total: number
+      flows: any[]
+      /** 代理上见到的<b>全部</b>域名（含被白名单挡掉的）。抓到 0 条时靠它区分是哪种原因 */
+      seenHosts: Record<string, number>
+      seenTotal: number
+      /** 握手失败的域名——那是「抓不了」，不是「配错了」 */
+      failedHosts: Record<string, number>
+    }>(`/packet-capture/${encodeURIComponent(sessionId)}/peek`)
+  }
+
+  async stopCapture(sessionId: string, body: { requirementNo?: string; project?: string }) {
+    return this.request<{
+      total: number
+      distinct: number
+      linked: number
+      /** 挂了但没选项目时的提醒 */
+      linkWarn: string
+      seenHosts: Record<string, number>
+      failedHosts: Record<string, number>
+      flows: CapturedFlow[]
+    }>(`/packet-capture/${encodeURIComponent(sessionId)}/stop`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  /** 页面刷新后用它恢复「还在抓」的状态，否则会留下一个撤不掉的代理 */
+  /**
+   * 某一条的详情：请求头、Cookies、请求/响应体。
+   * sessionId 传 'last' 取上一场已结束的抓包——看响应基本都是抓完之后的事。
+   */
+  async captureDetail(sessionId: string, seq: number) {
+    return this.request<{
+      available: boolean
+      message?: string
+      detail?: CapturedDetail
+    }>(`/packet-capture/${encodeURIComponent(sessionId)}/flow/${seq}/detail`)
+  }
+
+  /** 抓完之后补挂到需求单——抓之前经常还不知道该挂哪个单 */
+  async linkCapturedFlows(body: {
+    requirementNo: string
+    /** 必填：接口清单按项目分，没有项目就生不成用例 */
+    project: string
+    sessionId?: string
+    flows: Array<{ method: string; path: string; host: string; seq?: number }>
+  }) {
+    return this.request<{ linked: number; fieldsExtracted?: number }>('/packet-capture/link', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async importOpenApi(project: string, content: string) {
+    return this.request<{ imported: number; skipped: number; warnings: string[] }>(
+      `/api-endpoints/projects/${encodeURIComponent(project)}/import-openapi`,
+      { method: 'POST', body: JSON.stringify({ content }) }
+    )
+  }
+
+  /**
+   * 把这次抓包用的 token 存到测试环境。
+   * 用例里不写死 token——它会过期，写死的话过期那天所有用例集体变红。
+   */
+  async saveCaptureToken(sessionId: string, environment = 'TEST') {
+    return this.request<{ ok?: boolean; message: string }>(
+      `/packet-capture/${encodeURIComponent(sessionId)}/save-token`,
+      { method: 'POST', body: JSON.stringify({ environment }) }
+    )
+  }
+
+  async currentCapture() {
+    return this.request<{
+      running: boolean
+      sessionId?: string
+      deviceId?: string
+      platform?: string
+      hosts?: string
+      requirementNo?: string
+      startedAt?: number
+    }>('/packet-capture/current')
+  }
+
+  /**
+   * 从一条涉及接口直接生成用例并归入集合。
+   * 不传 collectionId 就按需求单自动找/建一个测试集合——
+   * 「本单上线」是按需求单整批归档的，一单一集合那一步才归得干净。
+   */
+  async generateCaseFromRequirementEndpoint(
+    id: string,
+    body: { collectionId?: string; appVersion?: string; sourceBranch?: string }
+  ) {
+    return this.request<{
+      caseId: string
+      caseName: string
+      caseEnabled: boolean
+      note: string
+      collectionId: string
+      collectionName: string
+      collectionCreated: boolean
+    }>(`/ai-test-cases/requirement-endpoints/${encodeURIComponent(id)}/generate-case`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async getApiTestPickableTree(params?: { requirementNo?: string; appVersion?: string }) {
+    const q = new URLSearchParams()
+    if (params?.requirementNo) q.set('requirementNo', params.requirementNo)
+    if (params?.appVersion) q.set('appVersion', params.appVersion)
+    const qs = q.toString()
+    return this.request<{
+      options: Array<{
+        value: string
+        label: string
+        disabled?: boolean
+        children: Array<{ value: string; label: string }>
+      }>
+    }>(qs ? `/api-test/collections/pickable-tree?${qs}` : '/api-test/collections/pickable-tree')
+  }
+
+  /** @deprecated 请用 getApiTestPickableTree 级联 */
+  /**
+   * 给一个需求单下所有涉及接口一次性生成用例。
+   * 逐个点太累——四个接口点四次，第三次就没人点了；而没生成的话覆盖率永远是 0%。
+   */
+  async generateCasesForRequirement(
+    requirementNo: string,
+    body: { appVersion?: string; collectionId?: string }
+  ) {
+    return this.request<{
+      created: number
+      reused: number
+      failed: string[]
+      cases: Array<{
+        path: string
+        caseId: string
+        caseName: string
+        enabled: boolean
+        reused: boolean
+        collectionName: string
+      }>
+    }>(`/ai-test-cases/requirements/${encodeURIComponent(requirementNo)}/generate-cases`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async getPickableCollections(project: string, requirementNo?: string, appVersion?: string) {
+    const q = new URLSearchParams({ project })
+    if (requirementNo) q.set('requirementNo', requirementNo)
+    if (appVersion) q.set('appVersion', appVersion)
+    return this.request<
+      Array<{ id: string; name: string; requirementNo?: string; appVersion?: string; caseCount?: number }>
+    >(`/ai-test-cases/requirement-endpoints/collections?${q.toString()}`)
+  }
+
+  /** 人工补一个接口到需求单上——分析只认这个分支改过的，没改但会调到的要自己加 */
+  async addRequirementEndpoint(body: {
+    requirementNo: string
+    httpMethod: string
+    path: string
+    summary?: string
+    project?: string
+  }) {
+    return this.request<{ success: boolean }>('/ai-test-cases/requirement-endpoints', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async removeRequirementEndpoint(id: string) {
+    return this.request<{ success: boolean }>(
+      `/ai-test-cases/requirement-endpoints/${encodeURIComponent(id)}`,
+      { method: 'DELETE' }
+    )
+  }
+
+  /** 某个集合 / 某一版还没确认的问题：需求文档里的矛盾和缺口，拿去问产品用的 */
+  async listOpenQuestions(params: { category?: string; appVersion?: string; includeResolved?: boolean }) {
+    const q = new URLSearchParams()
+    if (params.category) q.set('category', params.category)
+    if (params.appVersion) q.set('appVersion', params.appVersion)
+    if (params.includeResolved) q.set('includeResolved', 'true')
+    return this.request<Array<{
+      id: string
+      title: string
+      kind?: string
+      detail?: string
+      question?: string
+      impact?: string
+      appVersion?: string
+      pageName?: string
+      resolved?: number
+    }>>(`/ai-test-cases/open-questions?${q.toString()}`)
+  }
+
+  /** 删掉一条待确认。和「已确认」不同：这条根本不成立，留着下次又要判断一遍 */
+  async deleteOpenQuestion(id: string) {
+    return this.request<{ success: boolean }>(
+      `/ai-test-cases/open-questions/${encodeURIComponent(id)}`,
+      { method: 'DELETE' }
+    )
+  }
+
+  async resolveOpenQuestion(id: string, resolved = true) {
+    return this.request<{ success: boolean }>(
+      `/ai-test-cases/open-questions/${encodeURIComponent(id)}/resolve?resolved=${resolved}`,
+      { method: 'POST' }
+    )
+  }
+
+  /** 手动新建版本。汇总页往往提测后才建，而用例要在提测前就开始写 */
+  async createVersionArchive(body: {
+    releaseLabel: string
+    appVersion?: string
+    productLine?: string
+    releaseDate?: string
+  }) {
+    return this.request<any>('/version-archives', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  /** 往版本里手动加一个需求单 */
+  async addVersionIssue(archiveId: string, body: {
+    issueKey: string
+    summary?: string
+    statusName?: string
+    assignee?: string
+  }) {
+    return this.request<any>(`/version-archives/${encodeURIComponent(archiveId)}/issues`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async removeVersionIssue(archiveId: string, issueKey: string) {
+    return this.request<{ success: boolean }>(
+      `/version-archives/${encodeURIComponent(archiveId)}/issues/${encodeURIComponent(issueKey)}`,
+      { method: 'DELETE' }
+    )
+  }
+
+  /** 某一版下每个单号有多少条用例——「这个单子测完了没有」靠它回答 */
+  async fetchRequirementCounts(params: { category?: string; appVersion?: string }) {
+    const q = new URLSearchParams()
+    if (params.category) q.set('category', params.category)
+    if (params.appVersion) q.set('appVersion', params.appVersion)
+    return this.request<Array<{ requirementNo: string; total: number; reviewed: number }>>(
+      `/ai-test-cases/requirement-counts?${q.toString()}`
+    )
+  }
+
+  /** 某个用例集下出现过的 APP 版本 + 各自条数，新版本在前 */
+  async listAiTestCaseVersions(category?: string) {
+    const q = category ? `?category=${encodeURIComponent(category)}` : ''
+    return this.request<Array<{ version: string; count: number }>>(`/ai-test-cases/versions${q}`)
   }
 
   async generateAiTestCases(body: {
@@ -1884,7 +2775,7 @@ class ApiClient {
       form.append('files', f)
     }
     const url = `${this.baseURL}/codewords/test-cases/generate-upload`
-    const response = await fetch(url, { method: 'POST', body: form })
+    const response = await authFetch(url, { method: 'POST', body: form })
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: 'Generate failed' }))
       throw new Error(error.message || error.error || `HTTP ${response.status}`)
@@ -1908,6 +2799,12 @@ class ApiClient {
     batchId?: string
     automationAdvice?: string
     releaseStage?: string
+    /** APP 版本，如 9.3 */
+    appVersion?: string
+    /** 需求单号，如 APP-8873 */
+    requirementNo?: string
+    /** 涉及端：CLIENT / H5 / SERVER / ADMIN */
+    side?: string
     /** 标题/编号/测试点/模块 模糊搜 */
     keyword?: string
     page?: number
@@ -1915,6 +2812,9 @@ class ApiClient {
   }) {
     const qs = new URLSearchParams()
     if (params?.category) qs.set('category', params.category)
+    if (params?.appVersion) qs.set('appVersion', params.appVersion)
+    if (params?.requirementNo) qs.set('requirementNo', params.requirementNo)
+    if (params?.side) qs.set('side', params.side)
     if (params?.pageName) qs.set('pageName', params.pageName)
     if (params?.priority) qs.set('priority', params.priority)
     if (params?.status) qs.set('status', params.status)
@@ -1954,6 +2854,18 @@ class ApiClient {
     screenshot_url?: string
     app_id?: string
     status?: string
+    /** 批次级层级，整批共用 */
+    module?: string
+    sub_module?: string
+    test_item?: string
+    /** 所属 APP 版本，如 9.3；版本迭代集必填 */
+    app_version?: string
+    /** 所属需求单号，如 APP-8873 */
+    requirement_no?: string
+    /** 涉及端，整批共用 */
+    sides?: string[]
+    /** 生成时挑出来的待确认项，跟着这一批一起落库 */
+    open_questions?: Array<Record<string, any>>
     test_cases: Array<Record<string, any>>
   }) {
     return this.request<{
@@ -2068,7 +2980,7 @@ class ApiClient {
     const form = new FormData()
     form.append('file', file)
     const url = `${this.baseURL}/handbook/image/upload`
-    const response = await fetch(url, { method: 'POST', body: form })
+    const response = await authFetch(url, { method: 'POST', body: form })
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: '上传失败' }))
       throw new Error(error.message || error.error || `HTTP ${response.status}`)
@@ -2092,7 +3004,7 @@ class ApiClient {
     if (params.hintProject) form.append('hintProject', params.hintProject)
     ;(params.files || []).slice(0, 3).forEach((f) => form.append('files', f))
     const url = `${this.baseURL}/handbook/ai-summarize`
-    const response = await fetch(url, { method: 'POST', body: form })
+    const response = await authFetch(url, { method: 'POST', body: form })
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: 'AI 汇总失败' }))
       throw new Error(error.message || error.error || `HTTP ${response.status}`)
@@ -2145,7 +3057,7 @@ class ApiClient {
     files.forEach((f) => form.append('files', f))
     form.append('saveKnowledge', String(saveKnowledge))
     const url = `${this.baseURL}/codewords/ingest-files`
-    const response = await fetch(url, { method: 'POST', body: form })
+    const response = await authFetch(url, { method: 'POST', body: form })
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: 'Upload failed' }))
       throw new Error(error.message || error.error || `HTTP ${response.status}`)
@@ -2651,7 +3563,7 @@ class ApiClient {
 
   /** 当前结论（人工优先）；没有归因过时后端返回 204，这里归一为 null */
   async getFailureDiagnosis(taskId: string) {
-    const res = await fetch(`${this.baseURL}/failure-diagnosis/${encodeURIComponent(taskId)}`)
+    const res = await authFetch(`${this.baseURL}/failure-diagnosis/${encodeURIComponent(taskId)}`)
     if (res.status === 204) return null
     if (!res.ok) throw new Error(`获取归因失败: ${res.status}`)
     return res.json()
@@ -2731,6 +3643,12 @@ export interface AiTestCaseDto {
   automationAdvice?: string | null
   /** TESTING | ONLINE */
   releaseStage?: string | null
+  /** 所属 APP 版本，如 9.3；只有版本迭代集会用 */
+  appVersion?: string | null
+  /** 所属需求单号，如 APP-8873 */
+  requirementNo?: string | null
+  /** 涉及端，后端已解析成数组 */
+  sides?: string[] | null
   automated?: boolean
   flowName?: string
   flowMissing?: boolean

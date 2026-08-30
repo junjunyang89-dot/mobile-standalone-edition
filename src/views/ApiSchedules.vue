@@ -63,7 +63,7 @@
               </el-button>
             </el-tooltip>
             <el-button link type="primary" @click="openEdit(s)">编辑</el-button>
-            <el-button link type="danger" @click="remove(s)">删</el-button>
+            <el-button v-perm:delete link type="danger" @click="remove(s)">删</el-button>
           </div>
         </div>
       </div>

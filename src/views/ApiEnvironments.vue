@@ -38,6 +38,38 @@
         <span class="base-hint">用例默认拼在它后面；用例上选了具体 URL 时以那个为准</span>
       </div>
 
+      <!--
+        数据库断言的连接。放在环境下面而不是全局：
+        切到预发就该查预发的库，否则「接口打预发、断言查测试库」，结论是反的
+      -->
+      <div class="db-block">
+        <div class="db-head">
+          <span class="section-name">{{ envLabel(currentEnv) }} 数据库断言连接</span>
+          <el-tag v-if="dbConfigured" size="small" type="success" effect="plain">已配置</el-tag>
+          <el-tag v-else size="small" type="info" effect="plain">未配置</el-tag>
+          <span class="db-hint">
+            用例里写 <code>db</code> / <code>dbDelta</code> 断言时查这个库。
+            <b>务必用只读账号</b> —— 平台只放行单条 SELECT，但账号本身是最后一道防线。
+          </span>
+        </div>
+        <div class="db-form">
+          <el-input v-model="db.dbHost" placeholder="库地址，如 10.0.0.12" style="width: 190px" />
+          <el-input v-model.number="db.dbPort" placeholder="3306" style="width: 90px" />
+          <el-input v-model="db.dbName" placeholder="库名" style="width: 160px" />
+          <el-input v-model="db.dbUser" placeholder="只读账号" style="width: 140px" />
+          <el-input
+            v-model="db.dbPassword"
+            type="password"
+            show-password
+            placeholder="密码"
+            style="width: 160px"
+          />
+          <el-button type="primary" :loading="dbSaving" @click="saveDb">保存</el-button>
+          <el-button :loading="dbChecking" :disabled="!dbConfigured" @click="checkDb">测试连接</el-button>
+        </div>
+        <div v-if="dbMsg" class="db-msg" :class="{ bad: !dbOk }">{{ dbMsg }}</div>
+      </div>
+
       <div class="section-head">
         <span class="section-name">{{ envLabel(currentEnv) }} 变量</span>
         <el-button link type="primary" @click="openAdd">+ 新增变量</el-button>
@@ -75,7 +107,7 @@
         <el-table-column label="操作" width="130" align="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="danger" size="small" @click="removeVar(row)">删除</el-button>
+            <el-button v-perm:delete link type="danger" size="small" @click="removeVar(row)">删除</el-button>
           </template>
         </el-table-column>
         <template #empty>
@@ -163,7 +195,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Key } from '@element-plus/icons-vue'
 import { apiClient } from '../api'
@@ -200,6 +232,73 @@ const form = ref<{ name: string; value: string; secret: boolean; description: st
 })
 
 const currentEnv = computed(() => envs.value.find((e) => e.environment === current.value) || {})
+
+const db = reactive({ dbHost: '', dbPort: undefined as number | undefined, dbName: '', dbUser: '', dbPassword: '' })
+const dbSaving = ref(false)
+const dbChecking = ref(false)
+const dbMsg = ref('')
+const dbOk = ref(true)
+
+const dbConfigured = computed(() => !!(db.dbHost && db.dbName))
+
+/** 切环境时把这个环境自己的库配置读进来——两个环境是两套库 */
+function syncDbForm() {
+  const e: any = currentEnv.value || {}
+  db.dbHost = e.dbHost || ''
+  db.dbPort = e.dbPort || undefined
+  db.dbName = e.dbName || ''
+  db.dbUser = e.dbUser || ''
+  // 后端回显的是遮罩，原样传回去就是「不改密码」
+  db.dbPassword = e.dbPassword || ''
+  dbMsg.value = ''
+}
+
+async function saveDb() {
+  const e: any = currentEnv.value || {}
+  if (!e.baseUrl) {
+    // saveEnv 要求 baseUrl 必填，而它归 URL 管理那边
+    ElMessage.warning('这个环境还没有 baseUrl，先去「URL 管理」配一个')
+    return
+  }
+  dbSaving.value = true
+  try {
+    await apiClient.saveApiTestEnv(current.value, {
+      name: e.name,
+      baseUrl: e.baseUrl,
+      defaultHeaders: e.defaultHeaders,
+      defaultToken: e.defaultToken,
+      enabled: e.enabled,
+      dbHost: db.dbHost.trim() || undefined,
+      dbPort: db.dbPort || undefined,
+      dbName: db.dbName.trim() || undefined,
+      dbUser: db.dbUser.trim() || undefined,
+      dbPassword: db.dbPassword || undefined
+    })
+    await loadEnvs()
+  syncDbForm()
+    syncDbForm()
+    ElMessage.success('已保存')
+  } catch (e: any) {
+    ElMessage.error(e?.message || '保存失败')
+  } finally {
+    dbSaving.value = false
+  }
+}
+
+async function checkDb() {
+  dbChecking.value = true
+  dbMsg.value = ''
+  try {
+    const r = await apiClient.checkApiTestEnvDb(current.value)
+    dbOk.value = r.ok
+    dbMsg.value = r.message
+  } catch (e: any) {
+    dbOk.value = false
+    dbMsg.value = e?.message || '连接测试失败'
+  } finally {
+    dbChecking.value = false
+  }
+}
 
 /** 模板里写不了字面的 }}，统一在这儿拼 */
 function refOf(name: string) {
@@ -251,6 +350,8 @@ async function loadVariables() {
 function switchEnv(env: string) {
   current.value = env
   loadVariables()
+  // 两个环境是两套库，切过去必须换成那边的配置，不然会把预发的库存到测试上
+  syncDbForm()
 }
 
 function openAdd() {
@@ -339,6 +440,45 @@ onMounted(async () => {
   await loadVariables()
 })
 </script>
+
+<style scoped>
+.db-block {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+  background: var(--el-fill-color-blank);
+}
+
+.db-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.db-hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.db-form {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.db-msg {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--el-color-success);
+}
+
+.db-msg.bad {
+  color: var(--el-color-danger);
+}
+</style>
 
 <style scoped>
 .api-envs {

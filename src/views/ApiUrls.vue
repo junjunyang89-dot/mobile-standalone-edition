@@ -59,7 +59,7 @@
         <el-table-column label="操作" width="140" fixed="right">
           <template #default="{ row }">
             <el-button size="small" link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button size="small" link type="danger" @click="remove(row)">删</el-button>
+            <el-button v-perm:delete size="small" link type="danger" @click="remove(row)">删</el-button>
           </template>
         </el-table-column>
       </el-table>

@@ -39,7 +39,7 @@
             <div class="project-card-head">
               <el-tag size="small">{{ p.type || 'OTHER' }}</el-tag>
               <span class="project-name">{{ p.name || `项目 ${idx + 1}` }}</span>
-              <el-button size="small" link type="danger" @click="projects.splice(idx, 1)">删除</el-button>
+              <el-button v-perm:delete size="small" link type="danger" @click="projects.splice(idx, 1)">删除</el-button>
             </div>
             <el-form label-width="88px" size="small">
               <el-row :gutter="12">

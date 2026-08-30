@@ -165,7 +165,7 @@
               >
                 停止
               </el-button>
-              <el-button
+              <el-button v-perm:delete
                 type="danger"
                 size="small"
                 @click="deleteTask(row.id)"

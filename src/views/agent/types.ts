@@ -1,23 +1,10 @@
 export type ModeId = 'chat' | 'monitor' | 'knowledge' | 'logs'
-export type RightTab = 'monitor' | 'knowledge' | 'workflow' | 'cases'
+export type RightTab = 'monitor' | 'knowledge' | 'workflow'
 
 export type ChatMsg = {
   role: 'user' | 'assistant'
   content: string
   actions?: unknown[]
-  handbookHits?: HandbookHit[]
-}
-
-export type HandbookHit = {
-  id?: number
-  category?: string
-  categoryLabel?: string
-  project?: string
-  title?: string
-  symptom?: string
-  cause?: string
-  fix?: string
-  tags?: string
 }
 
 export type KnowledgeItem = {
@@ -42,9 +29,6 @@ export type PendingFile = {
 export type AgentStatus = {
   enabled?: boolean
   configured?: boolean
-  chatProvider?: string
-  chatModel?: string
-  codewordsConfigured?: boolean
   agentId?: string
   monitorWorkflowId?: string
   apiBase?: string

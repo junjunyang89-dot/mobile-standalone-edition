@@ -1,0 +1,1093 @@
+{
+    "took": 8,
+    "responses": [
+        {
+            "took": 8,
+            "timed_out": false,
+            "_shards": {
+                "total": 10,
+                "successful": 10,
+                "skipped": 0,
+                "failed": 0
+            },
+            "hits": {
+                "total": 41,
+                "max_score": null,
+                "hits": [
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "yzrKQqAB8v4RK5CEyyGx",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-27T10:36:21.707Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198163850542\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-27 18:36:21\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"0826a5d6-f420-4007-8fca-2dbd378e019b\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"7\\\"}}\",\"timestamp\":1787826981625}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-27T10:36:21.707Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198163850542\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-27 18:36:21\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"0826a5d6-f420-4007-8fca-2dbd378e019b\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"7\\\"}}\",\"timestamp\":1787826981625}"
+                            ]
+                        },
+                        "sort": [
+                            1787826981707
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "ncS_QqAB8v4RK5CETEti",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-27T10:23:48.221Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198163850542\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-27 18:23:48\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"4f0b0222-4d47-4047-9635-f4efce780967\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"6\\\"}}\",\"timestamp\":1787826228165}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-27T10:23:48.221Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198163850542\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-27 18:23:48\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"4f0b0222-4d47-4047-9635-f4efce780967\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"6\\\"}}\",\"timestamp\":1787826228165}"
+                            ]
+                        },
+                        "sort": [
+                            1787826228221
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "orKMQqABEK__f2R4anI-",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-27T09:28:13.528Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199173514033\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-27 17:28:13\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"46a38efa-20a6-4a51-8b03-a22a928f00d3\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"3\\\"}}\",\"timestamp\":1787822893506}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-27T09:28:13.528Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199173514033\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-27 17:28:13\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"46a38efa-20a6-4a51-8b03-a22a928f00d3\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"3\\\"}}\",\"timestamp\":1787822893506}"
+                            ]
+                        },
+                        "sort": [
+                            1787822893528
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "F9uEQqABwzv-NgeRVy6U",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-27T09:19:24.462Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198163850542\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-27 17:19:24\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"6a0ac04d-31af-4879-961c-f44634ed4fcb\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"5\\\"}}\",\"timestamp\":1787822364374}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-27T09:19:24.462Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198163850542\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-27 17:19:24\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"6a0ac04d-31af-4879-961c-f44634ed4fcb\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"5\\\"}}\",\"timestamp\":1787822364374}"
+                            ]
+                        },
+                        "sort": [
+                            1787822364462
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "4mxqQqAB8v4RK5CEI70P",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-27T08:50:47.081Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199173514033\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-27 16:50:47\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"181bf8e4-cea3-4080-a195-c7bf14c1a925\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"2\\\"}}\",\"timestamp\":1787820647004}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-27T08:50:47.081Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199173514033\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-27 16:50:47\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"181bf8e4-cea3-4080-a195-c7bf14c1a925\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"2\\\"}}\",\"timestamp\":1787820647004}"
+                            ]
+                        },
+                        "sort": [
+                            1787820647081
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "6x1iQqABEK__f2R4Z7Jd",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-27T08:42:20.281Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198129335772\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-27 16:42:20\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"b97cdf60-df08-4a93-a871-7e668e3ab446\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"1\\\"}}\",\"timestamp\":1787820140166}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-27T08:42:20.281Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198129335772\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-27 16:42:20\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"b97cdf60-df08-4a93-a871-7e668e3ab446\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"1\\\"}}\",\"timestamp\":1787820140166}"
+                            ]
+                        },
+                        "sort": [
+                            1787820140281
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "1KZVQqAB8v4RK5CE3g2F",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-27T08:28:38.815Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-27 16:28:38\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"e7f0c4e1-7b29-4ce5-9181-61aec72c3930\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"10\\\"}}\",\"timestamp\":1787819318731}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-27T08:28:38.815Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-27 16:28:38\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"e7f0c4e1-7b29-4ce5-9181-61aec72c3930\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"10\\\"}}\",\"timestamp\":1787819318731}"
+                            ]
+                        },
+                        "sort": [
+                            1787819318815
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "4zlKQqAB8v4RK5CEinM-",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-27T08:16:16.345Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-27 16:16:16\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"e13e6e0b-6a0e-4570-ab35-52ede0a0895f\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"8\\\"}}\",\"timestamp\":1787818576260}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-27T08:16:16.345Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-27 16:16:16\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"e13e6e0b-6a0e-4570-ab35-52ede0a0895f\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"8\\\"}}\",\"timestamp\":1787818576260}"
+                            ]
+                        },
+                        "sort": [
+                            1787818576345
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "4jlKQqAB8v4RK5CEinMk",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-27T08:16:16.318Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-27 16:16:16\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"145567d5-f8c6-48d5-9fc6-b03c25757241\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"9\\\"}}\",\"timestamp\":1787818576259}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-27T08:16:16.318Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-27 16:16:16\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"145567d5-f8c6-48d5-9fc6-b03c25757241\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"9\\\"}}\",\"timestamp\":1787818576259}"
+                            ]
+                        },
+                        "sort": [
+                            1787818576318
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "VRkOQqAB8v4RK5CESXN9",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-27T07:10:27.607Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198129335772\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-27 15:10:27\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"b7a4d9bd-0e6d-494a-91d3-8747ce62b1c8\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"2\\\"}}\",\"timestamp\":1787814627564}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-27T07:10:27.607Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198129335772\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-27 15:10:27\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"b7a4d9bd-0e6d-494a-91d3-8747ce62b1c8\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"2\\\"}}\",\"timestamp\":1787814627564}"
+                            ]
+                        },
+                        "sort": [
+                            1787814627607
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "VBkOQqAB8v4RK5CESXN3",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-27T07:10:27.598Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198129335772\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-27 15:10:27\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"fd59b9e3-5182-479f-a460-8bbd5c7716a2\\\",\\\"properties\\\":{\\\"num\\\":\\\"12\\\",\\\"mission_id\\\":\\\"4\\\"}}\",\"timestamp\":1787814627566}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-27T07:10:27.598Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198129335772\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-27 15:10:27\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"fd59b9e3-5182-479f-a460-8bbd5c7716a2\\\",\\\"properties\\\":{\\\"num\\\":\\\"12\\\",\\\"mission_id\\\":\\\"4\\\"}}\",\"timestamp\":1787814627566}"
+                            ]
+                        },
+                        "sort": [
+                            1787814627598
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "5tMyQaABEK__f2R4pd3U",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-27T03:10:33.327Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-27 11:10:33\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"6b05f682-4e66-4bc6-a1d8-8061f34c288f\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"7\\\"}}\",\"timestamp\":1787800233297}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-27T03:10:33.327Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-27 11:10:33\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"6b05f682-4e66-4bc6-a1d8-8061f34c288f\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"7\\\"}}\",\"timestamp\":1787800233297}"
+                            ]
+                        },
+                        "sort": [
+                            1787800233327
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "IZ8oQaABEK__f2R4rYhP",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-27T02:59:39.880Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-27 10:59:39\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"d4d8bc07-4d91-4e88-a520-59877befea34\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"3\\\"}}\",\"timestamp\":1787799579814}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-27T02:59:39.880Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-27 10:59:39\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"d4d8bc07-4d91-4e88-a520-59877befea34\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"3\\\"}}\",\"timestamp\":1787799579814}"
+                            ]
+                        },
+                        "sort": [
+                            1787799579880
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "ytb8QKABwzv-NgeRvw8_",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-27T02:11:40.890Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-27 10:11:40\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"cec7dbfa-0ed4-4b50-a850-4f5ed921322c\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"6\\\"}}\",\"timestamp\":1787796700776}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-27T02:11:40.890Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-27 10:11:40\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"cec7dbfa-0ed4-4b50-a850-4f5ed921322c\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"6\\\"}}\",\"timestamp\":1787796700776}"
+                            ]
+                        },
+                        "sort": [
+                            1787796700890
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "ndX8QKABwzv-NgeRjizK",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-27T02:11:28.484Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-27 10:11:28\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"5783bc5f-3f30-4f2f-b457-98e822355549\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"5\\\"}}\",\"timestamp\":1787796688455}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-27T02:11:28.484Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-27 10:11:28\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"5783bc5f-3f30-4f2f-b457-98e822355549\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"5\\\"}}\",\"timestamp\":1787796688455}"
+                            ]
+                        },
+                        "sort": [
+                            1787796688484
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "yybtQKAB8v4RK5CE28-0",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-27T01:55:25.134Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-27 09:55:25\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"e93c8a18-49e6-40ac-ba01-93c81b65397c\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"1\\\"}}\",\"timestamp\":1787795725020}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-27T01:55:25.134Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-27 09:55:25\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"e93c8a18-49e6-40ac-ba01-93c81b65397c\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"1\\\"}}\",\"timestamp\":1787795725020}"
+                            ]
+                        },
+                        "sort": [
+                            1787795725134
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "IP7kQKAB8v4RK5CEmQuG",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-27T01:45:18.368Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"10.253.36.63\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-27 09:45:18\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"9a745804-f932-4cce-b346-611fdb322b71\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"2\\\"}}\",\"timestamp\":1787795118308}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-27T01:45:18.368Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"10.253.36.63\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-27 09:45:18\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"9a745804-f932-4cce-b346-611fdb322b71\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"2\\\"}}\",\"timestamp\":1787795118308}"
+                            ]
+                        },
+                        "sort": [
+                            1787795118368
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "XjnXQKABEK__f2R4mkMB",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-27T01:31:06.522Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198163850542\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-27 09:31:06\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"8dd2dffc-bc77-4fa5-83b0-056cacfc9e5e\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"3\\\"}}\",\"timestamp\":1787794266431}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-27T01:31:06.522Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198163850542\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-27 09:31:06\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"8dd2dffc-bc77-4fa5-83b0-056cacfc9e5e\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"3\\\"}}\",\"timestamp\":1787794266431}"
+                            ]
+                        },
+                        "sort": [
+                            1787794266522
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "fcLWQKAB8v4RK5CE1ucl",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-27T01:30:16.385Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198163850542\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-27 09:30:16\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"d052e248-a0b7-460a-a30e-4e017cffadb5\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"1\\\"}}\",\"timestamp\":1787794216271}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-27T01:30:16.385Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198163850542\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-27 09:30:16\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"d052e248-a0b7-460a-a30e-4e017cffadb5\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"1\\\"}}\",\"timestamp\":1787794216271}"
+                            ]
+                        },
+                        "sort": [
+                            1787794216385
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "gzXWQKABEK__f2R4vNRR",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-27T01:30:09.771Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198163850542\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-27 09:30:09\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"f83d9932-7990-4d8a-b1fa-446440fcb360\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"2\\\"}}\",\"timestamp\":1787794209733}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-27T01:30:09.771Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198163850542\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-27 09:30:09\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"f83d9932-7990-4d8a-b1fa-446440fcb360\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"2\\\"}}\",\"timestamp\":1787794209733}"
+                            ]
+                        },
+                        "sort": [
+                            1787794209771
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "nvaEPaABwzv-NgeRjL4q",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-26T10:01:31.846Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"10.253.36.63\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-26 18:01:31\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"6b5b76d7-25a9-4b1a-a8df-14152f8b955b\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"1\\\"}}\",\"timestamp\":1787738491758}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-26T10:01:31.846Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"10.253.36.63\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-26 18:01:31\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"6b5b76d7-25a9-4b1a-a8df-14152f8b955b\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"1\\\"}}\",\"timestamp\":1787738491758}"
+                            ]
+                        },
+                        "sort": [
+                            1787738491846
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "KsdvPaAB8v4RK5CERps-",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-26T09:38:17.688Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199173514033\\\",\\\"ip\\\":\\\"10.253.36.180\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-26 17:38:17\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"b744484d-1084-477e-8f4e-23f9d4fc876a\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"1\\\"}}\",\"timestamp\":1787737097613}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-26T09:38:17.688Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199173514033\\\",\\\"ip\\\":\\\"10.253.36.180\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-26 17:38:17\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"b744484d-1084-477e-8f4e-23f9d4fc876a\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"1\\\"}}\",\"timestamp\":1787737097613}"
+                            ]
+                        },
+                        "sort": [
+                            1787737097688
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "fp_zPKABwzv-NgeRZ47-",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-26T07:22:59.865Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"10.253.36.63\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-26 15:22:59\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"527811df-0c5b-42bb-b6e4-1dfed829e51d\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"3\\\"}}\",\"timestamp\":1787728979840}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-26T07:22:59.865Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"10.253.36.63\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-26 15:22:59\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"527811df-0c5b-42bb-b6e4-1dfed829e51d\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"3\\\"}}\",\"timestamp\":1787728979840}"
+                            ]
+                        },
+                        "sort": [
+                            1787728979865
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "gibzPKABEK__f2R4JVj7",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-26T07:22:42.965Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"10.253.36.63\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-26 15:22:42\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"a9ee18bf-8144-4e9b-b900-9a09f6f46096\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"2\\\"}}\",\"timestamp\":1787728962851}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-26T07:22:42.965Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"10.253.36.63\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-26 15:22:42\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"a9ee18bf-8144-4e9b-b900-9a09f6f46096\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"2\\\"}}\",\"timestamp\":1787728962851}"
+                            ]
+                        },
+                        "sort": [
+                            1787728962965
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "EJ3zPKABwzv-NgeRJkca",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-26T07:22:42.904Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"10.253.36.63\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-26 15:22:42\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"378b684e-319a-4c69-86cf-cd9968a4ecc4\\\",\\\"properties\\\":{\\\"num\\\":\\\"12\\\",\\\"mission_id\\\":\\\"4\\\"}}\",\"timestamp\":1787728962851}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-26T07:22:42.904Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199061491167\\\",\\\"ip\\\":\\\"10.253.36.63\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-26 15:22:42\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"378b684e-319a-4c69-86cf-cd9968a4ecc4\\\",\\\"properties\\\":{\\\"num\\\":\\\"12\\\",\\\"mission_id\\\":\\\"4\\\"}}\",\"timestamp\":1787728962851}"
+                            ]
+                        },
+                        "sort": [
+                            1787728962904
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "Xw_vPKAB8v4RK5CE69wH",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-26T07:19:11.265Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198048352303\\\",\\\"ip\\\":\\\"10.253.36.63\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-26 15:19:11\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"7282401d-eeb9-45fa-bc02-26023e4bfcbd\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"2\\\"}}\",\"timestamp\":1787728751172}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-26T07:19:11.265Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198048352303\\\",\\\"ip\\\":\\\"10.253.36.63\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-26 15:19:11\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"7282401d-eeb9-45fa-bc02-26023e4bfcbd\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"2\\\"}}\",\"timestamp\":1787728751172}"
+                            ]
+                        },
+                        "sort": [
+                            1787728751265
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "WwzvPKABEK__f2R46jjh",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-26T07:19:11.226Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198048352303\\\",\\\"ip\\\":\\\"10.253.36.63\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-26 15:19:11\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"6e6c04c6-3ee8-4c68-bcad-15b2ea8323c2\\\",\\\"properties\\\":{\\\"num\\\":\\\"12\\\",\\\"mission_id\\\":\\\"4\\\"}}\",\"timestamp\":1787728751172}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-26T07:19:11.226Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198048352303\\\",\\\"ip\\\":\\\"10.253.36.63\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-26 15:19:11\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"6e6c04c6-3ee8-4c68-bcad-15b2ea8323c2\\\",\\\"properties\\\":{\\\"num\\\":\\\"12\\\",\\\"mission_id\\\":\\\"4\\\"}}\",\"timestamp\":1787728751172}"
+                            ]
+                        },
+                        "sort": [
+                            1787728751226
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "pvbsPKAB8v4RK5CE-K3b",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-26T07:15:58.196Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199173514033\\\",\\\"ip\\\":\\\"10.253.36.180\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-26 15:15:58\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"c1097599-cdc3-4987-aa87-7536b99d8c68\\\",\\\"properties\\\":{\\\"num\\\":\\\"12\\\",\\\"mission_id\\\":\\\"4\\\"}}\",\"timestamp\":1787728558171}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-26T07:15:58.196Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199173514033\\\",\\\"ip\\\":\\\"10.253.36.180\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-26 15:15:58\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"c1097599-cdc3-4987-aa87-7536b99d8c68\\\",\\\"properties\\\":{\\\"num\\\":\\\"12\\\",\\\"mission_id\\\":\\\"4\\\"}}\",\"timestamp\":1787728558171}"
+                            ]
+                        },
+                        "sort": [
+                            1787728558196
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "b_PsPKAB8v4RK5CEjkgH",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-26T07:15:30.849Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199173514033\\\",\\\"ip\\\":\\\"10.253.36.180\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-26 15:15:30\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"9f865f93-7c7b-4b31-b76d-eff0b4d83890\\\",\\\"properties\\\":{\\\"num\\\":\\\"11\\\",\\\"mission_id\\\":\\\"4\\\"}}\",\"timestamp\":1787728530742}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-26T07:15:30.849Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199173514033\\\",\\\"ip\\\":\\\"10.253.36.180\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-26 15:15:30\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"9f865f93-7c7b-4b31-b76d-eff0b4d83890\\\",\\\"properties\\\":{\\\"num\\\":\\\"11\\\",\\\"mission_id\\\":\\\"4\\\"}}\",\"timestamp\":1787728530742}"
+                            ]
+                        },
+                        "sort": [
+                            1787728530849
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "6VLqPKABwzv-NgeRUoik",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-26T07:13:04.574Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199173514033\\\",\\\"ip\\\":\\\"10.253.36.180\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-26 15:13:04\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"b5c9276e-5fe6-4b4a-8f47-c30bc039f133\\\",\\\"properties\\\":{\\\"num\\\":\\\"10\\\",\\\"mission_id\\\":\\\"4\\\"}}\",\"timestamp\":1787728384460}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-26T07:13:04.574Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199173514033\\\",\\\"ip\\\":\\\"10.253.36.180\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-26 15:13:04\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"b5c9276e-5fe6-4b4a-8f47-c30bc039f133\\\",\\\"properties\\\":{\\\"num\\\":\\\"10\\\",\\\"mission_id\\\":\\\"4\\\"}}\",\"timestamp\":1787728384460}"
+                            ]
+                        },
+                        "sort": [
+                            1787728384574
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "hQTOPKABEK__f2R4-1gx",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-26T06:43:12.715Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199173514033\\\",\\\"ip\\\":\\\"10.253.36.180\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-26 14:43:12\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"0554c0ab-6b82-4a3a-927d-5bb82c4ea248\\\",\\\"properties\\\":{\\\"num\\\":\\\"8\\\",\\\"mission_id\\\":\\\"4\\\"}}\",\"timestamp\":1787726592630}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-26T06:43:12.715Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199173514033\\\",\\\"ip\\\":\\\"10.253.36.180\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-26 14:43:12\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"0554c0ab-6b82-4a3a-927d-5bb82c4ea248\\\",\\\"properties\\\":{\\\"num\\\":\\\"8\\\",\\\"mission_id\\\":\\\"4\\\"}}\",\"timestamp\":1787726592630}"
+                            ]
+                        },
+                        "sort": [
+                            1787726592715
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "S73FPKABEK__f2R4dkdH",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-26T06:32:48.864Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199173514033\\\",\\\"ip\\\":\\\"10.253.36.180\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-26 14:32:48\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"3593ec23-3b77-4f91-8f09-db4dce7511ca\\\",\\\"properties\\\":{\\\"num\\\":\\\"80\\\",\\\"mission_id\\\":\\\"4\\\"}}\",\"timestamp\":1787725968766}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-26T06:32:48.864Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199173514033\\\",\\\"ip\\\":\\\"10.253.36.180\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-26 14:32:48\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"3593ec23-3b77-4f91-8f09-db4dce7511ca\\\",\\\"properties\\\":{\\\"num\\\":\\\"80\\\",\\\"mission_id\\\":\\\"4\\\"}}\",\"timestamp\":1787725968766}"
+                            ]
+                        },
+                        "sort": [
+                            1787725968864
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "XqvEPKAB8v4RK5CEz5gP",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-26T06:32:06.057Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199173514033\\\",\\\"ip\\\":\\\"10.253.36.180\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-26 14:32:05\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"4104dab1-648c-4744-8277-261f91d92bc6\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"2\\\"}}\",\"timestamp\":1787725925980}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-26T06:32:06.057Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199173514033\\\",\\\"ip\\\":\\\"10.253.36.180\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-26 14:32:05\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"4104dab1-648c-4744-8277-261f91d92bc6\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"2\\\"}}\",\"timestamp\":1787725925980}"
+                            ]
+                        },
+                        "sort": [
+                            1787725926057
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "Rx7EPKABwzv-NgeRz5wo",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-26T06:32:06.057Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199173514033\\\",\\\"ip\\\":\\\"10.253.36.180\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-26 14:32:05\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"1a4b9866-e39a-4b0e-b743-1b49981dee20\\\",\\\"properties\\\":{\\\"num\\\":\\\"80\\\",\\\"mission_id\\\":\\\"4\\\"}}\",\"timestamp\":1787725925981}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-26T06:32:06.057Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199173514033\\\",\\\"ip\\\":\\\"10.253.36.180\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-26 14:32:05\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"1a4b9866-e39a-4b0e-b743-1b49981dee20\\\",\\\"properties\\\":{\\\"num\\\":\\\"80\\\",\\\"mission_id\\\":\\\"4\\\"}}\",\"timestamp\":1787725925981}"
+                            ]
+                        },
+                        "sort": [
+                            1787725926057
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "SobAPKAB8v4RK5CEKvm_",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-26T06:27:01.769Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198163850542\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-26 14:27:01\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"4df3545a-51e7-43f0-9591-fbb33fe61cc8\\\",\\\"properties\\\":{\\\"num\\\":\\\"80\\\",\\\"mission_id\\\":\\\"4\\\"}}\",\"timestamp\":1787725621656}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-26T06:27:01.769Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198163850542\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-26 14:27:01\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"4df3545a-51e7-43f0-9591-fbb33fe61cc8\\\",\\\"properties\\\":{\\\"num\\\":\\\"80\\\",\\\"mission_id\\\":\\\"4\\\"}}\",\"timestamp\":1787725621656}"
+                            ]
+                        },
+                        "sort": [
+                            1787725621769
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "82a7PKAB8v4RK5CE7ECE",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-26T06:22:23.775Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198163850542\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-26 14:22:23\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"24685162-3df5-4ba1-bdae-d5234eb68cc4\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"2\\\"}}\",\"timestamp\":1787725343659}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-26T06:22:23.775Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198163850542\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-26 14:22:23\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"24685162-3df5-4ba1-bdae-d5234eb68cc4\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"2\\\"}}\",\"timestamp\":1787725343659}"
+                            ]
+                        },
+                        "sort": [
+                            1787725343775
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "8ma7PKAB8v4RK5CE7ECE",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-26T06:22:23.727Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198163850542\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-26 14:22:23\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"7832d7ee-b59d-408b-8e50-241a08766e62\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"4\\\"}}\",\"timestamp\":1787725343658}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-26T06:22:23.727Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198163850542\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-26 14:22:23\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"7832d7ee-b59d-408b-8e50-241a08766e62\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"4\\\"}}\",\"timestamp\":1787725343658}"
+                            ]
+                        },
+                        "sort": [
+                            1787725343727
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "m14SPKAB8v4RK5CED6ll",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-26T03:16:51.584Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198163850542\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-26 11:16:51\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"8b3662b1-6593-4075-bcd4-b0201bc5fa03\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"1\\\"}}\",\"timestamp\":1787714211468}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-26T03:16:51.584Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198163850542\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-26 11:16:51\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"8b3662b1-6593-4075-bcd4-b0201bc5fa03\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"1\\\"}}\",\"timestamp\":1787714211468}"
+                            ]
+                        },
+                        "sort": [
+                            1787714211584
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "KpTpO6AB8v4RK5CEID_1",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-26T02:32:09.102Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198163850542\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-26 10:32:09\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"638f759e-d3e2-4ca2-8149-50dab3c2a942\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"3\\\"}}\",\"timestamp\":1787711529053}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-26T02:32:09.102Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561198163850542\\\",\\\"ip\\\":\\\"127.0.0.1\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-26 10:32:09\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"638f759e-d3e2-4ca2-8149-50dab3c2a942\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"3\\\"}}\",\"timestamp\":1787711529053}"
+                            ]
+                        },
+                        "sort": [
+                            1787711529102
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "F9LzNqABEK__f2R4xYOM",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-25T03:25:40.517Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199173514033\\\",\\\"ip\\\":\\\"10.253.36.180\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-25 11:25:40\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"f22d84a7-1ced-4702-926d-91b0e8ffc2c2\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"1\\\"}}\",\"timestamp\":1787628340469}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-25T03:25:40.517Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199173514033\\\",\\\"ip\\\":\\\"10.253.36.180\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-25 11:25:40\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"f22d84a7-1ced-4702-926d-91b0e8ffc2c2\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"1\\\"}}\",\"timestamp\":1787628340469}"
+                            ]
+                        },
+                        "sort": [
+                            1787628340517
+                        ]
+                    },
+                    {
+                        "_index": "log-receiver-2026.08",
+                        "_type": "_doc",
+                        "_id": "DMzxNqAB8v4RK5CEsEX4",
+                        "_version": 1,
+                        "_score": null,
+                        "_source": {
+                            "@timestamp": "2026-08-25T03:23:24.178Z",
+                            "message": "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199173514033\\\",\\\"ip\\\":\\\"10.253.36.180\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"mission_complete\\\",\\\"time\\\":\\\"2026-08-25 11:23:24\\\",\\\"category\\\":\\\"csgo_2026_znq\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"6f0ecc74-e07a-4d61-8c11-2ebd1c16877c\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"2\\\"}}\",\"timestamp\":1787628204095}",
+                            "@version": "1"
+                        },
+                        "fields": {
+                            "@timestamp": [
+                                "2026-08-25T03:23:24.178Z"
+                            ]
+                        },
+                        "highlight": {
+                            "message": [
+                                "{\"ip\":\"172.16.108.139\",\"log\":\"{\\\"steam_id\\\":\\\"76561199173514033\\\",\\\"ip\\\":\\\"10.253.36.180\\\",\\\"visitor_id\\\":\\\"\\\",\\\"event_name\\\":\\\"@kibana-highlighted-field@mission_complete@/kibana-highlighted-field@\\\",\\\"time\\\":\\\"2026-08-25 11:23:24\\\",\\\"category\\\":\\\"@kibana-highlighted-field@csgo_2026_znq@/kibana-highlighted-field@\\\",\\\"app_id\\\":8001,\\\"version\\\":\\\"v1\\\",\\\"uuid\\\":\\\"6f0ecc74-e07a-4d61-8c11-2ebd1c16877c\\\",\\\"properties\\\":{\\\"num\\\":\\\"1\\\",\\\"mission_id\\\":\\\"2\\\"}}\",\"timestamp\":1787628204095}"
+                            ]
+                        },
+                        "sort": [
+                            1787628204178
+                        ]
+                    }
+                ]
+            },
+            "aggregations": {
+                "2": {
+                    "buckets": [
+                        {
+                            "key_as_string": "2026-08-25T09:00:00.000+08:00",
+                            "key": 1787619600000,
+                            "doc_count": 2
+                        },
+                        {
+                            "key_as_string": "2026-08-26T09:00:00.000+08:00",
+                            "key": 1787706000000,
+                            "doc_count": 2
+                        },
+                        {
+                            "key_as_string": "2026-08-26T12:00:00.000+08:00",
+                            "key": 1787716800000,
+                            "doc_count": 7
+                        },
+                        {
+                            "key_as_string": "2026-08-26T15:00:00.000+08:00",
+                            "key": 1787727600000,
+                            "doc_count": 9
+                        },
+                        {
+                            "key_as_string": "2026-08-26T18:00:00.000+08:00",
+                            "key": 1787738400000,
+                            "doc_count": 1
+                        },
+                        {
+                            "key_as_string": "2026-08-27T09:00:00.000+08:00",
+                            "key": 1787792400000,
+                            "doc_count": 9
+                        },
+                        {
+                            "key_as_string": "2026-08-27T15:00:00.000+08:00",
+                            "key": 1787814000000,
+                            "doc_count": 9
+                        },
+                        {
+                            "key_as_string": "2026-08-27T18:00:00.000+08:00",
+                            "key": 1787824800000,
+                            "doc_count": 2
+                        }
+                    ]
+                }
+            },
+            "status": 200
+        }
+    ]
+}
