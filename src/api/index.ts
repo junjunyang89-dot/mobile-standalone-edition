@@ -1606,6 +1606,32 @@ class ApiClient {
     })
   }
 
+  async listApiProjectCategories() {
+    return this.request<
+      Array<{ key: string; label: string; sortOrder?: number; builtin?: boolean }>
+    >('/api-projects/categories')
+  }
+
+  async createApiProjectCategory(body: { label: string; sortOrder?: number }) {
+    return this.request<{ key: string; label: string; sortOrder?: number; builtin?: boolean }>(
+      '/api-projects/categories',
+      { method: 'POST', body: JSON.stringify(body) }
+    )
+  }
+
+  async updateApiProjectCategory(key: string, body: { label: string; sortOrder?: number }) {
+    return this.request<{ key: string; label: string; sortOrder?: number; builtin?: boolean }>(
+      `/api-projects/categories/${encodeURIComponent(key)}`,
+      { method: 'PUT', body: JSON.stringify(body) }
+    )
+  }
+
+  async deleteApiProjectCategory(key: string) {
+    return this.request<{ ok: boolean }>(`/api-projects/categories/${encodeURIComponent(key)}`, {
+      method: 'DELETE'
+    })
+  }
+
   async getApiUrls(params?: { project?: string; environment?: string; enabledOnly?: boolean }) {
     const q = new URLSearchParams()
     if (params?.project) q.set('project', params.project)
@@ -2634,6 +2660,88 @@ class ApiClient {
     return this.request<
       Array<{ id: string; name: string; requirementNo?: string; appVersion?: string; caseCount?: number }>
     >(`/ai-test-cases/requirement-endpoints/collections?${q.toString()}`)
+  }
+
+  // ---------- Bug 记录 ----------
+
+  async fetchBugManage(params?: {
+    environment?: string
+    status?: string
+    priority?: string
+    assignee?: string
+    q?: string
+  }) {
+    const q = new URLSearchParams()
+    if (params?.environment) q.set('environment', params.environment)
+    if (params?.status) q.set('status', params.status)
+    if (params?.priority) q.set('priority', params.priority)
+    if (params?.assignee) q.set('assignee', params.assignee)
+    if (params?.q) q.set('q', params.q)
+    const qs = q.toString()
+    return this.request<{
+      bugs: Array<Record<string, any>>
+      assignees: string[]
+      statusCounts: Record<string, number>
+    }>(`/requirement-bugs/manage${qs ? `?${qs}` : ''}`)
+  }
+
+  /** 某个需求单下测出来的 bug。字段对齐 wiki 那张表，搬过去不用重新映射 */
+  async fetchRequirementBugs(requirementNo: string) {
+    return this.request<Array<Record<string, any>>>(
+      `/requirement-bugs?requirementNo=${encodeURIComponent(requirementNo)}`
+    )
+  }
+
+  async fetchBugSummary(requirementNo: string) {
+    return this.request<{
+      total: number
+      fixed: number
+      verified: number
+      /** 开发说改好了、而没人回去点一遍——最容易漏的一档 */
+      fixedNotVerified: number
+    }>(`/requirement-bugs/summary?requirementNo=${encodeURIComponent(requirementNo)}`)
+  }
+
+  async createBug(body: Record<string, unknown>) {
+    return this.request<{ id: string }>('/requirement-bugs', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async updateBug(id: string, body: Record<string, unknown>) {
+    return this.request<{ success: boolean }>(`/requirement-bugs/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async deleteBug(id: string) {
+    return this.request<{ success: boolean }>(`/requirement-bugs/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    })
+  }
+
+  /** 导成 wiki 能粘的 HTML 表格 */
+  async exportBugsToWiki(requirementNo: string) {
+    return this.request<{ html: string; note: string }>(
+      `/requirement-bugs/export?requirementNo=${encodeURIComponent(requirementNo)}`
+    )
+  }
+
+  /** 一个 bug 常要好几张图（问题现场 + 原型对照），所以支持多传 */
+  async uploadBugImages(files: File[]) {
+    const form = new FormData()
+    files.forEach((f) => form.append('files', f))
+    const response = await authFetch(`${this.baseURL}/requirement-bugs/images`, {
+      method: 'POST',
+      body: form
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ message: '上传失败' }))
+      throw new Error(err.message || `HTTP ${response.status}`)
+    }
+    return response.json() as Promise<{ urls: string[] }>
   }
 
   /** 人工补一个接口到需求单上——分析只认这个分支改过的，没改但会调到的要自己加 */

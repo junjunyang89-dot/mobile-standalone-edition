@@ -2,152 +2,153 @@
   <div class="ai-cases">
     <header class="page-nav">
       <div class="nav-left">
-        <!-- 完整说明已在 MainLayout 顶栏展示，这里只保留层级：分类 / 线上|测试 -->
         <span class="nav-crumb">
           {{ suiteTitle }}
           <span class="nav-sep">/</span>
           {{ releaseTab === 'ONLINE' ? '线上版本' : '测试版本' }}
         </span>
       </div>
-      <div class="nav-actions">
-        <button type="button" class="btn-nav" @click="openImport">导入 Excel</button>
-        <button type="button" class="btn-nav" @click="openEdit(null)">新建用例</button>
-        <button type="button" class="btn-nav btn-nav-primary" @click="openGenerate">生成用例</button>
+      <div class="nav-right">
+        <div class="nav-actions">
+          <button type="button" class="btn-nav" @click="openImport">导入 Excel</button>
+          <button type="button" class="btn-nav btn-nav-create" @click="openEdit(null)">新建用例</button>
+          <button type="button" class="btn-nav btn-nav-primary" @click="openGenerate">生成用例</button>
+        </div>
+        <div v-if="user" class="nav-user">
+          <el-tag size="small" effect="dark" class="nav-user-role">{{ user.roleLabel }}</el-tag>
+          <el-dropdown trigger="click" @command="onNavUserCommand">
+            <span class="nav-user-name">
+              {{ user.displayName || user.username }}
+              <el-icon><ArrowDown /></el-icon>
+            </span>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item v-if="!user.bootstrapping" command="logout">退出登录</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
       </div>
     </header>
 
     <div class="toolbar">
-      <div class="version-pills">
-        <button
-          type="button"
-          class="vpill is-testing"
-          :class="{ active: releaseTab === 'TESTING' }"
-          @click="switchReleaseTab('TESTING')"
-        >
-          <span class="vpill-ico">✎</span>
-          测试版本
-          <span class="vpill-num">{{ testingCount }}</span>
-        </button>
-        <button
-          type="button"
-          class="vpill is-online"
-          :class="{ active: releaseTab === 'ONLINE' }"
-          @click="switchReleaseTab('ONLINE')"
-        >
-          <span class="vpill-ico">✓</span>
-          线上版本
-          <span class="vpill-num">{{ onlineCount }}</span>
-        </button>
-        <el-tooltip
-          v-if="releaseTab === 'TESTING'"
-          placement="bottom"
-          effect="light"
-          :show-after="120"
-        >
-          <template #content>
-            来自测试环境新需求的用例，上线后可提升为线上版。<br />
-            当前待提升 {{ testingCount }} 条。
-</template>
-          <span class="vpill-tip" tabindex="0" @click.stop>
-            <el-icon><InfoFilled /></el-icon>
-          </span>
-        </el-tooltip>
-      </div>
-
-      <!--
-        待确认项放在列表最上面，不是弹一次窗。
-        这些是需求文档里的矛盾和缺口，没问清之前对应的用例根本写不出预期——
-        藏起来的话，人会照着一个模型编出来的预期去测，然后把「符合错误预期」判成通过
-      -->
-      <!--
-        只在测试版本显示。这些问题是「本次提测的需求文档」上的，
-        线上版本页签放的是已经上线的用例——那边挂着一堆待确认，
-        会让人以为线上有一批没验清楚的东西
-      -->
-      <div v-if="openQuestions.length && releaseTab === 'TESTING'" class="oq-bar">
-        <div class="oq-head" @click="oqOpen = !oqOpen">
-          <span class="oq-arrow">{{ oqOpen ? '▾' : '▸' }}</span>
-          <b>{{ openQuestions.length }} 项待确认</b>
-          <span class="oq-sub">需求文档里自相矛盾或没定义的地方，问清楚再测这几块</span>
+      <div class="toolbar-top">
+        <div class="version-tabs">
+          <button
+            type="button"
+            class="vtab"
+            :class="{ active: releaseTab === 'TESTING' }"
+            @click="switchReleaseTab('TESTING')"
+          >
+            测试版本<em>{{ testingCount }}</em>
+          </button>
+          <button
+            type="button"
+            class="vtab"
+            :class="{ active: releaseTab === 'ONLINE' }"
+            @click="switchReleaseTab('ONLINE')"
+          >
+            线上版本<em>{{ onlineCount }}</em>
+          </button>
+          <button
+            v-if="suite.byVersion"
+            type="button"
+            class="vtab-new"
+            @click="newVersionVisible = true"
+          >
+            + 新建版本
+          </button>
         </div>
-        <div v-if="oqOpen" class="oq-list">
-          <div v-for="q in openQuestions" :key="q.id" class="oq-item">
-            <div class="oq-title">
-              <span v-if="q.kind" class="oq-kind">{{ q.kind }}</span>
-              {{ q.title }}
-              <span v-if="q.appVersion" class="oq-ver">{{ q.appVersion }}</span>
-              <button type="button" class="oq-done" @click="resolveQuestion(q)">已确认</button>
-              <button type="button" class="oq-drop" @click="deleteQuestion(q)">删除</button>
-            </div>
-            <div v-if="q.detail" class="oq-line"><span class="oq-lab">文档里</span>{{ q.detail }}</div>
-            <div v-if="q.question" class="oq-line"><span class="oq-lab">要问</span>{{ q.question }}</div>
-            <div v-if="q.impact" class="oq-line"><span class="oq-lab">影响</span>{{ q.impact }}</div>
-          </div>
+        <div v-if="draftReviewCount > 0 && releaseTab === 'TESTING'" class="review-warn">
+          <el-icon><WarningFilled /></el-icon>
+          部分用例需要复核
         </div>
       </div>
 
       <div class="filter-bar">
-        <!--
-          版本下拉只在「APP版本迭代」集显示：其余集合是长期沉淀的功能用例，
-          加个永远选「全部」的控件只会占地方
-        -->
-        <div v-if="suite.byVersion" class="f-item">
-          <span class="f-label">版本</span>
-          <el-select
-            v-model="filterVersion"
-            class="f-w-page"
-            size="small"
-            clearable
-            filterable
-            placeholder="全部版本"
-            @change="onVersionChange"
-          >
-            <el-option
-              v-for="v in versionOptions"
-              :key="v.version"
-              :label="v.count ? `${v.version}（${v.count}）` : v.version"
-              :value="v.version"
-            />
-          </el-select>
-          <el-button size="small" text type="primary" @click="newVersionVisible = true">
-            + 新建版本
-          </el-button>
-        </div>
-        <!--
-          单号这一层：一个版本几十个单子，用例不挂到单号上的话，
-          「这个单子测完了没有」就答不出来——而那是提测时唯一要回答的问题。
-          没选版本时不显示：跨版本的单号列表没有意义
-        -->
-        <!-- 版本迭代集用左侧树选需求单，顶部不再重复筛单号 -->
+        <el-select
+          v-if="suite.byVersion"
+          v-model="filterVersion"
+          class="f-w-version"
+          size="small"
+          clearable
+          filterable
+          placeholder="全部版本"
+          @change="onVersionChange"
+        >
+          <el-option
+            v-for="v in versionOptions"
+            :key="v.version"
+            :label="v.count ? `${v.version}（${v.count}）` : v.version"
+            :value="v.version"
+          />
+        </el-select>
+        <el-select
+          v-if="suite.byVersion"
+          v-model="filterSide"
+          class="f-w-side"
+          size="small"
+          clearable
+          placeholder="全部端"
+          @change="onSearch"
+        >
+          <el-option v-for="sd in sideOptions" :key="sd.code" :label="sd.label" :value="sd.code" />
+        </el-select>
+        <el-select
+          v-model="filterStatus"
+          class="f-w-status"
+          size="small"
+          clearable
+          placeholder="全部状态"
+          teleported
+          popper-class="ai-tc-filter-popper"
+          @change="loadList"
+        >
+          <el-option label="全部" value="" />
+          <el-option label="草稿" value="DRAFT" />
+          <el-option label="已复核" value="REVIEWED" />
+          <el-option label="归档" value="ARCHIVED" />
+        </el-select>
+        <el-select
+          v-model="filterPriority"
+          class="f-w-priority"
+          size="small"
+          clearable
+          placeholder="全部优先级"
+          teleported
+          popper-class="ai-tc-filter-popper"
+          @change="loadList"
+        >
+          <el-option label="全部" value="" />
+          <el-option label="P0" value="P0" />
+          <el-option label="P1" value="P1" />
+          <el-option label="P2" value="P2" />
+        </el-select>
+        <el-input
+          v-model="filterKeyword"
+          class="f-w-keyword"
+          size="small"
+          clearable
+          placeholder="按标题 / 编号 / 测试点"
+          @keyup.enter="onSearch"
+          @clear="onSearch"
+        />
+        <button
+          type="button"
+          class="filter-more-btn"
+          @click="filterMoreOpen = !filterMoreOpen"
+        >
+          更多筛选 {{ filterMoreOpen ? '↑' : '↓' }}
+        </button>
+        <button type="button" class="btn-primary" @click="loadList">查询</button>
+        <button type="button" class="btn-plain" @click="resetFilters">重置</button>
+      </div>
+
+      <div v-if="filterMoreOpen" class="filter-more-panel">
         <div v-if="suite.byVersion && filterVersion" class="f-item">
           <el-button size="small" text type="primary" @click="newIssueVisible = true">
             + 加单号
           </el-button>
-        </div>
-        <div v-if="suite.byVersion" class="f-item">
-          <span class="f-label">端</span>
-          <el-select
-            v-model="filterSide"
-            class="f-w-side"
-            size="small"
-            clearable
-            placeholder="全部端"
-            @change="onSearch"
-          >
-            <el-option v-for="sd in sideOptions" :key="sd.code" :label="sd.label" :value="sd.code" />
-          </el-select>
-        </div>
-        <div class="f-item">
-          <span class="f-label">搜索</span>
-          <el-input
-            v-model="filterKeyword"
-            class="f-w-keyword"
-            size="small"
-            clearable
-            placeholder="标题 / 编号 / 测试点"
-            @keyup.enter="onSearch"
-            @clear="onSearch"
-          />
         </div>
         <div class="f-item">
           <span class="f-label">页面</span>
@@ -175,44 +176,29 @@
             <el-option v-for="m in moduleOptions" :key="m" :label="m" :value="m" />
           </el-select>
         </div>
-        <div class="f-item">
-          <span class="f-label">优先级</span>
-          <el-select
-            v-model="filterPriority"
-            class="f-w-priority"
-            size="small"
-            clearable
-            placeholder="全部"
-            teleported
-            popper-class="ai-tc-filter-popper"
-            @change="loadList"
-          >
-            <el-option label="全部" value="" />
-            <el-option label="P0" value="P0" />
-            <el-option label="P1" value="P1" />
-            <el-option label="P2" value="P2" />
-          </el-select>
+      </div>
+
+      <!-- 待确认项：只在测试版本显示 -->
+      <div v-if="openQuestions.length && releaseTab === 'TESTING'" class="oq-bar">
+        <div class="oq-head" @click="oqOpen = !oqOpen">
+          <span class="oq-arrow">{{ oqOpen ? '▾' : '▸' }}</span>
+          <b>{{ openQuestions.length }} 项待确认</b>
+          <span class="oq-sub">需求文档里自相矛盾或没定义的地方，问清楚再测这几块</span>
         </div>
-        <div class="f-item">
-          <span class="f-label">状态</span>
-          <el-select
-            v-model="filterStatus"
-            class="f-w-status"
-            size="small"
-            clearable
-            placeholder="全部"
-            teleported
-            popper-class="ai-tc-filter-popper"
-            @change="loadList"
-          >
-            <el-option label="全部" value="" />
-            <el-option label="草稿" value="DRAFT" />
-            <el-option label="已复核" value="REVIEWED" />
-            <el-option label="归档" value="ARCHIVED" />
-          </el-select>
+        <div v-if="oqOpen" class="oq-list">
+          <div v-for="q in openQuestions" :key="q.id" class="oq-item">
+            <div class="oq-title">
+              <span v-if="q.kind" class="oq-kind">{{ q.kind }}</span>
+              {{ q.title }}
+              <span v-if="q.appVersion" class="oq-ver">{{ q.appVersion }}</span>
+              <button type="button" class="oq-done" @click="resolveQuestion(q)">已确认</button>
+              <button type="button" class="oq-drop" @click="deleteQuestion(q)">删除</button>
+            </div>
+            <div v-if="q.detail" class="oq-line"><span class="oq-lab">文档里</span>{{ q.detail }}</div>
+            <div v-if="q.question" class="oq-line"><span class="oq-lab">要问</span>{{ q.question }}</div>
+            <div v-if="q.impact" class="oq-line"><span class="oq-lab">影响</span>{{ q.impact }}</div>
+          </div>
         </div>
-        <button type="button" class="btn-primary" @click="loadList">查询</button>
-        <button type="button" class="btn-plain" @click="resetFilters">重置</button>
       </div>
     </div>
 
@@ -228,10 +214,12 @@
       <template v-if="suite.byVersion">
         <aside class="browse-nav">
           <div class="browse-nav-head">
-            <span class="browse-env" :class="releaseTab === 'TESTING' ? 'is-test' : 'is-online'">
-              {{ releaseTab === 'TESTING' ? '测试环境' : '线上版本' }}
-            </span>
-            <span class="browse-nav-tip">APP · PWA · WEB → 需求单</span>
+            <div class="browse-env-line">
+              <span class="browse-env" :class="releaseTab === 'TESTING' ? 'is-test' : 'is-online'">
+                {{ releaseTab === 'TESTING' ? '测试环境' : '线上版本' }}
+              </span>
+              <span class="browse-env-path">APP · PWA · WEB · 需求单</span>
+            </div>
           </div>
           <div class="browse-tree-wrap">
             <el-tree
@@ -260,15 +248,17 @@
         <main v-loading="loading" class="browse-main">
           <template v-if="selectedBrowse && !selectedBrowse.isFolder">
             <div class="browse-main-head">
-              <div>
+              <div class="browse-main-head-left">
                 <h2 class="browse-title">{{ selectedBrowse.label }}</h2>
-                <div class="browse-sub">
-                  <span class="pill pill-ch">{{ browseChannelLabel(selectedBrowse.channel) }}</span>
-                  <span v-if="selectedBrowse.lang" class="pill pill-lang">
-                    {{ selectedBrowse.lang === 'zh' ? '海外 · 中文' : '海外 · 英文' }}
-                  </span>
-                  <span class="pill pill-count">{{ visibleBrowseCases.length }} 条用例</span>
-                </div>
+                <span class="pill pill-ch">{{ browseChannelLabel(selectedBrowse.channel) }}</span>
+                <span v-if="selectedBrowseRequirement" class="pill pill-req">{{ selectedBrowseRequirement }}</span>
+              </div>
+              <div v-if="selectedBrowseRequirement" class="browse-bug-entry">
+                <!-- 「Bug 3 · 待验 1」比「Bug 3」有用：开发说改好了而没人回去点一遍，最容易漏 -->
+                <el-button size="small" :type="bugCount(selectedBrowseRequirement) ? 'danger' : 'default'" plain
+                           @click="toggleBugs(selectedBrowseRequirement)">
+                  {{ bugLinkLabel(selectedBrowseRequirement) }}
+                </el-button>
               </div>
               <div v-if="selectedBrowseRequirement && coverageOf(selectedBrowseRequirement)" class="browse-cov">
                 <span
@@ -283,20 +273,64 @@
             </div>
 
             <section v-if="selectedBrowseRequirement" class="browse-eps">
-              <div class="browse-eps-head">
-                <span>涉及接口</span>
-                <span class="browse-eps-req">{{ selectedBrowseRequirement }}</span>
-              </div>
+              <div class="browse-eps-head">涉及接口</div>
               <div v-if="browseEndpointsLoading" class="browse-eps-tip">加载中…</div>
               <div v-else-if="!browseEndpoints.length" class="browse-eps-tip">
                 暂无关联接口。跑「接口对比分析」且分支名带单号会自动挂上。
               </div>
-              <div v-for="ep in browseEndpoints" v-else :key="ep.id" class="browse-ep">
-                <span class="req-ep-m" :class="'m-' + (ep.httpMethod || '').toLowerCase()">{{ ep.httpMethod }}</span>
-                <span class="req-ep-p">{{ ep.path }}</span>
-                <span v-if="ep.project" class="req-ep-proj">{{ ep.project }}</span>
-                <span class="req-ep-src" :class="'is-' + srcOf(ep.source)">{{ srcLabel(ep.source) }}</span>
-                <span v-if="ep.summary" class="req-ep-note">{{ ep.summary }}</span>
+              <div v-else class="browse-eps-chips">
+                <span v-for="ep in browseEndpoints" :key="ep.id" class="ep-chip">
+                  <span class="req-ep-m" :class="'m-' + (ep.httpMethod || '').toLowerCase()">{{ ep.httpMethod }}</span>
+                  <span class="ep-chip-path">{{ ep.path }}</span>
+                </span>
+              </div>
+            </section>
+
+            <!--
+              Bug 记录。字段照着 wiki 那张表定（所属模块/问题描述/截图/开发/测试/
+              是否修复/是否验证/备注），列对不上的话搬过去还得逐条重填
+            -->
+            <section
+              v-if="selectedBrowseRequirement && bugsOf === selectedBrowseRequirement"
+              class="browse-eps"
+            >
+              <div class="browse-eps-head">
+                Bug 记录
+                <span class="bug-actions">
+                  <el-button size="small" type="primary" plain @click="openBugDialog(selectedBrowseRequirement)">
+                    记一条
+                  </el-button>
+                  <el-button size="small" plain :disabled="!bugs.length"
+                             @click="exportBugs(selectedBrowseRequirement)">
+                    复制成 wiki 表格
+                  </el-button>
+                </span>
+              </div>
+              <div v-if="!bugs.length" class="browse-eps-tip">
+                还没记 Bug。测出问题时点用例行上的「提 Bug」，字段和 wiki 那张表一一对应。
+              </div>
+              <div v-for="b in bugs" :key="b.id" class="bug-row">
+                <span class="bug-seq">{{ b.seq }}</span>
+                <span class="bug-mod">{{ b.module || '—' }}</span>
+                <span class="bug-desc">{{ b.description }}</span>
+                <span v-if="bugImages(b).length" class="bug-shots">
+                  <el-image
+                    v-for="(u, i) in bugImages(b)"
+                    :key="i"
+                    :src="u"
+                    :preview-src-list="bugImages(b)"
+                    :initial-index="i"
+                    fit="cover"
+                    class="bug-shot"
+                    preview-teleported
+                  />
+                </span>
+                <span class="bug-who">{{ b.developer || '—' }} / {{ b.tester || '—' }}</span>
+                <span v-if="b.verified" class="bug-st is-ok">已验证</span>
+                <span v-else-if="b.fixed" class="bug-st is-warn">已修复 · 待验证</span>
+                <span v-else class="bug-st is-open">待修复</span>
+                <button type="button" class="req-ep-del" @click.stop="editBug(b)">编辑</button>
+                <button type="button" class="req-ep-del" @click.stop="removeBug(b)">删除</button>
               </div>
             </section>
 
@@ -319,7 +353,7 @@
                 <span>操作</span>
               </div>
               <el-empty v-if="!visibleBrowseCases.length" description="该节点下暂无用例" />
-              <template v-for="row in visibleBrowseCases" :key="row.id ?? row.caseId">
+              <template v-for="row in paginatedBrowseCases" :key="row.id ?? row.caseId">
                 <div
                   class="case-row"
                   :class="{ active: detailOpen && row.id === selectedId }"
@@ -351,6 +385,15 @@
                       class="op-review"
                       @click="markReviewed(row)"
                     >复核</button>
+                    <!--
+                      「这条用例测出 bug」是最自然的记录时机。
+                      只放在需求单那一层的话，人得先想起来去哪记，多半就不记了
+                    -->
+                    <button
+                      type="button"
+                      class="op-bug"
+                      @click.stop="bugFromBrowseCase(row)"
+                    >提 Bug</button>
                     <button type="button" class="op-edit" @click="openEdit(row)">编辑</button>
                     <button type="button" class="op-del" @click="removeRow(row)">删除</button>
                   </span>
@@ -358,25 +401,36 @@
               </template>
             </div>
 
-            <div
-              v-if="releaseTab === 'TESTING'"
-              class="batch-bar"
-              :class="{ active: selectedIds.length > 0 }"
-            >
-              <span>已选 <b>{{ selectedIds.length }}</b> 条</span>
-              <span class="batch-sep" />
-              <button
-                type="button"
-                class="btn-batch"
-                :disabled="!selectedIds.length || promoting"
-                @click="promoteSelected"
-              >🚀 批量提升为线上版</button>
-              <button
-                type="button"
-                class="btn-batch"
-                :disabled="!selectedIds.length"
-                @click="openBatchMeta"
-              >✎ 批量改页面/模块</button>
+            <div v-if="releaseTab === 'TESTING'" class="browse-footer">
+              <div class="batch-bar" :class="{ active: selectedIds.length > 0 }">
+                <span>已选 <b>{{ selectedIds.length }}</b> 条</span>
+                <button
+                  type="button"
+                  class="btn-batch is-primary"
+                  :disabled="!selectedIds.length || promoting"
+                  @click="promoteSelected"
+                >批量提升为线上版</button>
+                <button
+                  type="button"
+                  class="btn-batch is-secondary"
+                  :disabled="!selectedIds.length"
+                  @click="openBatchMeta"
+                >批量改页面/模块</button>
+              </div>
+              <div class="pager">
+                <span class="pager-total">共 {{ visibleBrowseCases.length }} 条</span>
+                <el-pagination
+                  v-if="visibleBrowseCases.length > browsePageSize"
+                  background
+                  small
+                  layout="prev, pager, next, sizes"
+                  :total="visibleBrowseCases.length"
+                  :page-size="browsePageSize"
+                  :page-sizes="[10, 20, 50]"
+                  v-model:current-page="browsePage"
+                  @size-change="onBrowsePageSizeChange"
+                />
+              </div>
             </div>
           </template>
           <div v-else class="browse-main-empty">在左侧选中一个需求单节点，查看用例与涉及接口</div>
@@ -431,6 +485,15 @@
                   @click.stop="toggleReqEndpoints(groupRequirement(mod))"
                 >
                   {{ reqEndpointLinkLabel(groupRequirement(mod)) }}
+                </a>
+                <!-- Bug 数直接挂在标题上：不展开也能看出这单还欠多少 -->
+                <a
+                  v-if="suite.byVersion && groupRequirement(mod)"
+                  class="mod-eps"
+                  :class="{ 'has-bug': bugCount(groupRequirement(mod)) > 0 }"
+                  @click.stop="toggleBugs(groupRequirement(mod))"
+                >
+                  {{ bugLinkLabel(groupRequirement(mod)) }}
                 </a>
               </span>
               <span v-if="isModuleCollapsed(mod.groupKey)" class="folded-tip">已折叠</span>
@@ -592,6 +655,62 @@
               </template>
             </div>
 
+            <!--
+              Bug 记录。字段照着 wiki 那张表定的（所属模块/问题描述/截图/开发/测试/
+              是否修复/是否验证/备注）——列对不上的话搬过去还得逐条重填，
+              那就等于没在平台记
+            -->
+            <div
+              v-if="suite.byVersion && bugsOf && bugsOf === groupRequirement(mod) && !isModuleCollapsed(mod.groupKey)"
+              class="req-eps"
+            >
+              <div class="req-eps-head">
+                <span>Bug 记录</span>
+                <span class="req-eps-req">{{ groupRequirement(mod) }}</span>
+                <span class="bug-actions">
+                  <el-button size="small" type="primary" plain @click.stop="openBugDialog(groupRequirement(mod))">
+                    记一条
+                  </el-button>
+                  <el-button
+                    size="small"
+                    plain
+                    :disabled="!bugs.length"
+                    @click.stop="exportBugs(groupRequirement(mod))"
+                  >
+                    复制成 wiki 表格
+                  </el-button>
+                </span>
+              </div>
+              <div v-if="!bugs.length" class="req-eps-tip">
+                还没记 Bug。测出问题时点「记一条」，字段和 wiki 那张表一一对应，
+                到内网后一键复制粘过去。
+              </div>
+              <div v-for="b in bugs" :key="b.id" class="bug-row">
+                <span class="bug-seq">{{ b.seq }}</span>
+                <span class="bug-mod">{{ b.module || '—' }}</span>
+                <span class="bug-desc">{{ b.description }}</span>
+                <span v-if="bugImages(b).length" class="bug-shots">
+                  <el-image
+                    v-for="(u, i) in bugImages(b)"
+                    :key="i"
+                    :src="u"
+                    :preview-src-list="bugImages(b)"
+                    :initial-index="i"
+                    fit="cover"
+                    class="bug-shot"
+                    preview-teleported
+                  />
+                </span>
+                <span class="bug-who">{{ b.developer || '—' }} / {{ b.tester || '—' }}</span>
+                <!-- 「修了但没验」单独标：开发说改好了、而没人回去点一遍，这是最容易漏的一档 -->
+                <span v-if="b.verified" class="bug-st is-ok">已验证</span>
+                <span v-else-if="b.fixed" class="bug-st is-warn">已修复 · 待验证</span>
+                <span v-else class="bug-st is-open">待修复</span>
+                <button type="button" class="req-ep-del" @click.stop="editBug(b)">编辑</button>
+                <button type="button" class="req-ep-del" @click.stop="removeBug(b)">删除</button>
+              </div>
+            </div>
+
             <template v-if="!isModuleCollapsed(mod.groupKey)">
               <div class="table-head">
                 <span>
@@ -650,6 +769,11 @@
                         class="op-review"
                         @click="markReviewed(row)"
                       >复核</button>
+                      <!--
+                        「这条用例测出 bug」是最自然的记录时机。
+                        放在需求单那一层的话，人得先想起来去哪记，多半就不记了
+                      -->
+                      <button type="button" class="op-bug" @click.stop="bugFromCase(row, mod)">提 Bug</button>
                       <button type="button" class="op-edit" @click="openEdit(row)">编辑</button>
                       <button type="button" class="op-del" @click="removeRow(row)">删除</button>
                     </span>
@@ -683,33 +807,26 @@
             </template>
           </div>
 
-          <div
-            v-if="releaseTab === 'TESTING'"
-            class="batch-bar"
-            :class="{ active: selectedIds.length > 0 }"
-          >
-            <span>已选 <b>{{ selectedIds.length }}</b> 条</span>
-            <span class="batch-sep" />
-            <button
-              type="button"
-              class="btn-batch"
-              :disabled="!selectedIds.length || promoting"
-              @click="promoteSelected"
-            >🚀 批量提升为线上版</button>
-            <!--
-              批量改页面/模块：生成器猜的层级往往整批都是错的，
-              一条条改十几次是纯粹的重复劳动——而这种活干到一半就会有人放弃，
-              然后那批用例的层级就永远错着
-            -->
-            <button
-              type="button"
-              class="btn-batch"
-              :disabled="!selectedIds.length"
-              @click="openBatchMeta"
-            >✎ 批量改页面/模块</button>
-            <span class="batch-sep" />
-            <span class="batch-tip">勾选后可一键提升；不复制行，进入线上版本 Tab</span>
-          </div>
+            <div
+              v-if="releaseTab === 'TESTING'"
+              class="batch-bar"
+              :class="{ active: selectedIds.length > 0 }"
+            >
+              <span>已选 <b>{{ selectedIds.length }}</b> 条</span>
+              <span class="batch-sep" />
+              <button
+                type="button"
+                class="btn-batch is-primary"
+                :disabled="!selectedIds.length || promoting"
+                @click="promoteSelected"
+              >批量提升为线上版</button>
+              <button
+                type="button"
+                class="btn-batch is-secondary"
+                :disabled="!selectedIds.length"
+                @click="openBatchMeta"
+              >批量改页面/模块</button>
+            </div>
 
           <div v-if="total > pageSize" class="pager">
             <el-pagination
@@ -1643,6 +1760,73 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="bugVisible" :title="bugForm.id ? '编辑 Bug' : '记一条 Bug'" width="640px">
+      <p class="bug-tip">
+        字段和 wiki 那张表一一对应（所属模块 / 问题描述 / 截图 / 开发 / 测试 / 是否修复 /
+        是否验证 / 备注），到内网后点「复制成 wiki 表格」直接粘过去。
+      </p>
+      <el-form label-width="88px" size="small">
+        <el-form-item label="所属模块">
+          <el-input v-model="bugForm.module" placeholder="如 好友PK" />
+        </el-form-item>
+        <el-form-item label="问题描述" required>
+          <el-input
+            v-model="bugForm.description"
+            type="textarea"
+            :rows="3"
+            placeholder="如：二者均有天梯数据，点击PK后提示无天梯数据"
+          />
+        </el-form-item>
+        <el-form-item label="截图">
+          <input
+            ref="bugFileInput"
+            type="file"
+            accept="image/*"
+            multiple
+            style="display: none"
+            @change="onBugFiles"
+          />
+          <div class="bug-shots-edit">
+            <el-image
+              v-for="(u, i) in bugForm.images"
+              :key="i"
+              :src="u"
+              :preview-src-list="bugForm.images"
+              :initial-index="i"
+              fit="cover"
+              class="bug-shot"
+              preview-teleported
+            />
+            <el-button size="small" plain :loading="bugUploading" @click="bugFileInput?.click()">
+              + 传截图
+            </el-button>
+          </div>
+          <div class="bug-tip">可以多张（问题现场 + 原型对照）。单张 10MB 以内</div>
+        </el-form-item>
+        <el-form-item label="开发 / 测试">
+          <div class="bug-two">
+            <el-input v-model="bugForm.developer" placeholder="如 IOS" />
+            <el-input v-model="bugForm.tester" placeholder="如 yjj" />
+          </div>
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-checkbox v-model="bugForm.fixed">已修复</el-checkbox>
+          <el-checkbox v-model="bugForm.verified">已验证</el-checkbox>
+          <div class="bug-tip">
+            「已修复」不等于「已验证」—— 开发说改好了、而没人回去点一遍，
+            是最容易漏的一档，所以列表上会单独标出来
+          </div>
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="bugForm.note" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="bugVisible = false">取消</el-button>
+        <el-button type="primary" :loading="bugSaving" @click="saveBug">保存</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="epGenVisible" title="生成这条接口的用例" width="560px" destroy-on-close>
       <div v-if="genEp" class="gen-target">
         <span class="req-ep-m" :class="'m-' + (genEp.httpMethod || '').toLowerCase()">
@@ -1712,12 +1896,20 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { EditPen, FolderOpened, InfoFilled, UploadFilled } from '@element-plus/icons-vue'
+import { EditPen, FolderOpened, InfoFilled, UploadFilled, WarningFilled, ArrowDown } from '@element-plus/icons-vue'
 import { apiClient, type AiTestCaseDto, type AiTestCaseStep } from '../api'
 import { findTestCaseSuite, TEST_CASE_SUITES } from '../constants/testCaseSuites'
+import { logout, user } from '../stores/auth'
 
 const route = useRoute()
 const router = useRouter()
+
+function onNavUserCommand(cmd: string) {
+  if (cmd === 'logout') {
+    logout()
+    router.replace('/login')
+  }
+}
 const categoryKey = computed(() => String(route.params.category || route.query.category || '').trim())
 const suite = computed(() => findTestCaseSuite(categoryKey.value) || TEST_CASE_SUITES[0])
 const suiteTitle = computed(() => suite.value.title)
@@ -1776,6 +1968,9 @@ const filterPriority = ref('')
 const filterStatus = ref('')
 const filterAdvice = ref('')
 const filterModule = ref('')
+const filterMoreOpen = ref(false)
+const browsePage = ref(1)
+const browsePageSize = ref(10)
 
 /** ONLINE | TESTING — 设计规范双轨 Tab（API 仍用 releaseStage） */
 const releaseTab = ref<'ONLINE' | 'TESTING'>('TESTING')
@@ -1914,13 +2109,33 @@ function hasNativeClient(sides: string[]) {
   return sides.some((s) => s.startsWith('CLIENT_'))
 }
 
-/** 渠道：APP 原生 / PWA 内嵌 / 独立 WEB */
+function isAppRequirementNo(req: string) {
+  return /^APP-\d+/i.test(String(req || '').trim())
+}
+
+function isPwaRequirementNo(req: string) {
+  const r = String(req || '').trim()
+  return /^PWA-/i.test(r) || /^POG-/i.test(r)
+}
+
+/**
+ * 左侧树的三层渠道（APP / PWA / WEB）≠ 用例上的「涉及端」。
+ * APP-8999 这类单号即使用 H5 页面验收，也属于 APP 产品线；
+ * 只有独立 PWA / 纯 H5 活动（无 APP 单号、无原生端）才进 PWA。
+ */
 function channelOf(row: AiTestCaseDto): BrowseChannel {
   const ver = String(row.appVersion || '').toLowerCase()
   const sides = ((row as any).sides || []) as string[]
+  const req = String((row as any).requirementNo || '').trim()
+
   if (ver.includes('web') || ver.includes('网站') || ver.includes('web站')) return 'WEB'
-  if (ver.includes('pwa') || ver.includes('h5')) return 'PWA'
+  if (ver.includes('pwa') || isPwaRequirementNo(req)) return 'PWA'
+
+  if (isAppRequirementNo(req) || hasNativeClient(sides)) return 'APP'
+
   if (sides.includes('H5') && !hasNativeClient(sides)) return 'PWA'
+  if (ver.includes('h5')) return 'PWA'
+
   return 'APP'
 }
 
@@ -2115,6 +2330,20 @@ const selectedBrowseRequirement = computed(() => {
   return req && req !== '未归类' ? req : ''
 })
 
+/** 选中的需求单变了就拉一次 bug 统计——不拉的话头部按钮上永远没有数字 */
+watch(
+  () => selectedBrowseRequirement.value,
+  async (no) => {
+    if (!no) return
+    try {
+      bugSummaries.value = { ...bugSummaries.value, [no]: await apiClient.fetchBugSummary(no) }
+    } catch {
+      /* 统计拿不到不影响用例列表 */
+    }
+  },
+  { immediate: true }
+)
+
 const visibleBrowseCases = computed(() => {
   const sel = selectedBrowse.value
   if (!sel || sel.isFolder) return []
@@ -2143,6 +2372,27 @@ const visibleBrowseCases = computed(() => {
   if (sel.lang) rows = rows.filter((r) => langOfCase(r) === sel.lang)
   return rows
 })
+
+const paginatedBrowseCases = computed(() => {
+  const start = (browsePage.value - 1) * browsePageSize.value
+  return visibleBrowseCases.value.slice(start, start + browsePageSize.value)
+})
+
+watch(visibleBrowseCases, () => {
+  const maxPage = Math.max(1, Math.ceil(visibleBrowseCases.value.length / browsePageSize.value))
+  if (browsePage.value > maxPage) browsePage.value = maxPage
+})
+
+const draftReviewCount = computed(() => {
+  if (releaseTab.value !== 'TESTING') return 0
+  const rows = suite.value.byVersion ? browseCases.value : list.value
+  return rows.filter((r) => r.status !== 'REVIEWED').length
+})
+
+function onBrowsePageSizeChange(size: number) {
+  browsePageSize.value = size
+  browsePage.value = 1
+}
 
 const navigationList = computed(() => (suite.value.byVersion ? visibleBrowseCases.value : list.value))
 const selectedIndex = computed(() => navigationList.value.findIndex((r) => r.id === selectedId.value))
@@ -2179,6 +2429,7 @@ const someVisibleSelected = computed(() =>
 function onBrowseTreeClick(data: BrowseNode) {
   if (data.isFolder) return
   selectedBrowse.value = data
+  browsePage.value = 1
   loadBrowseEndpoints(data.requirementNo)
 }
 
@@ -2503,6 +2754,23 @@ const genEpForm = reactive({
   newName: ''
 })
 
+function bugCount(reqNo: string): number {
+  return bugSummaries.value[reqNo]?.total ?? 0
+}
+
+/**
+ * 「Bug 3 · 待验 1」比「Bug 3」有用得多。
+ * 「修了但没验」是最容易漏的一档：开发说改好了，而没人回去点一遍。
+ */
+function bugLinkLabel(reqNo: string): string {
+  const s = bugSummaries.value[reqNo]
+  // 没有 bug 时写成动作而不是标签：光一个「Bug」字挤在旁边，
+  // 看着像个状态，人不会想到它能点
+  if (!s || !s.total) return '+ 记 Bug'
+  const pending = s.fixedNotVerified || 0
+  return pending > 0 ? `Bug ${s.total} · 待验 ${pending}` : `Bug ${s.total}`
+}
+
 function reqEndpointCount(reqNo: string): number {
   return reqEndpointCounts.value[reqNo] ?? 0
 }
@@ -2585,6 +2853,203 @@ function toggleCoveragePanel(reqNo: string) {
   const mod = moduleGroups.value.find((m) => groupRequirement(m) === reqNo)
   if (mod) expandModule(mod.groupKey)
   coveragePanelOf.value = coveragePanelOf.value === reqNo ? '' : reqNo
+}
+
+const bugsOf = ref('')
+const bugs = ref<Array<Record<string, any>>>([])
+const bugSummaries = ref<Record<string, any>>({})
+
+const bugVisible = ref(false)
+const bugSaving = ref(false)
+const bugUploading = ref(false)
+const bugFileInput = ref<HTMLInputElement>()
+const bugForm = reactive({
+  id: '',
+  caseId: '',
+  requirementNo: '',
+  module: '',
+  description: '',
+  images: [] as string[],
+  developer: '',
+  tester: '',
+  fixed: false,
+  verified: false,
+  note: ''
+})
+
+function bugImages(b: Record<string, any>): string[] {
+  try {
+    const v = JSON.parse(b.images || '[]')
+    return Array.isArray(v) ? v : []
+  } catch {
+    return []
+  }
+}
+
+async function toggleBugs(reqNo: string) {
+  if (bugsOf.value === reqNo) {
+    bugsOf.value = ''
+    return
+  }
+  bugsOf.value = reqNo
+  await loadBugs(reqNo)
+}
+
+async function loadBugs(reqNo: string) {
+  try {
+    bugs.value = await apiClient.fetchRequirementBugs(reqNo)
+    bugSummaries.value = { ...bugSummaries.value, [reqNo]: await apiClient.fetchBugSummary(reqNo) }
+  } catch {
+    bugs.value = []
+  }
+}
+
+/**
+ * 从一条用例提 Bug。
+ * 把用例的页面/模块带过去——这几个字每次手打，记两条就不想记了。
+ */
+/** 新布局（左树 + 右表）里从一条用例提 Bug */
+function bugFromBrowseCase(row: Record<string, any>) {
+  const reqNo = selectedBrowseRequirement.value
+  if (!reqNo) {
+    ElMessage.warning('先在左边选中一个需求单节点')
+    return
+  }
+  openBugDialog(reqNo)
+  // 页面/模块带过去——这几个字每次手打，记两条就不想记了
+  bugForm.module = row.pageName || row.moduleName || ''
+  bugForm.description = row.title ? `【${row.title}】` : ''
+  bugForm.caseId = row.id || ''
+}
+
+function bugFromCase(row: Record<string, any>, mod: Record<string, any>) {
+  const reqNo = groupRequirement(mod)
+  if (!reqNo) {
+    ElMessage.warning('这条用例还没归到需求单上')
+    return
+  }
+  openBugDialog(reqNo)
+  bugForm.module = row.pageName || row.moduleName || mod.moduleName || ''
+  bugForm.description = row.title ? `【${row.title}】` : ''
+  bugForm.caseId = row.id || ''
+}
+
+function openBugDialog(reqNo: string) {
+  Object.assign(bugForm, {
+    id: '',
+    requirementNo: reqNo,
+    module: '',
+    description: '',
+    images: [],
+    // 开发/测试预填上次填过的：一个版本里这两列基本不变，每条都重打很烦
+    caseId: '',
+    developer: bugs.value[0]?.developer || '',
+    tester: bugs.value[0]?.tester || user.value?.displayName || '',
+    fixed: false,
+    verified: false,
+    note: ''
+  })
+  bugVisible.value = true
+}
+
+function editBug(b: Record<string, any>) {
+  Object.assign(bugForm, {
+    id: b.id,
+    requirementNo: b.requirementNo,
+    module: b.module || '',
+    description: b.description || '',
+    images: bugImages(b),
+    developer: b.developer || '',
+    tester: b.tester || '',
+    fixed: !!b.fixed,
+    verified: !!b.verified,
+    note: b.note || ''
+  })
+  bugVisible.value = true
+}
+
+async function onBugFiles(e: Event) {
+  const files = Array.from((e.target as HTMLInputElement).files || [])
+  if (!files.length) return
+  bugUploading.value = true
+  try {
+    const r = await apiClient.uploadBugImages(files)
+    bugForm.images = [...bugForm.images, ...r.urls]
+  } catch (err: any) {
+    ElMessage.error(err?.message || '截图上传失败')
+  } finally {
+    bugUploading.value = false
+    if (bugFileInput.value) bugFileInput.value.value = ''
+  }
+}
+
+async function saveBug() {
+  if (!bugForm.description.trim()) {
+    ElMessage.warning('问题描述必填 —— 只有截图没有描述，过两周谁也想不起来是什么问题')
+    return
+  }
+  bugSaving.value = true
+  try {
+    const body = {
+      requirementNo: bugForm.requirementNo,
+      appVersion: filterVersion.value || undefined,
+      module: bugForm.module,
+      caseId: bugForm.caseId || undefined,
+      description: bugForm.description.trim(),
+      images: JSON.stringify(bugForm.images),
+      developer: bugForm.developer,
+      tester: bugForm.tester,
+      fixed: bugForm.fixed,
+      verified: bugForm.verified,
+      note: bugForm.note,
+      environment: releaseTab.value === 'ONLINE' ? 'PROD' : 'TEST'
+    }
+    if (bugForm.id) {
+      await apiClient.updateBug(bugForm.id, body)
+    } else {
+      await apiClient.createBug(body)
+    }
+    bugVisible.value = false
+    // 存完把面板展开：从用例行提的 bug，面板本来是收着的，
+    // 不展开的话人看不到刚记的那条，会以为没存上
+    bugsOf.value = bugForm.requirementNo
+    await loadBugs(bugForm.requirementNo)
+  } catch (e: any) {
+    ElMessage.error(e?.message || '保存失败')
+  } finally {
+    bugSaving.value = false
+  }
+}
+
+async function removeBug(b: Record<string, any>) {
+  try {
+    await ElMessageBox.confirm(`删除第 ${b.seq} 条？`, '确认', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await apiClient.deleteBug(b.id)
+    await loadBugs(b.requirementNo)
+  } catch (e: any) {
+    ElMessage.error(e?.message || '删除失败')
+  }
+}
+
+/** 复制成 wiki 能粘的 HTML 表格 */
+async function exportBugs(reqNo: string) {
+  try {
+    const r = await apiClient.exportBugsToWiki(reqNo)
+    // 写成 text/html 格式，粘到 Confluence 才会保留表格结构；
+    // 只写纯文本的话粘过去是一行标签源码
+    const item = new ClipboardItem({
+      'text/html': new Blob([r.html], { type: 'text/html' }),
+      'text/plain': new Blob([r.html], { type: 'text/plain' })
+    })
+    await navigator.clipboard.write([item])
+    ElMessage.success(`已复制，直接粘到 wiki。${r.note}`)
+  } catch (e: any) {
+    ElMessage.error(e?.message || '复制失败，可能是浏览器不允许写剪贴板')
+  }
 }
 
 function openReqEndpoints(reqNo: string) {
@@ -4078,7 +4543,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .ai-cases {
-  --page-bg: #f0f2f5;
+  --page-bg: #ffffff;
   --card-bg: #ffffff;
   --card-border: #e2e8f0;
   --row-hover: #f8fafc;
@@ -4159,24 +4624,23 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   position: relative;
   z-index: 100;
-  height: 48px;
+  height: 52px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 0 16px;
-  background: var(--nav-bg);
+  padding: 0 20px;
+  background: #1e2d4a;
 }
 .nav-left {
   display: flex;
   align-items: center;
   min-width: 0;
-  flex: 1;
 }
 .nav-crumb {
-  color: #e2e8f0;
-  font-size: 13px;
-  font-weight: 500;
+  color: #f1f5f9;
+  font-size: 14px;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4186,33 +4650,77 @@ onBeforeUnmount(() => {
   color: #64748b;
   font-weight: 400;
 }
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-shrink: 0;
+}
 .nav-actions {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-shrink: 0;
 }
 .btn-nav {
-  padding: 5px 12px;
-  border-radius: 4px;
-  font-size: 12.5px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
   cursor: pointer;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  background: transparent;
-  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e2e8f0;
   line-height: 1.4;
 }
 .btn-nav:hover {
-  border-color: #fff;
-  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+.btn-nav-create {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+  font-weight: 500;
+}
+.btn-nav-create:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  color: #fff;
 }
 .btn-nav-primary {
-  background: #1890ff;
-  border-color: #1890ff;
+  background: #52c41a;
+  border-color: #52c41a;
+  color: #fff;
+  font-weight: 600;
 }
 .btn-nav-primary:hover {
-  background: #0f78d9;
-  border-color: #0f78d9;
+  background: #389e0d;
+  border-color: #389e0d;
+  color: #fff;
+}
+.nav-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 16px;
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+}
+.nav-user-role {
+  border: none !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #cbd5e1 !important;
+}
+.nav-user-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #f1f5f9;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.nav-user-name:hover {
+  color: #fff;
 }
 
 .toolbar {
@@ -4220,92 +4728,79 @@ onBeforeUnmount(() => {
   position: relative;
   z-index: 90;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px 16px;
-  padding: 10px 16px;
-  background: #f7f8fa;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  background: #fff;
   border-bottom: 1px solid #e8eaed;
 }
-.version-pills {
+.toolbar-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 20px;
+  min-height: 46px;
+}
+.version-tabs {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
+  gap: 4px;
 }
-.vpill {
+.vtab {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 30px;
-  padding: 0 12px;
-  border-radius: 16px;
-  border: 1px solid #e5e7eb;
-  background: #fff;
-  color: #64748b;
-  font-size: 12.5px;
-  font-weight: 600;
+  height: 44px;
+  padding: 0 4px;
+  margin-right: 20px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #8b949e;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
   line-height: 1;
 }
-.vpill-ico {
+.vtab em {
+  font-style: normal;
   font-size: 12px;
-  opacity: 0.7;
+  font-weight: 600;
+  color: #b0b8c4;
 }
-.vpill-num {
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
-  color: #94a3b8;
+.vtab.active {
+  color: #2563eb;
+  border-bottom-color: #2563eb;
+  font-weight: 600;
 }
-.vpill.is-online.active {
-  color: #389e0d;
-  border-color: #95de64;
-  background: #f6ffed;
-  box-shadow: 0 0 0 1px rgba(82, 196, 26, 0.12);
+.vtab.active em {
+  color: #2563eb;
 }
-.vpill.is-online.active .vpill-ico,
-.vpill.is-online.active .vpill-num {
-  color: #389e0d;
-  opacity: 1;
-}
-.vpill.is-testing.active {
-  color: #7c3aed;
-  border-color: #c4b5fd;
-  background: #f5f3ff;
-  box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.1);
-}
-.vpill.is-testing.active .vpill-ico,
-.vpill.is-testing.active .vpill-num {
-  color: #7c3aed;
-  opacity: 1;
-}
-.vpill:not(.active):hover {
-  border-color: #cbd5e1;
+.vtab:not(.active):hover {
   color: #475569;
 }
-
-.vpill-tip {
+.vtab-new {
+  border: none;
+  background: transparent;
+  color: #2563eb;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.vtab-new:hover {
+  text-decoration: underline;
+}
+.review-warn {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  color: #ad6800;
-  background: #fff7e6;
-  border: 1px solid #ffe58f;
-  cursor: help;
-  outline: none;
-}
-.vpill-tip .el-icon {
+  gap: 6px;
   font-size: 13px;
-}
-.vpill-tip:hover,
-.vpill-tip:focus-visible {
   color: #d48806;
-  border-color: #ffd666;
-  background: #fffbe6;
+  font-weight: 500;
+}
+.review-warn .el-icon {
+  font-size: 15px;
 }
 
 .page-body {
@@ -4385,12 +4880,40 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   margin: 0;
-  padding: 0;
-  background: transparent;
+  padding: 10px 20px 12px;
+  background: #f7f8fa;
+  border-top: 1px solid #eef0f3;
+  border-bottom: 1px solid #e8eaed;
+}
+.filter-more-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 0 20px 10px;
+  background: #fff;
+}
+.filter-more-btn {
   border: none;
-  border-radius: 0;
+  background: transparent;
+  color: #2563eb;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.filter-more-btn:hover {
+  text-decoration: underline;
+}
+.f-w-version {
+  width: 130px;
+}
+.f-w-keyword {
+  width: 220px;
+}
+.f-w-page {
+  width: 140px;
 }
 .f-item {
   display: inline-flex;
@@ -4404,12 +4927,6 @@ onBeforeUnmount(() => {
   flex: none;
   white-space: nowrap;
   line-height: 28px;
-}
-.f-w-keyword {
-  width: 200px;
-}
-.f-w-page {
-  width: 120px;
 }
 .f-w-module {
   width: 140px;
@@ -4554,29 +5071,12 @@ onBeforeUnmount(() => {
 }
 
 .oq-bar {
-  /*
-    这一块在 .toolbar 里，而 .toolbar 是横向 wrap 的 flex 行。
-    不显式占整行的话，它能不能换到自己一行全靠「内容碰巧够宽」——
-    换不下来就会跟版本页签挤在同一行。order 排到最后，让它紧贴用例列表
-  */
-  flex: 0 0 100%;
-  order: 99;
-  /*
-    页面是 height:100% + overflow:hidden 的内滚布局，而 .toolbar 又是 flex-shrink:0，
-    这一块不封顶的话，7 项待确认会把用例列表整个顶出屏幕，页面本身还不滚——
-    表现就是「用例看不到，也划不动」
-  */
+  margin: 0 20px 10px;
   max-height: 32vh;
-  margin-bottom: 0;
   border: 1px solid var(--el-color-warning-light-5, #f3d19e);
   border-left: 3px solid var(--el-color-warning, #e6a23c);
   border-radius: 6px;
   background: var(--el-color-warning-light-9, #fdf6ec);
-  /*
-    必须写在最后：简写 overflow 会把 overflow-y 一起重置。
-    之前 overflow-y:auto 写在前面、overflow:hidden（为了圆角裁剪）写在后面，
-    结果是「JS 能设 scrollTop，鼠标滚不动」——查起来极其费劲，因为看上去两条都写了
-  */
   overflow-x: hidden;
   overflow-y: auto;
 }
@@ -5296,59 +5796,61 @@ onBeforeUnmount(() => {
 
 .c-prio {
   display: inline-block;
-  padding: 1px 5px;
-  border-radius: 3px;
-  font-size: 10.5px;
-  font-weight: 700;
-  color: #fff;
-  text-align: center;
-}
-.c-prio.p0 { background: #ef4444; }
-.c-prio.p1 { background: #f97316; }
-.c-prio.p2 { background: #94a3b8; }
-
-.c-status {
-  display: inline-block;
-  padding: 1px 5px;
+  min-width: 28px;
+  padding: 1px 6px;
   border-radius: 3px;
   font-size: 11px;
   font-weight: 600;
   text-align: center;
-  border: 1px solid transparent;
+  background: transparent;
+  border: 1px solid;
+}
+.c-prio.p0 { color: #ef4444; border-color: #ef4444; }
+.c-prio.p1 { color: #f97316; border-color: #f97316; }
+.c-prio.p2 { color: #94a3b8; border-color: #cbd5e1; }
+
+.c-status {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+  background: transparent;
+  border: none;
+  padding: 0;
 }
 .c-status.is-ok {
-  background: #f0fdf4; color: #166534; border-color: #bbf7d0;
+  color: #52c41a;
 }
 .c-status.is-draft {
-  background: #fffbeb; color: #92400e; border-color: #fde68a;
+  color: #8b949e;
 }
 .c-status.is-muted {
-  background: #f8fafc; color: #64748b; border-color: #e2e8f0;
+  color: #94a3b8;
 }
 
 .c-cover {
   display: inline-block;
-  padding: 1px 5px;
-  border-radius: 3px;
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 400;
   text-align: center;
-  border: 1px solid transparent;
+  background: transparent;
+  border: none;
+  padding: 0;
   white-space: nowrap;
   cursor: default;
+  color: #8b949e;
 }
 .c-cover.is-covered {
-  background: #f0fdf4; color: #166534; border-color: #bbf7d0;
+  color: #52c41a;
 }
-/* 过期用橙色而不是绿色：它是「绿得不该信」，视觉上必须和真绿分开 */
 .c-cover.is-stale {
-  background: #fff7ed; color: #9a3412; border-color: #fed7aa;
+  color: #d97706;
 }
 .c-cover.is-missing {
-  background: #fef2f2; color: #991b1b; border-color: #fecaca;
+  color: #ef4444;
 }
 .c-cover.is-none {
-  background: #f8fafc; color: #94a3b8; border-color: #e2e8f0;
+  color: #8b949e;
 }
 .more-flow {
   color: #64748b;
@@ -5368,42 +5870,43 @@ onBeforeUnmount(() => {
   padding-left: 24px;
 }
 .c-ops {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 4px;
-  justify-content: flex-start;
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  column-gap: 10px;
+  row-gap: 3px;
+  justify-content: start;
+  align-content: center;
   align-items: center;
 }
-.op-promote, .op-edit, .op-del, .op-view, .op-review {
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 3px;
+.op-promote, .op-edit, .op-del, .op-view, .op-review, .op-bug {
+  font-size: 12px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 0;
   cursor: pointer;
   background: transparent;
   white-space: nowrap;
 }
 .op-promote {
-  color: #389e0d; border: 1px solid #95de64; font-weight: 600;
+  color: #2563eb;
+  font-weight: 500;
 }
-.op-promote:hover { background: #f6ffed; }
-.op-promote.is-lg {
-  padding: 3px 8px;
-  font-size: 10.5px;
-}
+.op-promote:hover { color: #1d4ed8; text-decoration: underline; }
 .op-edit {
-  color: #2563eb; border: 1px solid #bfdbfe;
+  color: #64748b;
 }
-.op-edit:hover { background: #eff6ff; }
+.op-edit:hover { color: #475569; text-decoration: underline; }
 .op-review {
-  color: #389e0d; border: 1px solid #95de64;
+  color: #52c41a;
+  font-weight: 500;
 }
-.op-review:hover { background: #f6ffed; }
+.op-review:hover { color: #389e0d; text-decoration: underline; }
 .op-del {
-  color: #ef4444; border: 1px solid #fecaca;
+  color: #ef4444;
 }
-.op-del:hover { background: #fef2f2; }
+.op-del:hover { color: #dc2626; text-decoration: underline; }
 .op-view {
-  color: #64748b; border: none;
+  color: #64748b;
 }
 
 .more-row {
@@ -5441,38 +5944,47 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 12px;
   padding: 9px 14px;
-  background: #e6f4ff;
-  border-top: 1px solid #91d5ff;
-  font-size: 11.5px;
+  background: #fff;
+  border-top: 1px solid #e8eaed;
+  font-size: 13px;
   color: #1f2329;
-  box-shadow: 0 -4px 12px rgba(24, 144, 255, 0.08);
-  opacity: 0.85;
-  transition: opacity 0.15s;
 }
-.batch-bar.active {
-  opacity: 1;
-}
-.batch-bar b { font-weight: 700; color: #0958d9; }
-.batch-sep { width: 1px; height: 14px; background: #91d5ff; }
+.batch-bar.active b { color: #2563eb; }
+.batch-bar b { font-weight: 700; color: #64748b; }
+.batch-sep { width: 1px; height: 14px; background: #e2e8f0; }
 .btn-batch {
-  padding: 5px 12px;
-  border: 1px solid #1890ff;
-  border-radius: 5px;
-  background: #1890ff;
-  color: #fff;
-  font-size: 12.5px;
-  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
 }
-.btn-batch:hover:not(:disabled) {
-  background: #0f78d9;
-  border-color: #0f78d9;
+.btn-batch.is-primary {
+  border: 1px solid #52c41a;
+  background: #52c41a;
+  color: #fff;
+}
+.btn-batch.is-primary:hover:not(:disabled) {
+  background: #389e0d;
+  border-color: #389e0d;
+}
+.btn-batch.is-secondary {
+  border: 1px solid #d0d7de;
+  background: #fff;
+  color: #1f2329;
+}
+.btn-batch.is-secondary:hover:not(:disabled) {
+  border-color: #2563eb;
+  color: #2563eb;
 }
 .btn-batch:disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: not-allowed;
-  background: #8cc8ff;
-  border-color: #8cc8ff;
+}
+/* 非 browse 模式旧样式兼容 */
+.btn-batch:not(.is-primary):not(.is-secondary) {
+  border: 1px solid #52c41a;
+  background: #52c41a;
   color: #fff;
 }
 .batch-tip { color: #64748b; }
@@ -5898,10 +6410,11 @@ onBeforeUnmount(() => {
 .page-body.is-version-browse {
   gap: 0;
   background: #fff;
-  border: 1px solid var(--card-border);
-  border-radius: 8px;
-  margin: 0 14px 14px;
+  border: none;
+  border-radius: 0;
+  margin: 0;
   overflow: hidden;
+  flex: 1;
 }
 .page-body.is-version-browse.has-detail .browse-main {
   flex: 1 1 auto;
@@ -5909,24 +6422,30 @@ onBeforeUnmount(() => {
 }
 
 .browse-nav {
-  width: 280px;
+  width: 248px;
   flex-shrink: 0;
-  border-right: 1px solid #e2e8f0;
+  border-right: 1px solid #e8eaed;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: #f8fafc;
+  background: #fff;
 }
 .browse-nav-head {
-  padding: 12px 14px 8px;
-  border-bottom: 1px solid #e2e8f0;
+  padding: 12px 14px;
+  border-bottom: 1px solid #f0f2f4;
+}
+.browse-env-line {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 .browse-env {
   display: inline-block;
-  font-size: 12px;
+  width: fit-content;
+  font-size: 11px;
   font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 4px;
+  padding: 2px 7px;
+  border-radius: 3px;
 }
 .browse-env.is-test {
   color: #ad6800;
@@ -5936,23 +6455,45 @@ onBeforeUnmount(() => {
   color: #166534;
   background: #f0fdf4;
 }
-.browse-nav-tip {
-  display: block;
-  margin-top: 6px;
+.browse-env-path {
   font-size: 11px;
-  color: #94a3b8;
+  color: #8b949e;
+  line-height: 1.4;
 }
 .browse-tree-wrap {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 8px 6px 12px;
+  padding: 6px 8px 12px;
+}
+.browse-tree-wrap :deep(.el-tree-node__content) {
+  height: 34px;
+  border-radius: 6px;
+}
+.browse-tree-wrap :deep(.el-tree-node.is-current > .el-tree-node__content) {
+  background: #eff6ff !important;
+  color: #2563eb;
+}
+.browse-tree-wrap :deep(.el-tree-node.is-current > .el-tree-node__content .browse-tree-badge) {
+  background: #dbeafe;
+  color: #2563eb;
 }
 .browse-tree-row {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   max-width: 100%;
+}
+.browse-tree-row.is-leaf::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  flex-shrink: 0;
+}
+.browse-tree-wrap :deep(.el-tree-node.is-current) .browse-tree-row.is-leaf::before {
+  background: #2563eb;
 }
 .browse-tree-text {
   overflow: hidden;
@@ -5964,7 +6505,7 @@ onBeforeUnmount(() => {
   margin-left: auto;
   font-size: 11px;
   color: #64748b;
-  background: #e2e8f0;
+  background: #f0f2f4;
   border-radius: 10px;
   padding: 0 6px;
   line-height: 18px;
@@ -5985,101 +6526,332 @@ onBeforeUnmount(() => {
   flex: 1;
   min-width: 0;
   min-height: 0;
-  overflow: auto;
-  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
 }
 .browse-main-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid #f0f2f4;
+  flex-wrap: wrap;
+}
+.browse-main-head-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 .browse-title {
   margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: #0f172a;
-}
-.browse-sub {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #1f2329;
 }
 .pill {
   display: inline-block;
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 4px;
-  background: #f1f5f9;
-  color: #475569;
+  font-weight: 600;
 }
 .pill-ch {
   background: #eff6ff;
+  color: #2563eb;
+}
+.pill-req {
+  background: #eff6ff;
   color: #1d4ed8;
-}
-.pill-lang {
-  background: #fdf4ff;
-  color: #7e22ce;
-}
-.pill-count {
-  background: #f0fdf4;
-  color: #166534;
 }
 .browse-cov {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
   justify-content: flex-end;
+  flex-shrink: 0;
+}
+.cov-pill.is-yellow {
+  background: #fffbe6;
+  color: #d48806;
+  border-color: #ffe58f;
+}
+.cov-pill.is-green {
+  background: #f6ffed;
+  color: #389e0d;
+  border-color: #b7eb8f;
 }
 
 .browse-eps {
-  margin-bottom: 14px;
-  padding: 10px 12px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  margin: 0;
+  padding: 12px 20px;
+  background: #fff;
+  border-bottom: 1px solid #f0f2f4;
 }
 .browse-eps-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  color: #334155;
+  color: #64748b;
   margin-bottom: 8px;
 }
-.browse-eps-req {
-  font-weight: 400;
-  color: #64748b;
+.browse-eps-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ep-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid #b7eb8f;
+  background: #f6ffed;
   font-size: 12px;
+  color: #166534;
+}
+.ep-chip-path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
 }
 .browse-eps-tip {
   font-size: 12px;
   color: #94a3b8;
 }
-.browse-ep {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 0;
-  border-top: 1px solid #eef2f7;
-  font-size: 12px;
-}
-.browse-ep:first-of-type {
-  border-top: none;
-}
 
 .browse-case-table {
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: #fff;
+  border: none;
+  border-radius: 0;
+}
+.browse-case-table .table-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #fafbfc;
+  border-bottom: 1px solid #eef0f3;
+  color: #8b949e;
+  font-size: 12px;
 }
 .browse-case-table .table-head,
 .browse-case-table .case-row {
-  grid-template-columns: 36px 88px minmax(180px, 1fr) 64px 80px 72px 220px;
+  grid-template-columns: 36px 88px minmax(180px, 1fr) 64px 80px 72px 200px;
+  padding-left: 20px;
+  padding-right: 20px;
+}
+.browse-case-table .case-row {
+  border-bottom: 1px solid #f3f4f6;
+  min-height: 44px;
+}
+.browse-case-table .case-row:nth-child(even) {
+  background: #fafbfc;
+}
+.browse-case-table .case-row:hover {
+  background: #f0f6ff;
+}
+.browse-case-table .case-row.active {
+  background: #eff6ff;
+  box-shadow: inset 3px 0 0 #2563eb;
+}
+.browse-case-table .c-id {
+  color: #2563eb;
+  background: transparent;
+  font-size: 12px;
+  padding: 0;
+  font-weight: 500;
+}
+
+.browse-footer {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 20px;
+  background: #1e293b;
+  border-top: none;
+}
+.browse-footer .batch-bar {
+  position: static;
+  flex: 1;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  opacity: 1;
+  color: #e2e8f0;
+  font-size: 13px;
+}
+.browse-footer .batch-bar b {
+  color: #fff;
+  font-weight: 700;
+}
+.browse-footer .btn-batch.is-primary {
+  background: #52c41a;
+  border-color: #52c41a;
+  color: #fff;
+}
+.browse-footer .btn-batch.is-primary:hover:not(:disabled) {
+  background: #389e0d;
+  border-color: #389e0d;
+}
+.browse-footer .btn-batch.is-secondary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+.browse-footer .btn-batch.is-secondary:hover:not(:disabled) {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+.browse-footer .pager {
+  flex-shrink: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.browse-footer .pager-total {
+  font-size: 13px;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+.browse-footer :deep(.el-pagination) {
+  --el-pagination-bg-color: transparent;
+  --el-pagination-text-color: #94a3b8;
+  --el-pagination-button-color: #cbd5e1;
+  --el-pagination-hover-color: #fff;
+}
+.browse-footer :deep(.el-pagination.is-background .el-pager li) {
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+}
+.browse-footer :deep(.el-pagination.is-background .el-pager li.is-active) {
+  background: #2563eb;
+  color: #fff;
+}
+
+.bug-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+.bug-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--el-border-color-lighter);
+  font-size: 12.5px;
+}
+
+.bug-seq {
+  width: 22px;
+  color: var(--el-text-color-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.bug-mod {
+  width: 92px;
+  color: var(--el-text-color-regular);
+}
+
+.bug-desc {
+  flex: 1;
+  min-width: 0;
+}
+
+.bug-shots,
+.bug-shots-edit {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.bug-shot {
+  width: 34px;
+  height: 34px;
+  border-radius: 3px;
+  border: 1px solid var(--el-border-color-lighter);
+  cursor: zoom-in;
+}
+
+.bug-who {
+  width: 96px;
+  color: var(--el-text-color-secondary);
+}
+
+.bug-st {
+  width: 104px;
+  font-size: 12px;
+}
+
+.bug-st.is-ok {
+  color: var(--el-color-success);
+}
+
+.bug-st.is-warn {
+  color: var(--el-color-warning);
+}
+
+.bug-st.is-open {
+  color: var(--el-color-danger);
+}
+
+.mod-eps.has-bug {
+  color: var(--el-color-danger);
+}
+
+.bug-tip {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--el-text-color-secondary);
+}
+
+.bug-two {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.op-bug {
+  border: none;
+  background: none;
+  color: var(--el-color-danger);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.op-bug:hover {
+  text-decoration: underline;
+}
+
+.browse-bug-entry {
+  margin-left: auto;
+  margin-right: 10px;
+}
+
+.browse-eps-head .bug-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+.browse-eps-head {
+  display: flex;
+  align-items: center;
 }
 
 </style>

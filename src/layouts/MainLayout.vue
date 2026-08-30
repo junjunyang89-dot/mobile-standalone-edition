@@ -28,6 +28,7 @@
             <el-icon><Document /></el-icon>
             <span>测试用例</span>
           </template>
+          <el-menu-item index="/bug-management">Bug 管理</el-menu-item>
           <el-menu-item
             v-for="suite in TEST_CASE_SUITES"
             :key="suite.key"
@@ -166,7 +167,7 @@
       </el-menu>
     </el-aside>
     <el-container>
-      <el-header v-if="!isApiReportsPage" class="header">
+      <el-header v-if="!isApiReportsPage && !isTestCasesPage && !isBugManagementPage" class="header">
         <div class="header-content">
           <h3>{{ currentTitle }}</h3>
           <div v-if="user" class="header-user">
@@ -193,7 +194,7 @@
       </el-header>
       <el-main
         class="main-content"
-        :class="{ 'is-agent': isAgentPage, 'is-test-cases': isTestCasesPage, 'is-api-collections': isApiCollectionsPage, 'is-api-reports': isApiReportsPage }"
+        :class="{ 'is-agent': isAgentPage, 'is-test-cases': isTestCasesPage, 'is-bug-management': isBugManagementPage, 'is-api-collections': isApiCollectionsPage, 'is-api-reports': isApiReportsPage }"
       >
         <router-view :key="route.fullPath" />
       </el-main>
@@ -330,7 +331,7 @@ const defaultOpeneds = computed(() => {
   ) {
     return ['main']
   }
-  if (p.startsWith('/test-cases') || p.startsWith('/ai-test-cases')) {
+  if (p.startsWith('/test-cases') || p.startsWith('/ai-test-cases') || p.startsWith('/bug-management')) {
     return ['test-cases']
   }
   if (
@@ -432,6 +433,7 @@ const isAgentPage = computed(() => route.path.includes('codewords-agent'))
 const isTestCasesPage = computed(
   () => route.path.startsWith('/test-cases') || route.path.startsWith('/ai-test-cases')
 )
+const isBugManagementPage = computed(() => route.path.startsWith('/bug-management'))
 const isApiCollectionsPage = computed(() => route.path.startsWith('/api-collections'))
 const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
 </script>
@@ -654,6 +656,7 @@ const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
 
 .main-content.is-agent,
 .main-content.is-test-cases,
+.main-content.is-bug-management,
 .main-content.is-api-collections,
 .main-content.is-api-reports {
   padding: 0;
@@ -705,7 +708,23 @@ const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
   height: 100%;
 }
 
+.main-content.is-test-cases,
+.main-content.is-bug-management {
+  height: 100vh;
+}
+
 .main-content.is-test-cases :deep(.ai-cases) {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.main-content.is-bug-management {
+  padding: 0;
+  overflow: hidden;
+}
+
+.main-content.is-bug-management :deep(.bug-mgmt) {
   flex: 1;
   min-height: 0;
   height: 100%;

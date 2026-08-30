@@ -100,6 +100,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'AI助手' }
       },
       {
+        path: 'bug-management',
+        name: 'BugManagement',
+        component: () => import('../views/BugManagement.vue'),
+        meta: { title: 'Bug 管理' }
+      },
+      {
         path: 'test-cases/:category',
         name: 'TestCases',
         component: () => import('../views/AiTestCases.vue'),

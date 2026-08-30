@@ -6,7 +6,7 @@
           <div>
             <span class="title">项目管理</span>
             <p class="sub">
-              按 <b>APP / PVP / WEB</b> 分类维护项目编码。URL 管理、接口测试均从这里选择归属项目。
+              按分类维护项目编码，可从常用分类选择或直接输入新分类。URL 管理、接口测试均从这里选择归属项目。
             </p>
           </div>
           <el-button type="primary" @click="openCreate">新建项目</el-button>
@@ -15,6 +15,10 @@
 
       <div class="layout" v-loading="loading">
         <aside class="tree-pane">
+          <div class="side-nav-head">
+            <span class="side-nav-title">分类</span>
+            <el-button link type="primary" size="small" @click="openAddCategory">+ 添加分类</el-button>
+          </div>
           <div class="side-nav">
             <div v-for="cat in categories" :key="cat.key" class="side-cat-block">
               <button
@@ -28,7 +32,18 @@
               >
                 <span class="side-caret">{{ isCatCollapsed(cat.key) ? '▸' : '▾' }}</span>
                 <span class="side-cat-label">{{ cat.label }}</span>
-                <span class="side-cat-num">{{ cat.projects.length }}</span>
+                <span class="side-cat-num">{{ cat.count ?? cat.projects.length }}</span>
+                <span
+                  class="side-cat-edit"
+                  title="重命名"
+                  @click.stop="openRenameCategory(cat)"
+                >✎</span>
+                <span
+                  v-if="cat.custom && (cat.count ?? 0) === 0"
+                  class="side-cat-del"
+                  title="删除空分类"
+                  @click.stop="removeCategory(cat)"
+                >×</span>
               </button>
 
               <div v-show="!isCatCollapsed(cat.key)" class="side-cat-children">
@@ -137,9 +152,22 @@
       destroy-on-close
     >
       <el-form label-width="90px" size="small">
-        <el-form-item label="分类">
-          <el-tag>{{ categoryLabel(form.code) }}</el-tag>
-          <span class="tip-inline">保存后按编码自动归类</span>
+        <el-form-item label="分类" required>
+          <el-select
+            v-model="form.category"
+            filterable
+            allow-create
+            default-first-option
+            clearable
+            placeholder="选择或输入新分类"
+            style="width: 100%"
+            @change="categoryTouched = true"
+          >
+            <el-option v-for="opt in categoryOptions" :key="opt.key" :label="opt.label" :value="opt.key" />
+          </el-select>
+          <div class="tip">
+            可直接输入新分类名称（回车确认）。内置 APP / PVP / WEB / 其他 仍可用；编码推断仅作新建时的默认值。
+          </div>
         </el-form-item>
         <el-form-item label="编码" required>
           <el-input
@@ -177,6 +205,31 @@
         <el-button type="primary" :loading="saving" @click="save">保存</el-button>
       </template>
     </el-drawer>
+
+    <el-dialog
+      v-model="categoryDialog"
+      :title="categoryDialogMode === 'rename' ? '重命名分类' : '添加分类'"
+      width="400px"
+      destroy-on-close
+    >
+      <el-form label-width="80px" size="small">
+        <el-form-item v-if="categoryDialogMode === 'rename'" label="标识">
+          <code>{{ categoryForm.key }}</code>
+        </el-form-item>
+        <el-form-item label="名称" required>
+          <el-input v-model="categoryForm.label" placeholder="如：开放平台、中间件" maxlength="64" show-word-limit />
+        </el-form-item>
+        <el-form-item label="排序">
+          <el-input-number v-model="categoryForm.sortOrder" :min="0" :step="10" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="categoryDialog = false">取消</el-button>
+        <el-button type="primary" :loading="categorySaving" @click="saveCategory">
+          {{ categoryDialogMode === 'rename' ? '保存' : '添加' }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -202,17 +255,37 @@ type CategoryVo = {
   label: string
   count: number
   projects: ProjectRow[]
+  builtin?: boolean
+  custom?: boolean
+  sortOrder?: number
 }
 
-const CATEGORY_HINT: Record<string, string> = {
-  APP: 'APP 后端',
-  PVP: 'PVP · 客户端',
-  WEB: 'WEB',
-  OTHER: '其他'
-}
+const categoryOptions = computed(() =>
+  categories.value.map((cat) => ({ key: cat.key, label: cat.label || cat.key }))
+)
+
+const PVP_CODES = new Set([
+  'android-domestic-esports',
+  'ios-domestic-esports',
+  'harmonyos-domestic-esports',
+  'android-overseas-pogpog',
+  'ios-overseas-pogpog'
+])
+
+const WEB_CODES = new Set([
+  'app-steam-web',
+  'steam-web',
+  'steam-admin',
+  'pogpog-h5',
+  'overseas_service_host_and_tool_url'
+])
 
 const loading = ref(false)
 const saving = ref(false)
+const categoryDialog = ref(false)
+const categoryDialogMode = ref<'add' | 'rename'>('add')
+const categorySaving = ref(false)
+const categoryForm = reactive({ key: '', label: '', sortOrder: 500 })
 const drawer = ref(false)
 const creating = ref(true)
 const categories = ref<CategoryVo[]>([])
@@ -226,11 +299,14 @@ const form = reactive({
   code: '',
   name: '',
   description: '',
+  category: 'APP',
   successCodePath: '',
   successCodeValue: '',
   enabled: true,
   sortOrder: 100
 })
+
+const categoryTouched = ref(false)
 
 const selectedCategory = computed(() =>
   categories.value.find((c) => c.key === selectedCategoryKey.value) ?? null
@@ -270,20 +346,24 @@ watch([categoryProjects, pageSize], () => {
   if (currentPage.value > maxPage) currentPage.value = maxPage
 })
 
-function categoryLabel(code: string) {
-  if (!code.trim()) return '—'
-  const lower = code.trim().toLowerCase()
-  if (
-    ['android-domestic-esports', 'ios-domestic-esports', 'harmonyos-domestic-esports'].includes(lower)
-  ) {
-    return CATEGORY_HINT.PVP
-  }
-  if (lower.includes('steam-web') || lower === 'steam-web') return CATEGORY_HINT.WEB
-  if (lower.startsWith('app-') || lower.startsWith('app_') || lower === 'data-center') {
-    return CATEGORY_HINT.APP
-  }
-  return CATEGORY_HINT.OTHER
+function inferCategory(code: string): string {
+  const lower = String(code || '').trim().toLowerCase()
+  if (!lower) return 'APP'
+  if (PVP_CODES.has(lower)) return 'PVP'
+  if (WEB_CODES.has(lower)) return 'WEB'
+  if (lower.startsWith('debug-') || lower.startsWith('auth-')) return 'OTHER'
+  if (lower.startsWith('app-') || lower.startsWith('app_')) return 'APP'
+  if (lower.includes('esports') && (lower.includes('android') || lower.includes('ios'))) return 'PVP'
+  return 'OTHER'
 }
+
+watch(
+  () => form.code,
+  (code) => {
+    if (!creating.value || categoryTouched.value) return
+    form.category = inferCategory(code)
+  }
+)
 
 async function load() {
   loading.value = true
@@ -297,6 +377,70 @@ async function load() {
     ElMessage.error(e?.message || '加载失败')
   } finally {
     loading.value = false
+  }
+}
+
+function openAddCategory() {
+  categoryDialogMode.value = 'add'
+  categoryForm.key = ''
+  categoryForm.label = ''
+  categoryForm.sortOrder = 500
+  categoryDialog.value = true
+}
+
+function openRenameCategory(cat: CategoryVo) {
+  categoryDialogMode.value = 'rename'
+  categoryForm.key = cat.key
+  categoryForm.label = cat.label
+  categoryForm.sortOrder = cat.sortOrder ?? 500
+  categoryDialog.value = true
+}
+
+async function saveCategory() {
+  const label = categoryForm.label.trim()
+  if (!label) {
+    ElMessage.warning('请输入分类名称')
+    return
+  }
+  categorySaving.value = true
+  try {
+    if (categoryDialogMode.value === 'rename') {
+      await apiClient.updateApiProjectCategory(categoryForm.key, {
+        label,
+        sortOrder: categoryForm.sortOrder
+      })
+      ElMessage.success('分类已重命名')
+    } else {
+      const created = await apiClient.createApiProjectCategory({
+        label,
+        sortOrder: categoryForm.sortOrder
+      })
+      ElMessage.success('分类已添加')
+      if (created?.key) {
+        selectedCategoryKey.value = created.key
+        expandedCats.value = { ...expandedCats.value, [created.key]: true }
+      }
+    }
+    categoryDialog.value = false
+    await load()
+  } catch (e: any) {
+    ElMessage.error(e?.message || (categoryDialogMode.value === 'rename' ? '重命名失败' : '添加失败'))
+  } finally {
+    categorySaving.value = false
+  }
+}
+
+async function removeCategory(cat: CategoryVo) {
+  try {
+    await ElMessageBox.confirm(`删除空分类「${cat.label}」？`, '确认', { type: 'warning' })
+    await apiClient.deleteApiProjectCategory(cat.key)
+    ElMessage.success('已删除')
+    if (selectedCategoryKey.value === cat.key) {
+      selectedCategoryKey.value = categories.value.find((c) => c.key !== cat.key)?.key ?? 'APP'
+    }
+    await load()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e?.message || '删除失败')
   }
 }
 
@@ -331,9 +475,11 @@ function clearProjectFilter() {
 
 function openCreate() {
   creating.value = true
+  categoryTouched.value = false
   form.code = ''
   form.name = ''
   form.description = ''
+  form.category = 'APP'
   form.successCodePath = ''
   form.successCodeValue = ''
   form.enabled = true
@@ -343,9 +489,11 @@ function openCreate() {
 
 function openCreateWithCode(code: string) {
   creating.value = true
+  categoryTouched.value = false
   form.code = code
   form.name = code
   form.description = ''
+  form.category = inferCategory(code)
   form.successCodePath = ''
   form.successCodeValue = ''
   form.enabled = true
@@ -355,9 +503,11 @@ function openCreateWithCode(code: string) {
 
 function openEdit(row: ProjectRow) {
   creating.value = false
+  categoryTouched.value = true
   form.code = row.code
   form.name = row.name
   form.description = row.description || ''
+  form.category = row.category || inferCategory(row.code)
   form.successCodePath = row.successCodePath || ''
   form.successCodeValue = row.successCodeValue || ''
   form.enabled = row.enabled !== false
@@ -370,12 +520,17 @@ async function save() {
     ElMessage.warning('编码和名称必填')
     return
   }
+  if (!String(form.category || '').trim()) {
+    ElMessage.warning('请选择或输入分类')
+    return
+  }
   saving.value = true
   try {
     const body = {
       code: form.code.trim(),
       name: form.name.trim(),
       description: form.description,
+      category: String(form.category).trim(),
       successCodePath: form.successCodePath.trim(),
       successCodeValue: form.successCodeValue.trim(),
       enabled: form.enabled,
@@ -423,8 +578,22 @@ onMounted(load)
   max-height: calc(100vh - 220px);
   overflow: hidden;
 }
+.side-nav-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 4px 8px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  margin-bottom: 6px;
+  flex-shrink: 0;
+}
+.side-nav-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--el-text-color-secondary);
+}
 .side-nav {
-  height: 100%;
+  height: calc(100% - 36px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -483,6 +652,40 @@ onMounted(load)
   font-size: 11px;
   font-weight: 400;
   color: var(--el-text-color-placeholder);
+}
+.side-cat-edit {
+  margin-left: 4px;
+  width: 16px;
+  height: 16px;
+  line-height: 14px;
+  text-align: center;
+  border-radius: 3px;
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+  flex-shrink: 0;
+  opacity: 0;
+}
+.side-cat:hover .side-cat-edit {
+  opacity: 1;
+}
+.side-cat-edit:hover {
+  background: var(--el-fill-color);
+  color: var(--el-color-primary);
+}
+.side-cat-del {
+  margin-left: 4px;
+  width: 16px;
+  height: 16px;
+  line-height: 14px;
+  text-align: center;
+  border-radius: 3px;
+  font-size: 14px;
+  color: var(--el-text-color-placeholder);
+  flex-shrink: 0;
+}
+.side-cat-del:hover {
+  background: var(--el-color-danger-light-9);
+  color: var(--el-color-danger);
 }
 .side-back-btn {
   padding: 4px 8px;
