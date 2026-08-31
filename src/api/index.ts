@@ -26,6 +26,8 @@ export interface CapturedFlow {
   /** 二进制响应没有 body，这里说明为什么 */
   bodyNote: string
   hasDetail: boolean
+  /** 这个接口在本次抓包里被调了几次。轮询接口调七八次很常见 */
+  calls: number
 }
 
 export interface CapturedDetail {
@@ -2838,6 +2840,48 @@ class ApiClient {
     return response.json() as Promise<{ urls: string[] }>
   }
 
+  /** 线上/测试问题持续跟踪 */
+  async listIssueTracking(params?: {
+    environment?: string
+    status?: string
+    priority?: string
+    trackingTester?: string
+    q?: string
+  }) {
+    const q = new URLSearchParams()
+    if (params?.environment) q.set('environment', params.environment)
+    if (params?.status) q.set('status', params.status)
+    if (params?.priority) q.set('priority', params.priority)
+    if (params?.trackingTester) q.set('trackingTester', params.trackingTester)
+    if (params?.q) q.set('q', params.q)
+    const qs = q.toString()
+    return this.request<{
+      issues: Array<Record<string, any>>
+      testers: string[]
+      statusCounts: Record<string, number>
+    }>(qs ? `/issue-tracking?${qs}` : '/issue-tracking')
+  }
+
+  async createIssueTracking(body: Record<string, unknown>) {
+    return this.request<{ id: string }>('/issue-tracking', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async updateIssueTracking(id: string, body: Record<string, unknown>) {
+    return this.request<{ success: boolean }>(`/issue-tracking/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async deleteIssueTracking(id: string) {
+    return this.request<{ success: boolean }>(`/issue-tracking/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    })
+  }
+
   /** 人工补一个接口到需求单上——分析只认这个分支改过的，没改但会调到的要自己加 */
   async addRequirementEndpoint(body: {
     requirementNo: string
@@ -2930,6 +2974,23 @@ class ApiClient {
     if (params.appVersion) q.set('appVersion', params.appVersion)
     return this.request<Array<{ requirementNo: string; total: number; reviewed: number }>>(
       `/ai-test-cases/requirement-counts?${q.toString()}`
+    )
+  }
+
+  /** 需求登记列表（含自定义展示名） */
+  async fetchRequirements(keyword?: string) {
+    const q = keyword ? `?keyword=${encodeURIComponent(keyword)}` : ''
+    return this.request<Array<{ requirementNo: string; title?: string }>>(`/requirements${q}`)
+  }
+
+  /** 左侧树重命名：只改 title，单号不变 */
+  async saveRequirementTitle(requirementNo: string, title: string) {
+    return this.request<{ requirementNo: string; title?: string }>(
+      `/requirements/${encodeURIComponent(requirementNo)}/title`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ title })
+      }
     )
   }
 

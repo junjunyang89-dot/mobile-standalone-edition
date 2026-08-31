@@ -218,7 +218,7 @@
               <span class="browse-env" :class="releaseTab === 'TESTING' ? 'is-test' : 'is-online'">
                 {{ releaseTab === 'TESTING' ? '测试环境' : '线上版本' }}
               </span>
-              <span class="browse-env-path">APP · PWA · WEB · 需求单</span>
+              <span class="browse-env-path">APP · PWA · WEB · 需求单 · 右键重命名</span>
             </div>
           </div>
           <div class="browse-tree-wrap">
@@ -232,6 +232,7 @@
               default-expand-all
               :expand-on-click-node="false"
               @node-click="onBrowseTreeClick"
+              @node-contextmenu="onBrowseTreeContextMenu"
             >
               <template #default="{ data }">
                 <span class="browse-tree-row" :class="{ 'is-leaf': !data.isFolder }">
@@ -246,7 +247,7 @@
         </aside>
 
         <main v-loading="loading" class="browse-main">
-          <template v-if="selectedBrowse && !selectedBrowse.isFolder">
+          <template v-if="isBrowseSelectionActive">
             <div class="browse-main-head">
               <div class="browse-main-head-left">
                 <h2 class="browse-title">{{ selectedBrowse.label }}</h2>
@@ -922,6 +923,23 @@
               <span v-else class="muted">—</span>
             </div>
           </div>
+          <div v-if="caseScreenshotSrc(selectedCase)" class="field-full is-shot">
+            <div class="fl">设计稿</div>
+            <div class="fv">
+              <a
+                class="case-shot-link"
+                :href="caseScreenshotSrc(selectedCase)"
+                target="_blank"
+                rel="noopener"
+              >
+                <img
+                  class="case-shot"
+                  :src="caseScreenshotSrc(selectedCase)"
+                  alt="用例设计稿"
+                />
+              </a>
+            </div>
+          </div>
           <div v-if="selectedCase.remark" class="field-full">
             <div class="fl">备注</div><div class="fv">{{ selectedCase.remark }}</div>
           </div>
@@ -973,6 +991,23 @@
             <div class="fl">期望结果</div>
             <div class="fv">
               <div v-if="selectedCase.expectedResult" class="expected-box">{{ selectedCase.expectedResult }}</div>
+            </div>
+          </div>
+          <div v-if="caseScreenshotSrc(selectedCase)" class="field-full is-shot">
+            <div class="fl">设计稿</div>
+            <div class="fv">
+              <a
+                class="case-shot-link"
+                :href="caseScreenshotSrc(selectedCase)"
+                target="_blank"
+                rel="noopener"
+              >
+                <img
+                  class="case-shot"
+                  :src="caseScreenshotSrc(selectedCase)"
+                  alt="用例设计稿"
+                />
+              </a>
             </div>
           </div>
         </div>
@@ -1771,6 +1806,25 @@
       @submit="onBugDialogSubmit"
     />
 
+    <el-dialog v-model="renameReqVisible" title="重命名分支" width="480px" destroy-on-close>
+      <el-form label-width="88px">
+        <el-form-item label="需求单号">
+          <span>{{ renameReqForm.requirementNo }}</span>
+        </el-form-item>
+        <el-form-item label="展示名称">
+          <el-input
+            v-model="renameReqForm.title"
+            placeholder="如：选择玩家、DEADLOCK 锁优化（留空则恢复自动命名）"
+          />
+        </el-form-item>
+        <p class="rename-hint">只改左侧树显示名，JIRA 单号不变。留空会回退为用例 module 自动推断。</p>
+      </el-form>
+      <template #footer>
+        <el-button @click="renameReqVisible = false">取消</el-button>
+        <el-button type="primary" :loading="renameReqSaving" @click="saveRenameRequirement">保存</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="epGenVisible" title="生成这条接口的用例" width="560px" destroy-on-close>
       <div v-if="genEp" class="gen-target">
         <span class="req-ep-m" :class="'m-' + (genEp.httpMethod || '').toLowerCase()">
@@ -1873,6 +1927,10 @@ const page = ref(1)
 const pageSize = 50
 const browseTreeRef = ref<any>(null)
 const selectedBrowse = ref<BrowseNode | null>(null)
+const requirementTitles = ref<Record<string, string>>({})
+const renameReqVisible = ref(false)
+const renameReqSaving = ref(false)
+const renameReqForm = reactive({ requirementNo: '', title: '' })
 const browseEndpoints = ref<Array<Record<string, any>>>([])
 const browseEndpointsLoading = ref(false)
 
@@ -2106,6 +2164,8 @@ function langOfCase(row: AiTestCaseDto): 'zh' | 'en' {
 
 function reqGroupTitle(req: string, rows: AiTestCaseDto[]): string {
   if (req === '未归类') return '未归类'
+  const custom = String(requirementTitles.value[req] || '').trim()
+  if (custom) return `${custom} · ${req}`
   const names = new Map<string, number>()
   for (const r of rows) {
     const m = String(r.module || '').trim()
@@ -2121,6 +2181,12 @@ function reqGroupTitle(req: string, rows: AiTestCaseDto[]): string {
   }
   return best ? `${best} · ${req}` : req
 }
+
+function isBrowseSelectable(node: BrowseNode | null): boolean {
+  return !!node && (!node.isFolder || !!node.requirementNo)
+}
+
+const isBrowseSelectionActive = computed(() => isBrowseSelectable(selectedBrowse.value))
 
 function buildVersionTree(cases: AiTestCaseDto[], stage: 'TESTING' | 'ONLINE'): BrowseNode[] {
   const channels: BrowseChannel[] = ['APP', 'PWA', 'WEB']
@@ -2146,7 +2212,7 @@ function buildVersionTree(cases: AiTestCaseDto[], stage: 'TESTING' | 'ONLINE'): 
         chNode.children!.push({
           nodeKey: `${stage}|${ch}|${req}`,
           label: reqGroupTitle(req, rows),
-          isFolder: false,
+          isFolder: true,
           meta: rows.length,
           channel: ch,
           requirementNo: req
@@ -2296,7 +2362,7 @@ watch(
 
 const visibleBrowseCases = computed(() => {
   const sel = selectedBrowse.value
-  if (!sel || sel.isFolder) return []
+  if (!isBrowseSelectable(sel)) return []
   let rows = browseCases.value
   if (filterPageName.value) {
     rows = rows.filter((r) => String(r.pageName || '').includes(filterPageName.value))
@@ -2377,10 +2443,66 @@ const someVisibleSelected = computed(() =>
 )
 
 function onBrowseTreeClick(data: BrowseNode) {
-  if (data.isFolder) return
+  if (!isBrowseSelectable(data)) return
   selectedBrowse.value = data
   browsePage.value = 1
   loadBrowseEndpoints(data.requirementNo)
+}
+
+function onBrowseTreeContextMenu(ev: MouseEvent, data: BrowseNode) {
+  ev.preventDefault()
+  const req = String(data.requirementNo || '').trim()
+  if (!req || req === '未归类') return
+  renameReqForm.requirementNo = req
+  renameReqForm.title = requirementTitles.value[req] || ''
+  renameReqVisible.value = true
+}
+
+async function loadRequirementTitles() {
+  try {
+    const rows = await apiClient.fetchRequirements()
+    const map: Record<string, string> = {}
+    for (const r of rows) {
+      const no = String(r.requirementNo || '').trim()
+      const title = String(r.title || '').trim()
+      if (no && title) map[no] = title
+    }
+    requirementTitles.value = map
+  } catch {
+    /* 没登记过也不影响树 */
+  }
+}
+
+async function saveRenameRequirement() {
+  const req = renameReqForm.requirementNo.trim()
+  if (!req) return
+  renameReqSaving.value = true
+  try {
+    const title = renameReqForm.title.trim()
+    await apiClient.saveRequirementTitle(req, title)
+    if (title) {
+      requirementTitles.value = { ...requirementTitles.value, [req]: title }
+    } else {
+      const next = { ...requirementTitles.value }
+      delete next[req]
+      requirementTitles.value = next
+    }
+    renameReqVisible.value = false
+    ElMessage.success('已保存')
+    const prevKey = selectedBrowse.value?.nodeKey
+    autoSelectBrowseLeaf()
+    if (prevKey) {
+      const kept = findBrowseNode(versionTree.value, prevKey)
+      if (kept && isBrowseSelectable(kept)) {
+        selectedBrowse.value = kept
+        browseTreeRef.value?.setCurrentKey?.(kept.nodeKey)
+      }
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '保存失败')
+  } finally {
+    renameReqSaving.value = false
+  }
 }
 
 async function loadBrowseEndpoints(reqNo?: string) {
@@ -2417,7 +2539,7 @@ function autoSelectBrowseLeaf() {
   const prevKey = selectedBrowse.value?.nodeKey
   if (prevKey) {
     const kept = findBrowseNode(versionTree.value, prevKey)
-    if (kept && !kept.isFolder) {
+    if (kept && isBrowseSelectable(kept)) {
       selectedBrowse.value = kept
       browseTreeRef.value?.setCurrentKey?.(kept.nodeKey)
       loadBrowseEndpoints(kept.requirementNo)
@@ -2426,7 +2548,7 @@ function autoSelectBrowseLeaf() {
   }
   const walk = (nodes: BrowseNode[]): BrowseNode | null => {
     for (const n of nodes) {
-      if (!n.isFolder) return n
+      if (isBrowseSelectable(n) && n.requirementNo) return n
       if (n.children?.length) {
         const found = walk(n.children)
         if (found) return found
@@ -3843,6 +3965,13 @@ function normalizeSteps(steps: unknown): AiTestCaseStep[] {
   }))
 }
 
+/** 用例详情设计稿：DB 存 /agent-uploads/xxx，拼到 API base */
+function caseScreenshotSrc(c?: AiTestCaseDto | null) {
+  const raw = (c?.screenshotUrl || (c as any)?.screenshot_url || '').trim()
+  if (!raw) return ''
+  return apiClient.resolveAssetUrl(raw)
+}
+
 async function loadList() {
   if (suite.value.byVersion) {
     await loadBrowseCases()
@@ -3904,6 +4033,7 @@ async function loadBrowseCases() {
     total.value = res.totalElements || browseCases.value.length
     onlineCount.value = res.onlineCount ?? onlineCount.value
     testingCount.value = res.testingCount ?? testingCount.value
+    await loadRequirementTitles()
     const still = browseCases.value.some((r) => r.id === selectedId.value)
     if (!still) {
       selectedId.value = null
@@ -6034,6 +6164,25 @@ onBeforeUnmount(() => {
   color: #1e293b;
   line-height: 1.65;
 }
+.case-shot-link {
+  display: inline-block;
+  max-width: 100%;
+}
+.case-shot {
+  display: block;
+  max-width: 100%;
+  max-height: 320px;
+  width: auto;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #0b0b0b;
+  object-fit: contain;
+}
+.field-full.is-shot .fv {
+  padding-top: 10px;
+  padding-bottom: 12px;
+}
 
 .detail-sticky-bottom {
   position: sticky;
@@ -6360,6 +6509,12 @@ onBeforeUnmount(() => {
   font-size: 11px;
   color: #8b949e;
   line-height: 1.4;
+}
+.rename-hint {
+  margin: 0 0 0 88px;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
 }
 .browse-tree-wrap {
   flex: 1;

@@ -29,6 +29,7 @@
             <span>测试用例</span>
           </template>
           <el-menu-item index="/bug-management">Bug 管理</el-menu-item>
+          <el-menu-item index="/issue-tracking">问题跟踪</el-menu-item>
           <el-menu-item
             v-for="suite in TEST_CASE_SUITES"
             :key="suite.key"
@@ -167,7 +168,7 @@
       </el-menu>
     </el-aside>
     <el-container>
-      <el-header v-if="!isApiReportsPage && !isTestCasesPage && !isBugManagementPage" class="header">
+      <el-header v-if="!isApiReportsPage && !isTestCasesPage && !isBugManagementPage && !isIssueTrackingPage" class="header">
         <div class="header-content">
           <h3>{{ currentTitle }}</h3>
           <div v-if="user" class="header-user">
@@ -194,7 +195,7 @@
       </el-header>
       <el-main
         class="main-content"
-        :class="{ 'is-agent': isAgentPage, 'is-test-cases': isTestCasesPage, 'is-bug-management': isBugManagementPage, 'is-api-collections': isApiCollectionsPage, 'is-api-reports': isApiReportsPage }"
+        :class="{ 'is-agent': isAgentPage, 'is-test-cases': isTestCasesPage, 'is-bug-management': isBugManagementPage, 'is-issue-tracking': isIssueTrackingPage, 'is-api-collections': isApiCollectionsPage, 'is-api-reports': isApiReportsPage }"
       >
         <router-view :key="route.fullPath" />
       </el-main>
@@ -331,7 +332,7 @@ const defaultOpeneds = computed(() => {
   ) {
     return ['main']
   }
-  if (p.startsWith('/test-cases') || p.startsWith('/ai-test-cases') || p.startsWith('/bug-management')) {
+  if (p.startsWith('/test-cases') || p.startsWith('/ai-test-cases') || p.startsWith('/bug-management') || p.startsWith('/issue-tracking')) {
     return ['test-cases']
   }
   if (
@@ -406,6 +407,8 @@ const titleMap: Record<string, string> = {
   '/release-doc': '发版文档与邮件管理',
   '/version-archives': '版本需求归档',
   '/change-review': '本周改动 / 漏测看板',
+  '/bug-management': 'Bug 管理',
+  '/issue-tracking': '问题跟踪',
   '/web-test': 'Web 端测试',
   '/api-testing': '概览',
   '/api-collections': '用例集合',
@@ -434,6 +437,7 @@ const isTestCasesPage = computed(
   () => route.path.startsWith('/test-cases') || route.path.startsWith('/ai-test-cases')
 )
 const isBugManagementPage = computed(() => route.path.startsWith('/bug-management'))
+const isIssueTrackingPage = computed(() => route.path.startsWith('/issue-tracking'))
 const isApiCollectionsPage = computed(() => route.path.startsWith('/api-collections'))
 const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
 </script>
@@ -657,6 +661,7 @@ const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
 .main-content.is-agent,
 .main-content.is-test-cases,
 .main-content.is-bug-management,
+.main-content.is-issue-tracking,
 .main-content.is-api-collections,
 .main-content.is-api-reports {
   padding: 0;
@@ -709,7 +714,8 @@ const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
 }
 
 .main-content.is-test-cases,
-.main-content.is-bug-management {
+.main-content.is-bug-management,
+.main-content.is-issue-tracking {
   height: 100vh;
 }
 
@@ -725,6 +731,17 @@ const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
 }
 
 .main-content.is-bug-management :deep(.bug-mgmt) {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.main-content.is-issue-tracking {
+  padding: 0;
+  overflow: hidden;
+}
+
+.main-content.is-issue-tracking :deep(.issue-track) {
   flex: 1;
   min-height: 0;
   height: 100%;

@@ -274,9 +274,16 @@
       <div v-if="flows.length" key="cap-result" class="cap-result">
         <div class="cap-result-head">
           <b>{{ flows.length }} 个接口</b>
-          <!-- 「1 个接口」孤零零摆着看不出正常与否；带上分母才知道是不是漏了 -->
+          <!--
+            「4 个接口」孤零零摆着，人会以为抓漏了。
+            真实关系是「23 个请求 → 12 个命中白名单 → 去重后 4 个接口」，
+            中间那两步不写出来，少的那 19 个就成了悬案。
+            命中数必须用后端实际抓到的条数，不能拿「代理上见到的」去减——
+            见到不等于抓到：没等到响应的、被挡掉的，都在「见到」里
+          -->
           <span class="cap-ratio">
-            代理上共 {{ seenGrandTotal }} 个请求，命中白名单 {{ seenGrandTotal - missedTotal }}
+            代理上共 {{ seenGrandTotal }} 个请求 · 命中白名单 {{ capturedTotal }} 次调用 ·
+            去重后 {{ flows.length }} 个接口
           </span>
           <span v-if="lastLinked > 0" class="cap-linked">
             已挂到 {{ linkedTo }}（{{ lastLinked }} 个）
@@ -340,7 +347,11 @@
           </el-table-column>
           <el-table-column label="路径" min-width="260">
             <template #default="{ row }">
-              <div class="cap-path">{{ row.path }}</div>
+              <div class="cap-path">
+                {{ row.path }}
+                <!-- 被调了几次直接标出来：轮询接口调七八次很常见，看不到次数就会以为抓重复了 -->
+                <span v-if="row.calls > 1" class="cap-calls">× {{ row.calls }}</span>
+              </div>
               <div class="cap-host-sub">{{ row.host }}</div>
             </template>
           </el-table-column>
@@ -731,6 +742,9 @@ const failedList = computed(() =>
     .sort((a, b) => b.count - a.count)
 )
 
+/** 后端实际抓到的条数。「见到」不等于「抓到」：没等到响应的、被挡掉的都在「见到」里 */
+const capturedTotal = ref(0)
+
 const seenGrandTotal = computed(() =>
   Object.values(seenHosts.value).reduce((n, v) => n + Number(v), 0)
 )
@@ -1025,6 +1039,7 @@ async function stop() {
       project: form.project || undefined
     })
     flows.value = r.flows || []
+    capturedTotal.value = r.total || 0
     linkWarn.value = r.linkWarn || ''
     lastLinked.value = r.linked || 0
     linkedTo.value = r.linked ? form.requirementNo.trim() : ''
@@ -1392,6 +1407,16 @@ code {
 .cap-doc-dim {
   margin-top: 6px;
   color: var(--el-text-color-secondary);
+}
+
+.cap-calls {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--el-fill-color);
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 </style>

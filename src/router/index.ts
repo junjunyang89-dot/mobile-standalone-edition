@@ -106,6 +106,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Bug 管理' }
       },
       {
+        path: 'issue-tracking',
+        name: 'IssueTracking',
+        component: () => import('../views/IssueTracking.vue'),
+        meta: { title: '问题跟踪' }
+      },
+      {
         path: 'test-cases/:category',
         name: 'TestCases',
         component: () => import('../views/AiTestCases.vue'),
