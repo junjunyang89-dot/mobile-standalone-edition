@@ -1,5 +1,7 @@
 <template>
   <div class="login-page">
+    <!-- hiddenInset 没有系统标题栏，登录页原先没有 drag 区，窗口拖不动 -->
+    <div class="login-drag" />
     <el-card class="login-card" shadow="never">
       <div class="login-head">
         <div class="login-title">{{ bootstrapping ? '创建第一个管理员' : '登录测试平台' }}</div>
@@ -168,6 +170,17 @@ async function submit() {
   align-items: center;
   justify-content: center;
   background: var(--el-bg-color-page);
+}
+
+.login-drag {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 52px;
+  z-index: 10;
+  -webkit-app-region: drag;
+  app-region: drag;
 }
 
 .login-card {

@@ -440,7 +440,6 @@ async function loadData(opts?: { silent?: boolean; keepDay?: boolean }) {
 <style scoped>
 .home {
   width: 100%;
-  max-width: 1200px;
   display: flex;
   flex-direction: column;
   gap: 16px;

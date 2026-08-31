@@ -1589,6 +1589,81 @@ class ApiClient {
     }>(qs ? `/api-projects/tree?${qs}` : '/api-projects/tree')
   }
 
+  /**
+   * 统一树：分类 → 项目 → 模块，每层带 counts。
+   *
+   * 与 getApiProjectTree 的区别是它带覆盖度数字——每个项目有多少接口用例／接口／
+   * UI 流程／元素／Bug。树因此不只是目录，而能直接回答「哪个项目没人测」。
+   *
+   * 后端收敛了原先三个各自为政的树端点，节点结构统一为
+   * {key,label,type,counts,children}，一套渲染即可。
+   *
+   * @param includeEmpty 默认 true 保留零资产的项目——「一条用例都没有」正是要看见的
+   */
+  async getUnifiedTree(includeEmpty = true) {
+    const qs = includeEmpty ? '' : '?includeEmpty=false'
+    return this.request<{
+      dimension: string
+      nodes: Array<{
+        key: string
+        label: string
+        type: 'CATEGORY'
+        projectCount: number
+        counts: Record<string, number>
+        children: Array<{
+          key: string
+          label: string
+          type: 'PROJECT'
+          /** BACKEND | CLIENT | H5，渲染图标用；它是属性不是层级 */
+          kind: string
+          total: number
+          counts: Record<string, number>
+          children: Array<{
+            /** 稳定标识，前端自己映射到路由 */
+            key: 'API_CASES' | 'API_ENDPOINTS' | 'API_COLLECTIONS' | 'UI_FLOWS' | 'UI_ELEMENTS' | 'BUGS'
+            label: string
+            type: 'MODULE'
+            count: number
+            projectCode: string
+          }>
+        }>
+      }>
+    }>(`/tree${qs}`)
+  }
+
+  /** 客户端 App ↔ 项目 关联，UI 自动化资产靠它归属到项目 */
+  async getAppProjectLinks(params: { appId?: string; projectCode?: string } = {}) {
+    const qs = new URLSearchParams()
+    if (params.appId) qs.set('appId', params.appId)
+    if (params.projectCode) qs.set('projectCode', params.projectCode)
+    const s = qs.toString()
+    return this.request<Array<{
+      appId: string
+      projectCode: string
+      platform?: string
+      relation: string
+      note?: string
+      appName?: string
+      projectName?: string
+    }>>(s ? `/app-project-links?${s}` : '/app-project-links')
+  }
+
+  async saveAppProjectLink(body: Record<string, unknown>) {
+    return this.request<any>('/app-project-links', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async deleteAppProjectLink(appId: string, projectCode: string) {
+    return this.request<any>(
+      `/app-project-links?appId=${encodeURIComponent(appId)}&projectCode=${encodeURIComponent(projectCode)}`,
+      { method: 'DELETE' }
+    )
+  }
+
+  /** 还没挂上任何项目的 App——它们的 UI 资产在项目树上是看不见的 */
+  async getUnlinkedApps() {
+    return this.request<Array<{ appId: string; appName: string }>>('/app-project-links/unlinked-apps')
+  }
+
   async createApiProject(body: Record<string, unknown>) {
     return this.request<any>('/api-projects', { method: 'POST', body: JSON.stringify(body) })
   }
