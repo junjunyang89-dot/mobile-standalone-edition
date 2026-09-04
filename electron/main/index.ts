@@ -67,6 +67,7 @@ function createWindow() {
     height: 900,
     minWidth: 1200,
     minHeight: 700,
+    title: 'APP自动化管理平台',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     webPreferences: {
       preload: preloadPath,

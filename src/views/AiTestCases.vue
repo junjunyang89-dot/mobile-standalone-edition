@@ -54,7 +54,7 @@
             v-if="suite.byVersion"
             type="button"
             class="vtab-new"
-            @click="newVersionVisible = true"
+            @click="openNewVersion"
           >
             + 新建版本
           </button>
@@ -254,22 +254,28 @@
                 <span class="pill pill-ch">{{ browseChannelLabel(selectedBrowse.channel) }}</span>
                 <span v-if="selectedBrowseRequirement" class="pill pill-req">{{ selectedBrowseRequirement }}</span>
               </div>
-              <div v-if="selectedBrowseRequirement" class="browse-bug-entry">
+              <div v-if="selectedBrowseRequirement" class="browse-head-actions">
+                <el-button
+                  size="small"
+                  type="primary"
+                  class="browse-ask-btn"
+                  @click="openAskRequirement(selectedBrowseRequirement, selectedBrowse.label)"
+                >问 AI</el-button>
                 <!-- 「Bug 3 · 待验 1」比「Bug 3」有用：开发说改好了而没人回去点一遍，最容易漏 -->
                 <el-button size="small" :type="bugCount(selectedBrowseRequirement) ? 'danger' : 'default'" plain
                            @click="toggleBugs(selectedBrowseRequirement)">
                   {{ bugLinkLabel(selectedBrowseRequirement) }}
                 </el-button>
-              </div>
-              <div v-if="selectedBrowseRequirement && coverageOf(selectedBrowseRequirement)" class="browse-cov">
-                <span
-                  v-for="d in coverageOf(selectedBrowseRequirement)!.dimensions"
-                  :key="d.key"
-                  class="cov-pill"
-                  :class="'is-' + String(d.status || '').toLowerCase()"
-                >
-                  {{ d.badge || d.label }}
-                </span>
+                <div v-if="coverageOf(selectedBrowseRequirement)" class="browse-cov">
+                  <span
+                    v-for="d in coverageOf(selectedBrowseRequirement)!.dimensions"
+                    :key="d.key"
+                    class="cov-pill"
+                    :class="'is-' + String(d.status || '').toLowerCase()"
+                  >
+                    {{ d.badge || d.label }}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -373,7 +379,13 @@
                   <span class="c-prio" :class="prioClass(row.priority)">{{ row.priority || 'P1' }}</span>
                   <span class="c-status" :class="statusChipClass(row.status)">{{ statusLabel(row.status) }}</span>
                   <span class="c-cover" :class="coverClass(row)" :title="coverTip(row)">{{ coverLabel(row) }}</span>
-                  <span class="c-ops" @click.stop>
+                    <span class="c-ops" @click.stop>
+                    <button
+                      v-if="row.id"
+                      type="button"
+                      class="op-ask"
+                      @click.stop="openAsk(row)"
+                    >问 AI</button>
                     <button
                       v-if="releaseTab === 'TESTING' && row.id"
                       type="button"
@@ -397,7 +409,7 @@
                     >提 Bug</button>
                     <button type="button" class="op-edit" @click="openEdit(row)">编辑</button>
                     <button type="button" class="op-del" @click="removeRow(row)">删除</button>
-                  </span>
+                    </span>
                 </div>
               </template>
             </div>
@@ -478,6 +490,12 @@
                 <span v-if="groupService(mod)" class="mod-side is-svc">{{ groupService(mod) }}</span>
                 <span class="count-badge">{{ mod.count }} 条</span>
                 <span class="cover-pct" :class="{ zero: mod.coverage === 0 }">覆盖 {{ mod.coverage }}%</span>
+                <button
+                  v-if="suite.byVersion && groupRequirement(mod)"
+                  type="button"
+                  class="mod-ask"
+                  @click.stop="openAskRequirement(groupRequirement(mod), mod.module)"
+                >问 AI</button>
                 <!-- 含对比分析关联 + 人工补充；「改了哪些」只覆盖前者，测试更关心整条链路 -->
                 <a
                   v-if="suite.byVersion && groupRequirement(mod)"
@@ -759,6 +777,12 @@
                     <span class="c-cover" :class="coverClass(row)" :title="coverTip(row)">{{ coverLabel(row) }}</span>
                     <span class="c-ops" @click.stop>
                       <button
+                        v-if="row.id"
+                        type="button"
+                        class="op-ask"
+                        @click.stop="openAsk(row)"
+                      >问 AI</button>
+                      <button
                         v-if="releaseTab === 'TESTING' && row.id"
                         type="button"
                         class="op-promote"
@@ -861,6 +885,12 @@
             <span v-if="releaseTab === 'TESTING'" class="detail-env">测试版</span>
             <span v-else class="detail-env is-online">线上版</span>
             <div class="detail-top-ops">
+              <button
+                v-if="selectedCase.id"
+                type="button"
+                class="op-ask is-lg"
+                @click="openAsk(selectedCase)"
+              >问 AI</button>
               <button
                 v-if="releaseTab === 'TESTING'"
                 type="button"
@@ -1488,25 +1518,46 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="newVersionVisible" title="新建版本" width="460px">
+    <el-dialog v-model="newVersionVisible" title="选择或新建版本" width="460px">
       <el-form label-width="90px">
         <el-form-item label="版本名称" required>
-          <el-input v-model="newVersionForm.releaseLabel" placeholder="如 9.3 国内客户端" />
+          <el-select
+            v-model="newVersionForm.releaseLabel"
+            filterable
+            allow-create
+            default-first-option
+            clearable
+            placeholder="搜索已有版本，没有再输入新名称"
+            style="width: 100%"
+            @change="onNewVersionLabelChange"
+          >
+            <el-option
+              v-for="v in versionOptions"
+              :key="v.version"
+              :label="v.count ? `${v.version}（${v.count}）` : v.version"
+              :value="v.version"
+            />
+          </el-select>
         </el-form-item>
-        <el-form-item label="版本号">
+        <el-form-item v-if="!pickedExistingVersion" label="版本号">
           <el-input v-model="newVersionForm.appVersion" placeholder="如 4.1.5（可留空）" />
         </el-form-item>
-        <el-form-item label="产品线">
+        <el-form-item v-if="!pickedExistingVersion" label="产品线">
           <el-input v-model="newVersionForm.productLine" placeholder="国内客户端 / 海外客户端（可留空）" />
         </el-form-item>
       </el-form>
       <div class="edit-hint" style="padding: 0 12px 4px">
-        名称里带上日期（如「9.3 国内客户端」）会自动解析出上线日。
-        这个版本和「版本需求归档」是同一份数据，那边同步过来的版本这里也能直接选。
+        {{
+          pickedExistingVersion
+            ? '这个版本已经有了，选中后直接用，不会再新建一条。'
+            : '先搜已有版本。没有的再输入新名字；名称里带上日期（如「9.3 国内客户端」）会自动解析出上线日。'
+        }}
       </div>
       <template #footer>
         <el-button @click="newVersionVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitNewVersion">创建</el-button>
+        <el-button type="primary" @click="submitNewVersion">
+          {{ pickedExistingVersion ? '使用此版本' : '创建' }}
+        </el-button>
       </template>
     </el-dialog>
 
@@ -1795,6 +1846,64 @@
       </template>
     </el-dialog>
 
+    <el-dialog
+      v-model="askVisible"
+      class="case-ask-dialog"
+      width="720px"
+      top="6vh"
+      destroy-on-close
+      @closed="resetAsk"
+    >
+      <template #header>
+        <div class="ask-head">
+          <span class="ask-title">问 AI</span>
+          <span v-if="askRow?.caseId" class="ask-tcid">{{ askRow.caseId }}</span>
+          <span v-else-if="askRow?.requirementNo" class="ask-tcid">{{ askRow.requirementNo }} 整单</span>
+        </div>
+      </template>
+      <div v-if="askRow" class="ask-meta">
+        <b>{{ askRow.title }}</b>
+        <span v-if="askRow.requirementNo">{{ askRow.requirementNo }}</span>
+        <span v-if="askRow.pageName">{{ askRow.pageName }}</span>
+      </div>
+      <p class="ask-hint">
+        一问一答。对着本机仓库检索后直接回答，不经过千问。没找全就接着问，上文会带着一起搜。
+      </p>
+      <div
+        v-if="askMessages.length"
+        ref="askThreadRef"
+        class="ask-thread"
+      >
+        <div
+          v-for="(m, i) in askMessages"
+          :key="i"
+          class="ask-msg"
+          :class="'is-' + m.role"
+        >
+          <div class="ask-msg-role">{{ m.role === 'user' ? '问' : '答' }}</div>
+          <div class="ask-msg-body">{{ m.content }}</div>
+          <div v-if="m.sources" class="ask-msg-src">{{ m.sources }}</div>
+        </div>
+      </div>
+      <el-input
+        v-model="askQuestion"
+        type="textarea"
+        :rows="askMessages.length ? 3 : 5"
+        :placeholder="askMessages.length
+          ? '接着问，例如：matchData 是哪个接口写的？'
+          : '例如：为什么进入某条比赛详情，概览下会有「数据陆续获取中，请耐心等待」，其他场次没有？'"
+        @keydown.enter.exact.prevent="submitAsk"
+      />
+      <div v-if="askError" class="ask-error">{{ askError }}</div>
+      <div v-if="askModel" class="ask-model">{{ askModel }}</div>
+      <template #footer>
+        <el-button @click="askVisible = false">关闭</el-button>
+        <el-button type="primary" :loading="askLoading" :disabled="!askQuestion.trim()" @click="submitAsk">
+          {{ askMessages.length ? '继续' : '分析' }}
+        </el-button>
+      </template>
+    </el-dialog>
+
     <BugSubmitDialog
       v-if="bugVisible"
       v-model="bugVisible"
@@ -1891,7 +2000,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { EditPen, FolderOpened, InfoFilled, UploadFilled, WarningFilled, ArrowDown } from '@element-plus/icons-vue'
@@ -2939,6 +3048,97 @@ const bugVersionOptions = computed(() => {
   const v = filterVersion.value
   return v ? [v, 'V3.6', 'V3.5', 'V3.4'] : ['V3.6', 'V3.5', 'V3.4']
 })
+
+const askVisible = ref(false)
+const askLoading = ref(false)
+const askRow = ref<Record<string, any> | null>(null)
+const askQuestion = ref('')
+const askError = ref('')
+const askModel = ref('')
+const askThreadRef = ref<HTMLElement | null>(null)
+const askMessages = ref<Array<{ role: 'user' | 'assistant'; content: string; sources?: string }>>([])
+
+function resetAskFields() {
+  askQuestion.value = ''
+  askError.value = ''
+  askModel.value = ''
+  askMessages.value = []
+}
+
+function openAsk(row: Record<string, any>) {
+  if (!row?.id) {
+    ElMessage.warning('这条还没落库，保存后再问')
+    return
+  }
+  askRow.value = row
+  resetAskFields()
+  askVisible.value = true
+}
+
+function openAskRequirement(requirementNo: string, title?: string) {
+  if (!requirementNo) {
+    ElMessage.warning('先在左边选中一个需求单')
+    return
+  }
+  askRow.value = {
+    id: null,
+    caseId: '',
+    title: title || requirementNo,
+    requirementNo,
+    pageName: ''
+  }
+  resetAskFields()
+  askVisible.value = true
+}
+
+function resetAsk() {
+  askRow.value = null
+  resetAskFields()
+  askLoading.value = false
+}
+
+async function scrollAskThread() {
+  await nextTick()
+  const el = askThreadRef.value
+  if (el) el.scrollTop = el.scrollHeight
+}
+
+async function submitAsk() {
+  const q = askQuestion.value.trim()
+  if (!q || askLoading.value) return
+  const history = askMessages.value.map(m => ({
+    role: m.role,
+    content: m.content,
+    ...(m.sources ? { sources: m.sources } : {})
+  }))
+  askMessages.value.push({ role: 'user', content: q })
+  askQuestion.value = ''
+  askLoading.value = true
+  askError.value = ''
+  await scrollAskThread()
+  try {
+    const id = askRow.value?.id
+    const r = id
+      ? await apiClient.askAiTestCase(id, q, history)
+      : await apiClient.askRequirement(String(askRow.value?.requirementNo || ''), q, history)
+    const src = Array.isArray(r.sources) && r.sources.length
+      ? r.sources.slice(0, 8).join('，')
+      : ''
+    askMessages.value.push({
+      role: 'assistant',
+      content: r.answer || '（没有返回内容）',
+      sources: src || undefined
+    })
+    askModel.value = r.model || ''
+    await scrollAskThread()
+  } catch (e: any) {
+    askError.value = e?.message || '分析失败'
+    askMessages.value.pop()
+    askQuestion.value = q
+  } finally {
+    askLoading.value = false
+  }
+}
 
 function bugImages(b: Record<string, any>): string[] {
   try {
@@ -4469,14 +4669,53 @@ async function submitBatchMeta() {
   }
 }
 
+function archiveLabel(a: any): string {
+  return String(a?.releaseLabel || a?.appVersion || '').trim()
+}
+
+function findArchiveByLabel(label: string) {
+  const name = (label || '').trim()
+  if (!name) return undefined
+  return archives.value.find((a) => archiveLabel(a) === name)
+}
+
+const pickedExistingVersion = computed(() => !!findArchiveByLabel(newVersionForm.releaseLabel))
+
+async function openNewVersion() {
+  newVersionForm.releaseLabel = ''
+  newVersionForm.appVersion = ''
+  newVersionForm.productLine = ''
+  newVersionVisible.value = true
+  await loadVersions()
+}
+
+function onNewVersionLabelChange(label: string) {
+  const a = findArchiveByLabel(label)
+  if (!a) {
+    newVersionForm.appVersion = ''
+    newVersionForm.productLine = ''
+    return
+  }
+  newVersionForm.appVersion = a.appVersion || ''
+  newVersionForm.productLine = a.productLine || ''
+}
+
 async function submitNewVersion() {
-  if (!newVersionForm.releaseLabel.trim()) {
-    ElMessage.warning('请填写版本名称，如「9.3 国内客户端」')
+  const label = newVersionForm.releaseLabel.trim()
+  if (!label) {
+    ElMessage.warning('请选择或输入版本名称，如「9.3 国内客户端」')
+    return
+  }
+  if (pickedExistingVersion.value) {
+    newVersionVisible.value = false
+    filterVersion.value = label
+    ElMessage.success(`已切换到「${label}」`)
+    await loadRequirements()
     return
   }
   try {
     await apiClient.createVersionArchive({
-      releaseLabel: newVersionForm.releaseLabel.trim(),
+      releaseLabel: label,
       appVersion: newVersionForm.appVersion.trim() || undefined,
       productLine: newVersionForm.productLine.trim() || undefined
     })
@@ -4484,7 +4723,7 @@ async function submitNewVersion() {
     ElMessage.success('版本已创建')
     await loadVersions()
     // 建完直接切过去——建版本的下一步一定是往里加单子
-    filterVersion.value = newVersionForm.releaseLabel.trim()
+    filterVersion.value = label
     newVersionForm.releaseLabel = ''
     newVersionForm.appVersion = ''
     newVersionForm.productLine = ''
@@ -5061,7 +5300,7 @@ onBeforeUnmount(() => {
   display: grid;
   /* 勾选 / TC 编号 / 标题 / 优先级 / 复核 / 自动化 / 操作。
      列数必须和行里的子元素个数对上——多一个就会换行，操作列会掉到下一行最左边 */
-  grid-template-columns: 22px 120px minmax(0, 1fr) 56px 78px 72px 188px;
+  grid-template-columns: 22px 120px minmax(0, 1fr) 56px 78px 72px 232px;
   column-gap: 10px;
   align-items: center;
   padding: 6px 14px;
@@ -5378,6 +5617,21 @@ onBeforeUnmount(() => {
   background: #ecf5ff;
   border: 1px solid #b3d8ff;
   font-weight: 600;
+}
+.mod-ask {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  border: 1px solid #c4b5fd;
+  background: #f5f3ff;
+  color: #6d28d9;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.mod-ask:hover {
+  background: #ede9fe;
+  color: #5b21b6;
 }
 .mod-eps:hover {
   color: #337ecc;
@@ -5909,7 +6163,7 @@ onBeforeUnmount(() => {
   align-content: center;
   align-items: center;
 }
-.op-promote, .op-edit, .op-del, .op-view, .op-review, .op-bug {
+.op-promote, .op-edit, .op-del, .op-view, .op-review, .op-bug, .op-ask {
   font-size: 12px;
   padding: 0 4px;
   border: none;
@@ -6603,6 +6857,16 @@ onBeforeUnmount(() => {
   min-width: 0;
   flex-wrap: wrap;
 }
+.browse-head-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.browse-ask-btn {
+  font-weight: 600;
+}
 .browse-title {
   margin: 0;
   font-size: 16px;
@@ -6698,7 +6962,7 @@ onBeforeUnmount(() => {
 }
 .browse-case-table .table-head,
 .browse-case-table .case-row {
-  grid-template-columns: 36px 88px minmax(180px, 1fr) 64px 80px 72px 200px;
+  grid-template-columns: 36px 88px minmax(180px, 1fr) 64px 80px 72px 248px;
   padding-left: 20px;
   padding-right: 20px;
 }
@@ -6895,7 +7159,6 @@ onBeforeUnmount(() => {
 }
 
 .browse-bug-entry {
-  margin-left: auto;
   margin-right: 10px;
 }
 
@@ -6908,6 +7171,100 @@ onBeforeUnmount(() => {
 .browse-eps-head {
   display: flex;
   align-items: center;
+}
+
+.op-ask {
+  color: #7c3aed;
+  font-weight: 500;
+}
+.op-ask:hover { color: #6d28d9; text-decoration: underline; }
+
+.ask-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.ask-title { font-size: 16px; font-weight: 650; }
+.ask-tcid {
+  font-size: 12px;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+}
+.ask-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #475569;
+}
+.ask-meta b { color: #0f172a; }
+.ask-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.5;
+}
+.ask-thread {
+  max-height: 380px;
+  overflow: auto;
+  margin: 0 0 10px;
+  padding: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ask-msg-role {
+  font-size: 11px;
+  font-weight: 650;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+.ask-msg.is-user .ask-msg-role { color: #2563eb; }
+.ask-msg.is-assistant .ask-msg-role { color: #6d28d9; }
+.ask-msg-body {
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.65;
+  color: #0f172a;
+}
+.ask-msg.is-user .ask-msg-body {
+  background: #eff6ff;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.ask-msg-src {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #94a3b8;
+  word-break: break-all;
+}
+.ask-error {
+  margin-top: 10px;
+  font-size: 13px;
+  color: #b91c1c;
+}
+.ask-answer {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.65;
+  color: #0f172a;
+  max-height: 360px;
+  overflow: auto;
+}
+.ask-model {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #94a3b8;
 }
 
 </style>

@@ -1,73 +1,182 @@
 <template>
   <div class="api-schedules">
-    <el-card shadow="never">
-      <template #header>
-        <div class="card-header">
-          <div>
-            <span class="card-title">定时执行</span>
-            <p class="card-sub">
-              提测期间每天早上自动跑一轮，接口挂了当天就知道 ——
-              而不是等到回归那天才发现，那时已经分不清是哪次改动引入的。
-            </p>
-          </div>
-          <el-button type="primary" @click="openCreate">新建定时任务</el-button>
+    <Teleport to="#page-header-actions">
+      <el-button type="primary" @click="openCreate">
+        <el-icon class="el-icon--left"><Plus /></el-icon>
+        新建定时任务
+      </el-button>
+    </Teleport>
+
+    <div class="hint-banner">
+      <el-icon><InfoFilled /></el-icon>
+      <span>
+        定时任务按 Cron 表达式自动跑测试集合。到点按集合顺序执行并共享变量，结果写进执行报告——
+        提测期间每天早上跑一轮，接口挂了当天就知道。
+      </span>
+    </div>
+
+    <div class="kpi-row">
+      <div class="kpi-card">
+        <div class="kpi-icon is-blue"><el-icon><List /></el-icon></div>
+        <div class="kpi-body">
+          <div class="kpi-label">任务总数</div>
+          <div class="kpi-value">{{ rows.length }}</div>
+          <div class="kpi-sub">已启用 {{ stats.enabled }} · 已暂停 {{ stats.paused }}</div>
         </div>
-      </template>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon is-red"><el-icon><WarningFilled /></el-icon></div>
+        <div class="kpi-body">
+          <div class="kpi-label">今日失败</div>
+          <div class="kpi-value" :class="{ 'is-danger': stats.todayFail > 0 }">{{ stats.todayFail }}</div>
+          <div class="kpi-sub">{{ stats.todayFailHint }}</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon is-green"><el-icon><CircleCheckFilled /></el-icon></div>
+        <div class="kpi-body">
+          <div class="kpi-label">近7天成功率</div>
+          <div class="kpi-value" :class="stats.rateClass">{{ stats.rateText }}</div>
+          <div class="kpi-sub">{{ stats.rateHint }}</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon is-blue"><el-icon><Clock /></el-icon></div>
+        <div class="kpi-body">
+          <div class="kpi-label">下次执行</div>
+          <div class="kpi-value">{{ stats.nextTime }}</div>
+          <div class="kpi-sub">{{ stats.nextHint }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="list-panel">
+      <div class="list-head">
+        <div class="list-title">
+          任务列表
+          <span class="list-count">共 {{ filtered.length }} 条</span>
+        </div>
+        <div class="filters">
+          <button
+            v-for="f in FILTERS"
+            :key="f.key"
+            type="button"
+            class="filter-btn"
+            :class="{ active: filter === f.key }"
+            @click="filter = f.key"
+          >
+            {{ f.label }}
+          </button>
+        </div>
+      </div>
 
       <el-empty v-if="!loading && !rows.length" description="还没有定时任务">
         <el-button type="primary" @click="openCreate">新建第一条</el-button>
       </el-empty>
+      <el-empty v-else-if="!loading && !filtered.length" description="没有符合条件的任务" />
 
-      <div v-loading="loading">
-        <div v-for="s in rows" :key="s.id" class="sch-card" :class="{ off: !s.enabled }">
-          <div class="sch-play" :class="statusClass(s)">
+      <div v-loading="loading" class="task-list">
+        <div
+          v-for="s in filtered"
+          :key="s.id"
+          class="task-card"
+          :class="cardClass(s)"
+        >
+          <div class="task-accent" />
+          <div class="task-play" :class="statusClass(s)">
             <el-icon><VideoPlay v-if="s.enabled" /><VideoPause v-else /></el-icon>
           </div>
-          <div class="sch-main">
-            <div class="sch-title">
-              <span class="sch-name">{{ s.name }}</span>
-              <el-tag v-if="s.lastStatus" size="small" :type="tagType(s.lastStatus)">
+          <div class="task-main">
+            <div class="task-title">
+              <span class="task-name">{{ s.name }}</span>
+              <el-tag v-if="!s.enabled" size="small" type="info" effect="plain">已暂停</el-tag>
+              <el-tag v-else-if="s.lastStatus" size="small" :type="tagType(s.lastStatus)">
                 {{ statusText(s.lastStatus) }}
               </el-tag>
               <el-tag v-if="s.environment === 'PROD'" size="small" type="danger" effect="plain">线上</el-tag>
+              <span v-if="recentDots(s).length" class="run-dots">
+                <span class="run-dots-label">近{{ recentDots(s).length }}次</span>
+                <i
+                  v-for="(d, i) in recentDots(s)"
+                  :key="i"
+                  class="dot"
+                  :class="d"
+                  :title="d === 'ok' ? '通过' : d === 'bad' ? '失败' : '异常'"
+                />
+              </span>
             </div>
-            <div class="sch-meta">
+            <div class="task-meta">
+              <span class="cron-human">{{ cronLabel(s.cron) }}</span>
               <code>{{ s.cron }}</code>
-              <span class="dot">·</span>
               <span>{{ s.collectionName || '全部用例' }} · {{ s.caseCount ?? 0 }} 条</span>
-              <span v-if="s.lastRunAt" class="dot">·</span>
-              <el-button
-                v-if="s.lastRunId"
-                link
-                type="primary"
-                class="last-run"
-                @click="openReport(s.lastRunId)"
-              >
-                上次 {{ fmt(s.lastRunAt) }}
-              </el-button>
-              <span v-else-if="s.lastRunAt">上次 {{ fmt(s.lastRunAt) }}</span>
             </div>
-            <div v-if="s.lastStatus === 'ERROR' && s.lastMessage" class="sch-error">
+            <div class="task-last">
+              <template v-if="s.lastRunAt">
+                <el-button
+                  v-if="s.lastRunId"
+                  link
+                  type="primary"
+                  class="last-run"
+                  @click="openReport(s.lastRunId)"
+                >
+                  上次 {{ fmt(s.lastRunAt) }}
+                </el-button>
+                <span v-else>上次 {{ fmt(s.lastRunAt) }}</span>
+                <button type="button" class="expand-btn" @click="toggleDetail(s)">
+                  {{ expandedId === s.id ? '收起详情 ↑' : '展开详情 ↓' }}
+                </button>
+              </template>
+              <span v-else class="never">从未执行</span>
+            </div>
+            <div v-if="s.lastStatus === 'ERROR' && s.lastMessage && expandedId !== s.id" class="task-error">
               {{ s.lastMessage }}
             </div>
+            <div v-if="expandedId === s.id" class="task-detail">
+              <div v-if="s.lastMessage" class="detail-msg">{{ s.lastMessage }}</div>
+              <div v-if="!s.lastRunId" class="detail-empty">这次没有落执行报告</div>
+              <template v-else>
+                <div v-if="detailOf(s)?.loading" class="detail-empty">加载失败用例…</div>
+                <div v-else-if="detailOf(s)?.error" class="task-error">{{ detailOf(s)?.error }}</div>
+                <template v-else>
+                  <div class="detail-sum">
+                    {{ detailOf(s)?.run?.passed ?? 0 }} 通过
+                    · {{ detailOf(s)?.run?.failed ?? 0 }} 失败
+                    <el-button link type="primary" @click="openReport(s.lastRunId)">查看完整报告</el-button>
+                  </div>
+                  <div
+                    v-for="c in failedCases(s)"
+                    :key="c.id"
+                    class="fail-row"
+                  >
+                    <span class="fail-name">{{ c.name || c.path || '未命名用例' }}</span>
+                    <span class="fail-err">{{ c.error || c.status }}</span>
+                  </div>
+                  <div v-if="detailOf(s) && !failedCases(s).length && !detailOf(s)?.loading" class="detail-empty">
+                    没有失败用例
+                  </div>
+                </template>
+              </template>
+            </div>
           </div>
-          <div class="sch-next">
-            <div class="next-label">下次执行</div>
-            <div class="next-time">{{ s.enabled ? fmt(s.nextRunAt) || '—' : '已暂停' }}</div>
-          </div>
-          <div class="sch-actions">
-            <el-switch :model-value="!!s.enabled" @change="(v) => toggle(s, !!v)" />
-            <el-tooltip content="立即跑一次，不影响下次定时" placement="top">
-              <el-button link type="primary" :loading="runningId === s.id" @click="runNow(s)">
-                <el-icon><VideoPlay /></el-icon>
-              </el-button>
-            </el-tooltip>
-            <el-button link type="primary" @click="openEdit(s)">编辑</el-button>
-            <el-button v-perm:delete link type="danger" @click="remove(s)">删</el-button>
+          <div class="task-side">
+            <div class="next-block">
+              <div class="next-label">下次执行</div>
+              <div v-if="s.enabled" class="next-time">
+                {{ fmt(s.nextRunAt) || '—' }}
+                <span v-if="fromNow(s.nextRunAt)" class="next-rel">（{{ fromNow(s.nextRunAt) }}）</span>
+              </div>
+              <div v-else class="next-time is-paused">已暂停 <span class="next-rel">（启用后恢复）</span></div>
+            </div>
+            <div class="task-actions">
+              <el-switch :model-value="!!s.enabled" @change="(v: boolean) => toggle(s, !!v)" />
+              <el-button size="small" :loading="runningId === s.id" @click="runNow(s)">立即运行</el-button>
+              <el-button size="small" @click="openEdit(s)">编辑</el-button>
+              <el-button v-perm:delete size="small" type="danger" plain @click="remove(s)">删除</el-button>
+            </div>
           </div>
         </div>
       </div>
-    </el-card>
+    </div>
 
     <el-dialog v-model="dialog" :title="form.id ? '编辑定时任务' : '新建定时任务'" width="560px" destroy-on-close>
       <el-form :model="form" label-width="90px">
@@ -131,17 +240,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { VideoPlay, VideoPause } from '@element-plus/icons-vue'
+import {
+  CircleCheckFilled,
+  Clock,
+  InfoFilled,
+  List,
+  Plus,
+  VideoPause,
+  VideoPlay,
+  WarningFilled
+} from '@element-plus/icons-vue'
 import { apiClient } from '../api'
-
-/**
- * 定时执行。对应参考页的 Schedules。
- *
- * 没做 webhook 触发那块：现在没有 CI 往这里打，做了也没人用。
- */
 
 const router = useRouter()
 
@@ -152,6 +264,15 @@ const PRESETS = [
   { label: '每周日 2 点', cron: '0 0 2 ? * SUN' }
 ]
 
+const FILTERS = [
+  { key: 'all', label: '全部' },
+  { key: 'on', label: '已启用' },
+  { key: 'off', label: '已暂停' },
+  { key: 'fail', label: '有失败' }
+] as const
+
+type FilterKey = (typeof FILTERS)[number]['key']
+
 const rows = ref<any[]>([])
 const collections = ref<any[]>([])
 const projects = ref<string[]>([])
@@ -159,6 +280,9 @@ const loading = ref(false)
 const saving = ref(false)
 const dialog = ref(false)
 const runningId = ref('')
+const filter = ref<FilterKey>('all')
+const expandedId = ref('')
+const detailMap = ref<Record<string, { loading: boolean; run?: any; cases?: any[]; error?: string }>>({})
 
 const form = ref<any>({
   id: '',
@@ -170,14 +294,167 @@ const form = ref<any>({
   enabled: true
 })
 
+const filtered = computed(() => {
+  return rows.value.filter((s) => {
+    if (filter.value === 'on') return !!s.enabled
+    if (filter.value === 'off') return !s.enabled
+    if (filter.value === 'fail') return isFail(s.lastStatus)
+    return true
+  })
+})
+
+const stats = computed(() => {
+  const list = rows.value
+  const enabled = list.filter((s) => s.enabled).length
+  const paused = list.length - enabled
+  const todayFails = list.filter((s) => isFail(s.lastStatus) && isToday(s.lastRunAt))
+  const firstFail = todayFails[0]
+  const week = weekRuns(list)
+  const passed = week.filter((r) => r.status === 'PASSED').length
+  const next = list
+    .filter((s) => s.enabled && s.nextRunAt)
+    .slice()
+    .sort((a, b) => String(a.nextRunAt).localeCompare(String(b.nextRunAt)))[0]
+  return {
+    enabled,
+    paused,
+    todayFail: todayFails.length,
+    todayFailHint: firstFail
+      ? `${firstFail.name} · ${hm(firstFail.lastRunAt)} 执行`
+      : '今天还没有失败',
+    rateText: week.length ? `${Math.round((passed / week.length) * 100)}%` : '—',
+    rateHint: week.length ? `${passed} / ${week.length} 通过` : '近 7 天还没有执行',
+    rateClass: week.length ? (passed / week.length >= 0.8 ? 'is-ok' : 'is-danger') : '',
+    nextTime: next ? hm(next.nextRunAt) : '—',
+    nextHint: next ? `${dayHint(next.nextRunAt)} · ${next.name}` : '没有启用中的任务'
+  }
+})
+
+function isFail(status?: string | null) {
+  return status === 'FAILED' || status === 'ERROR'
+}
+
+function isToday(iso?: string | null) {
+  const d = parseTime(iso)
+  if (!d) return false
+  const n = new Date()
+  return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate()
+}
+
+function parseTime(iso?: string | null) {
+  if (!iso) return null
+  const d = new Date(String(iso).replace(' ', 'T'))
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+function weekRuns(list: any[]) {
+  const since = Date.now() - 7 * 86400000
+  const out: Array<{ status: string }> = []
+  for (const s of list) {
+    const recents = Array.isArray(s.recentRuns) && s.recentRuns.length
+      ? s.recentRuns
+      : s.lastStatus
+        ? [{ status: s.lastStatus, at: s.lastRunAt }]
+        : []
+    for (const r of recents) {
+      const t = parseTime(r.at)
+      if (t && t.getTime() < since) continue
+      if (!r.status) continue
+      out.push({ status: r.status })
+    }
+  }
+  return out
+}
+
+function hm(iso?: string | null) {
+  const d = parseTime(iso)
+  if (!d) return '—'
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+function dayHint(iso?: string | null) {
+  const d = parseTime(iso)
+  if (!d) return ''
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  const target = new Date(d)
+  target.setHours(0, 0, 0, 0)
+  const diff = Math.round((target.getTime() - start.getTime()) / 86400000)
+  if (diff === 0) return '今天'
+  if (diff === 1) return '明天'
+  if (diff === 2) return '后天'
+  return `${d.getMonth() + 1}/${d.getDate()}`
+}
+
 function fmt(s?: string | null) {
   if (!s) return ''
   return String(s).replace('T', ' ').slice(0, 16)
 }
 
+function fromNow(iso?: string | null) {
+  const d = parseTime(iso)
+  if (!d) return ''
+  const mins = Math.round((d.getTime() - Date.now()) / 60000)
+  if (mins <= 0) return '即将执行'
+  if (mins < 60) return `约 ${mins} 分钟后`
+  const hrs = Math.round(mins / 60)
+  if (hrs < 48) return `约 ${hrs} 小时后`
+  return `约 ${Math.round(hrs / 24)} 天后`
+}
+
+function cronLabel(cron?: string) {
+  if (!cron) return ''
+  const p = cron.trim().split(/\s+/)
+  if (p.length !== 6) return cron
+  const [, min, hour, day, month, week] = p
+  if (min.startsWith('0/') || min.startsWith('*/')) {
+    return `每 ${min.replace(/^0\//, '').replace('*/', '')} 分钟`
+  }
+  if (hour.startsWith('0/') || hour.startsWith('*/')) {
+    return `每 ${hour.replace(/^0\//, '').replace('*/', '')} 小时`
+  }
+  if (!/^\d+$/.test(hour) || !/^\d+$/.test(min)) return cron
+  const hhmm = `${hour.padStart(2, '0')}:${min.padStart(2, '0')}`
+  if (day === '*' && month === '*' && (week === '?' || week === '*')) return `每天 ${hhmm}`
+  if (week === 'MON-FRI') return `工作日 ${hhmm}`
+  const weekNames: Record<string, string> = {
+    SUN: '每周日',
+    MON: '每周一',
+    TUE: '每周二',
+    WED: '每周三',
+    THU: '每周四',
+    FRI: '每周五',
+    SAT: '每周六'
+  }
+  if (weekNames[week]) return `${weekNames[week]} ${hhmm}`
+  return cron
+}
+
+function recentDots(s: any): Array<'ok' | 'bad' | 'warn'> {
+  const recents = Array.isArray(s.recentRuns) && s.recentRuns.length
+    ? s.recentRuns
+    : s.lastStatus
+      ? [{ status: s.lastStatus }]
+      : []
+  return recents
+    .slice()
+    .reverse()
+    .map((r: any) => {
+      if (r.status === 'PASSED') return 'ok'
+      if (r.status === 'FAILED') return 'bad'
+      return 'warn'
+    })
+}
+
+function cardClass(s: any) {
+  if (!s.enabled) return 'is-paused'
+  if (isFail(s.lastStatus)) return 'is-fail'
+  return 'is-ok'
+}
+
 function statusClass(s: any) {
   if (!s.enabled) return 'paused'
-  if (s.lastStatus === 'FAILED' || s.lastStatus === 'ERROR') return 'bad'
+  if (isFail(s.lastStatus)) return 'bad'
   return 'good'
 }
 
@@ -191,6 +468,32 @@ function statusText(status: string) {
   if (status === 'PASSED') return '通过'
   if (status === 'FAILED') return '有失败'
   return '执行异常'
+}
+
+function detailOf(s: any) {
+  return s.lastRunId ? detailMap.value[s.lastRunId] : undefined
+}
+
+function failedCases(s: any) {
+  const cases = detailOf(s)?.cases
+  if (!Array.isArray(cases)) return []
+  return cases.filter((c) => c.status && c.status !== 'PASSED').slice(0, 8)
+}
+
+async function toggleDetail(s: any) {
+  if (expandedId.value === s.id) {
+    expandedId.value = ''
+    return
+  }
+  expandedId.value = s.id
+  if (!s.lastRunId || detailMap.value[s.lastRunId]) return
+  detailMap.value[s.lastRunId] = { loading: true }
+  try {
+    const d = await apiClient.getApiTestRunDetail(s.lastRunId)
+    detailMap.value[s.lastRunId] = { loading: false, run: d.run, cases: d.cases }
+  } catch (e: any) {
+    detailMap.value[s.lastRunId] = { loading: false, error: e?.message || '加载失败' }
+  }
 }
 
 async function load() {
@@ -308,37 +611,175 @@ onMounted(async () => {
 
 <style scoped>
 .api-schedules {
-  padding: 16px;
-}
-.card-header {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.hint-banner {
+  display: flex;
   align-items: flex-start;
-  gap: 16px;
-}
-.card-title {
-  font-size: 16px;
-  font-weight: 600;
-}
-.card-sub {
-  margin: 6px 0 0;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #e8f3ff;
+  color: #3d5a80;
   font-size: 13px;
-  color: var(--el-text-color-secondary);
   line-height: 1.6;
 }
-.sch-card {
+.hint-banner .el-icon {
+  margin-top: 3px;
+  color: var(--app-primary);
+  flex: none;
+}
+
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.kpi-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 18px;
+  background: #fff;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+}
+.kpi-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
-  gap: 14px;
-  border: 1px solid var(--el-border-color-lighter);
+  justify-content: center;
+  font-size: 18px;
+  flex: none;
+}
+.kpi-icon.is-blue {
+  background: #e8f3ff;
+  color: var(--app-primary);
+}
+.kpi-icon.is-red {
+  background: #fff1f0;
+  color: var(--app-danger);
+}
+.kpi-icon.is-green {
+  background: #f0f9eb;
+  color: var(--app-success);
+}
+.kpi-body {
+  min-width: 0;
+}
+.kpi-label {
+  font-size: 12px;
+  color: var(--app-text-secondary);
+}
+.kpi-value {
+  margin-top: 2px;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--app-text);
+}
+.kpi-value.is-danger {
+  color: var(--app-danger);
+}
+.kpi-value.is-ok {
+  color: var(--app-success);
+}
+.kpi-sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--app-text-secondary);
+}
+
+.list-panel {
+  background: #fff;
+  border: 1px solid var(--app-border);
   border-radius: 10px;
-  padding: 14px 16px;
+  padding: 16px 18px 18px;
+}
+.list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.list-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.list-count {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--app-text-secondary);
+}
+.filters {
+  display: flex;
+  gap: 4px;
+}
+.filter-btn {
+  border: none;
+  background: transparent;
+  color: var(--app-text-secondary);
+  font-size: 13px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.filter-btn.active {
+  background: #e8f3ff;
+  color: var(--app-primary);
+  font-weight: 600;
+}
+
+.task-list {
+  min-height: 80px;
+}
+.task-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  padding: 16px 16px 16px 18px;
   margin-bottom: 10px;
+  overflow: hidden;
 }
-.sch-card.off {
-  opacity: 0.6;
+.task-card:last-child {
+  margin-bottom: 0;
 }
-.sch-play {
+.task-accent {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--app-success);
+}
+.task-card.is-fail {
+  background: #fff7f7;
+  border-color: #ffccc7;
+}
+.task-card.is-fail .task-accent {
+  background: var(--app-danger);
+}
+.task-card.is-paused {
+  background: #fafafa;
+}
+.task-card.is-paused .task-accent {
+  background: #c0c4cc;
+}
+.task-card.is-ok .task-accent {
+  background: var(--app-primary);
+}
+
+.task-play {
   width: 40px;
   height: 40px;
   border-radius: 8px;
@@ -347,80 +788,185 @@ onMounted(async () => {
   justify-content: center;
   font-size: 18px;
   flex: none;
+  margin-top: 2px;
 }
-.sch-play.good {
+.task-play.good {
   background: var(--el-color-success-light-9);
   color: var(--el-color-success);
 }
-.sch-play.bad {
+.task-play.bad {
   background: var(--el-color-danger-light-9);
   color: var(--el-color-danger);
 }
-.sch-play.paused {
+.task-play.paused {
   background: var(--el-fill-color);
   color: var(--el-text-color-secondary);
 }
-.sch-main {
+
+.task-main {
   flex: 1;
   min-width: 0;
 }
-.sch-title {
+.task-title {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-.sch-name {
-  font-size: 14px;
-  font-weight: 600;
-}
-.sch-meta {
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  display: flex;
-  align-items: center;
-  gap: 6px;
   flex-wrap: wrap;
 }
-.sch-meta code {
+.task-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+.run-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 4px;
+  color: var(--app-text-secondary);
+  font-size: 12px;
+}
+.run-dots-label {
+  margin-right: 2px;
+}
+.run-dots .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d9d9d9;
+}
+.run-dots .dot.ok {
+  background: var(--app-success);
+}
+.run-dots .dot.bad {
+  background: var(--app-danger);
+}
+.run-dots .dot.warn {
+  background: var(--app-warning);
+}
+
+.task-meta {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--app-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cron-human {
+  color: var(--app-text);
+  font-weight: 500;
+}
+.task-meta code {
   padding: 1px 6px;
   border-radius: 4px;
   background: var(--el-fill-color);
+  color: #667085;
 }
-.dot {
-  color: var(--el-text-color-placeholder);
-}
-.sch-error {
-  margin-top: 6px;
+.task-last {
+  margin-top: 8px;
   font-size: 12px;
-  color: var(--el-color-danger);
-  line-height: 1.5;
-}
-.sch-next {
-  text-align: right;
-  flex: none;
-  min-width: 130px;
-}
-.next-label {
-  font-size: 11px;
-  color: var(--el-text-color-secondary);
-}
-.next-time {
-  font-size: 13px;
-  font-weight: 600;
-  margin-top: 2px;
-}
-.sch-actions {
+  color: var(--app-text-secondary);
   display: flex;
   align-items: center;
-  gap: 4px;
-  flex: none;
+  gap: 8px;
 }
 .last-run {
   padding: 0;
   height: auto;
   font-size: 12px;
 }
+.expand-btn {
+  border: none;
+  background: none;
+  color: var(--app-primary);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+}
+.never {
+  color: var(--app-text-secondary);
+}
+.task-error {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--el-color-danger);
+  line-height: 1.5;
+}
+.task-detail {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid var(--app-border);
+}
+.detail-msg {
+  font-size: 12px;
+  color: var(--app-text);
+  margin-bottom: 6px;
+}
+.detail-sum {
+  font-size: 12px;
+  color: var(--app-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.detail-empty {
+  font-size: 12px;
+  color: var(--app-text-secondary);
+}
+.fail-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+.fail-name {
+  flex: none;
+  font-weight: 500;
+}
+.fail-err {
+  color: var(--app-danger);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-side {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+  min-width: 220px;
+}
+.next-block {
+  text-align: right;
+}
+.next-label {
+  font-size: 11px;
+  color: var(--app-text-secondary);
+}
+.next-time {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.next-time.is-paused {
+  color: var(--app-text-secondary);
+}
+.next-rel {
+  font-weight: 400;
+  color: var(--app-text-secondary);
+}
+.task-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .tip {
   margin-top: 6px;
   font-size: 12px;
@@ -438,5 +984,21 @@ onMounted(async () => {
 }
 .preset {
   cursor: pointer;
+}
+
+@media (max-width: 1100px) {
+  .kpi-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .task-card {
+    flex-wrap: wrap;
+  }
+  .task-side {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    min-width: 0;
+  }
 }
 </style>

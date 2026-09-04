@@ -19,7 +19,6 @@
             <span>主菜单</span>
           </template>
           <el-menu-item index="/home">工作台</el-menu-item>
-          <el-menu-item index="/tasks">APP测试任务</el-menu-item>
           <el-menu-item index="/codewords-agent">AI助手</el-menu-item>
         </el-sub-menu>
 
@@ -29,7 +28,7 @@
             <span>测试用例</span>
           </template>
           <el-menu-item index="/bug-management">Bug 管理</el-menu-item>
-          <el-menu-item index="/issue-tracking">问题跟踪</el-menu-item>
+          <el-menu-item index="/issue-tracking">线上问题跟踪</el-menu-item>
           <el-menu-item
             v-for="suite in TEST_CASE_SUITES"
             :key="suite.key"
@@ -64,9 +63,16 @@
           -->
           <el-menu-item index="/api-endpoints">接口清单</el-menu-item>
           <el-menu-item v-if="canVisit('/api-environments')" index="/api-environments">环境变量</el-menu-item>
-          <el-menu-item v-if="canVisit('/api-schedules')" index="/api-schedules">定时执行</el-menu-item>
           <el-menu-item index="/api-reports">执行报告</el-menu-item>
           <el-menu-item index="/api-changes">接口对比分析</el-menu-item>
+        </el-sub-menu>
+
+        <el-sub-menu v-if="canVisit('/api-schedules')" index="schedules">
+          <template #title>
+            <el-icon><Clock /></el-icon>
+            <span>定时任务</span>
+          </template>
+          <el-menu-item index="/api-schedules">定时执行</el-menu-item>
         </el-sub-menu>
 
         <el-sub-menu v-if="showWebTestMenu" index="web-test-menu">
@@ -83,18 +89,13 @@
             <el-icon><VideoPlay /></el-icon>
             <span>APP 自动化</span>
           </template>
+          <el-menu-item v-if="canVisit('/app-automation')" index="/app-automation">自动化用例</el-menu-item>
+          <el-menu-item index="/tasks">APP测试任务</el-menu-item>
           <el-menu-item v-if="canVisit('/ui-flows')" index="/ui-flows">流程编排</el-menu-item>
           <el-menu-item v-if="canVisit('/ui-elements')" index="/ui-elements">元素管理</el-menu-item>
           <el-menu-item v-if="canVisit('/ui-inspector-import')" index="/ui-inspector-import">Inspector XML 导入</el-menu-item>
           <el-menu-item v-if="canVisit('/ui-keywords')" index="/ui-keywords">关键字库</el-menu-item>
-        </el-sub-menu>
-
-        <el-sub-menu v-if="canVisit('/app-online-regression')" index="regression">
-          <template #title>
-            <el-icon><Cellphone /></el-icon>
-            <span>回归测试</span>
-          </template>
-          <el-menu-item index="/app-online-regression">APP回归</el-menu-item>
+          <el-menu-item v-if="canVisit('/app-online-regression')" index="/app-online-regression">APP回归</el-menu-item>
         </el-sub-menu>
 
         <el-sub-menu index="tools">
@@ -168,9 +169,12 @@
       </el-menu>
     </el-aside>
     <el-container>
-      <el-header v-if="!isApiReportsPage && !isTestCasesPage && !isBugManagementPage && !isIssueTrackingPage" class="header">
+      <el-header v-if="!isApiReportsPage && !isTestCasesPage && !isBugManagementPage && !isIssueTrackingPage && !isAppAutomationPage" class="header">
         <div class="header-content">
           <h3>{{ currentTitle }}</h3>
+        </div>
+        <div class="header-right">
+          <div id="page-header-actions" class="header-actions"></div>
           <div v-if="user" class="header-user">
             <el-tag size="small" :type="roleTagType">{{ user.roleLabel }}</el-tag>
             <el-dropdown trigger="click" @command="onUserCommand">
@@ -195,7 +199,7 @@
       </el-header>
       <el-main
         class="main-content"
-        :class="{ 'is-agent': isAgentPage, 'is-test-cases': isTestCasesPage, 'is-bug-management': isBugManagementPage, 'is-issue-tracking': isIssueTrackingPage, 'is-api-collections': isApiCollectionsPage, 'is-api-reports': isApiReportsPage }"
+        :class="{ 'is-agent': isAgentPage, 'is-test-cases': isTestCasesPage, 'is-bug-management': isBugManagementPage, 'is-issue-tracking': isIssueTrackingPage, 'is-app-automation': isAppAutomationPage, 'is-api-collections': isApiCollectionsPage, 'is-api-reports': isApiReportsPage }"
       >
         <router-view :key="route.fullPath" />
       </el-main>
@@ -232,9 +236,9 @@ import {
   DataAnalysis,
   Setting,
   VideoPlay,
-  Cellphone,
   Connection,
   Link,
+  Clock,
   Monitor,
   Notebook,
   ArrowDown
@@ -257,10 +261,13 @@ const roleTagType = computed(() => {
 
 const showAppAutoMenu = computed(
   () =>
+    canVisit('/app-automation') ||
+    canVisit('/tasks') ||
     canVisit('/ui-flows') ||
     canVisit('/ui-elements') ||
     canVisit('/ui-inspector-import') ||
-    canVisit('/ui-keywords')
+    canVisit('/ui-keywords') ||
+    canVisit('/app-online-regression')
 )
 
 const showWebTestMenu = computed(
@@ -327,7 +334,6 @@ const defaultOpeneds = computed(() => {
   const p = route.path
   if (
     p.startsWith('/home') ||
-    p.startsWith('/tasks') ||
     p.includes('codewords-agent')
   ) {
     return ['main']
@@ -347,20 +353,23 @@ const defaultOpeneds = computed(() => {
     return ['web-test-menu']
   }
   if (
+    p.startsWith('/app-automation') ||
+    p.startsWith('/tasks') ||
     p.startsWith('/ui-flows') ||
     p.startsWith('/ui-keywords') ||
     p.startsWith('/ui-elements') ||
-    p.startsWith('/ui-inspector-import')
+    p.startsWith('/ui-inspector-import') ||
+    p.startsWith('/app-online-regression')
   ) {
     return ['app-auto']
   }
-  // 接口测试下所有页面都以 /api- 开头（概览、集合、清单、环境变量、定时、报告、对比分析）。
+  if (p.startsWith('/api-schedules')) {
+    return ['schedules']
+  }
+  // 接口测试下页面以 /api- 开头（概览、集合、清单、环境变量、报告、对比分析）。
   // api-projects / api-urls 在资产管理下，已在上面单独处理
   if (p.startsWith('/api-')) {
     return ['api-test']
-  }
-  if (p.startsWith('/app-online-regression')) {
-    return ['regression']
   }
   if (p.startsWith('/reports/esports')) {
     return ['reports', 'reports-esports']
@@ -408,11 +417,12 @@ const titleMap: Record<string, string> = {
   '/version-archives': '版本需求归档',
   '/change-review': '本周改动 / 漏测看板',
   '/bug-management': 'Bug 管理',
-  '/issue-tracking': '问题跟踪',
+  '/issue-tracking': '线上问题跟踪',
+  '/app-automation': '自动化用例',
   '/web-test': 'Web 端测试',
   '/api-testing': '概览',
   '/api-collections': '用例集合',
-  '/api-schedules': '定时执行',
+  '/api-schedules': '定时任务',
   '/api-reports': '执行报告',
   '/api-environments': '环境变量',
   '/api-changes': '接口对比分析',
@@ -438,6 +448,7 @@ const isTestCasesPage = computed(
 )
 const isBugManagementPage = computed(() => route.path.startsWith('/bug-management'))
 const isIssueTrackingPage = computed(() => route.path.startsWith('/issue-tracking'))
+const isAppAutomationPage = computed(() => route.path.startsWith('/app-automation'))
 const isApiCollectionsPage = computed(() => route.path.startsWith('/api-collections'))
 const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
 </script>
@@ -612,11 +623,26 @@ const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
 .header-content {
   -webkit-app-region: drag;
   app-region: drag;
-  max-width: 70%;
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 12px;
-  min-width: 0;
+}
+
+.header-right {
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /*
@@ -662,6 +688,7 @@ const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
 .main-content.is-test-cases,
 .main-content.is-bug-management,
 .main-content.is-issue-tracking,
+.main-content.is-app-automation,
 .main-content.is-api-collections,
 .main-content.is-api-reports {
   padding: 0;
@@ -715,7 +742,8 @@ const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
 
 .main-content.is-test-cases,
 .main-content.is-bug-management,
-.main-content.is-issue-tracking {
+.main-content.is-issue-tracking,
+.main-content.is-app-automation {
   height: 100vh;
 }
 
@@ -742,6 +770,17 @@ const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
 }
 
 .main-content.is-issue-tracking :deep(.issue-track) {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.main-content.is-app-automation {
+  padding: 0;
+  overflow: hidden;
+}
+
+.main-content.is-app-automation :deep(.app-auto-cases) {
   flex: 1;
   min-height: 0;
   height: 100%;

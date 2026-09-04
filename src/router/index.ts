@@ -64,6 +64,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '设置' }
       },
       {
+        path: 'app-automation',
+        name: 'AppAutomationCases',
+        component: () => import('../views/AppAutomationCases.vue'),
+        meta: { title: '自动化用例' }
+      },
+      {
         path: 'app-online-regression',
         name: 'AppOnlineRegression',
         component: () => import('../views/AppOnlineRegression.vue'),
@@ -109,7 +115,7 @@ const routes: RouteRecordRaw[] = [
         path: 'issue-tracking',
         name: 'IssueTracking',
         component: () => import('../views/IssueTracking.vue'),
-        meta: { title: '问题跟踪' }
+        meta: { title: '线上问题跟踪' }
       },
       {
         path: 'test-cases/:category',
@@ -201,7 +207,7 @@ const routes: RouteRecordRaw[] = [
         path: 'api-schedules',
         name: 'ApiSchedules',
         component: () => import('../views/ApiSchedules.vue'),
-        meta: { title: '定时执行' }
+        meta: { title: '定时任务' }
       },
       {
         path: 'api-reports',

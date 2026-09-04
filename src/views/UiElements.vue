@@ -5,9 +5,6 @@
         <div class="card-header">
           <div>
             <span class="card-title">元素库</span>
-            <p class="card-sub">
-              按「应用 + 平台 + 页面/弹窗」维护。同页元素折叠在一起；流程引用取 status=选用(ACTIVE)。
-            </p>
           </div>
           <div class="header-actions">
             <el-button @click="router.push('/ui-inspector-import')">Inspector 导入</el-button>
@@ -28,7 +25,7 @@
       <el-tabs v-model="filterScene" class="catalog-tabs" @tab-change="onFilterChange">
         <el-tab-pane v-for="c in sceneTabs" :key="c.value" :label="c.label" :name="c.value" />
       </el-tabs>
-      <p class="catalog-hint">{{ catalogHint }}</p>
+      <p v-if="catalogHint" class="catalog-hint">{{ catalogHint }}</p>
 
       <div class="filter-bar">
         <el-form :inline="true">
@@ -1322,7 +1319,7 @@ watch(filterAppId, () => {
 
 const catalogHint = computed(() => {
   if (viewMode.value === 'byPage') {
-    return '按页折叠：同一弹窗/页面下的元素归在一组。搜索页面中文名会自动展开对应组。'
+    return ''
   }
   if (filterScene.value === 'TEST') {
     return '测试侧可见：仅测试 + 两边共用。列表按应用+平台分页；可用「来源/状态」筛候选；点「选用」设为 ACTIVE。'
@@ -1768,12 +1765,6 @@ onMounted(async () => {
 .card-title {
   font-size: 16px;
   font-weight: 600;
-}
-.card-sub {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: var(--el-text-color-placeholder);
-  font-weight: normal;
 }
 .catalog-hint {
   margin: 0 0 12px;

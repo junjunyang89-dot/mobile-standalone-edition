@@ -1946,6 +1946,12 @@ class ApiClient {
         lastStatus?: string | null
         lastMessage?: string | null
         caseCount?: number
+        recentRuns?: Array<{
+          status?: string | null
+          runId?: string | null
+          at?: string | null
+          message?: string | null
+        }>
       }>
     >('/api-test/schedules')
   }
@@ -2510,6 +2516,40 @@ class ApiClient {
     return this.request<any>(`/ai-test-cases/${id}`, { method: 'PUT', body: JSON.stringify(body) })
   }
 
+  /**
+   * 对着一条用例提问。带着此前对话一起在本机仓库检索，不经过千问。
+   */
+  async askAiTestCase(id: number, question: string, history: Array<{ role: string; content: string }> = []) {
+    return this.request<{
+      answer: string
+      model: string
+      caseId?: string
+      requirementNo?: string
+      sources?: string[]
+    }>(`/ai-test-cases/${id}/ask`, {
+      method: 'POST',
+      body: JSON.stringify({ question, history })
+    })
+  }
+
+  /** 需求页上还没点到某一条 TC 时，按整单问 */
+  async askRequirement(
+    requirementNo: string,
+    question: string,
+    history: Array<{ role: string; content: string }> = []
+  ) {
+    return this.request<{
+      answer: string
+      model: string
+      caseId?: string
+      requirementNo?: string
+      sources?: string[]
+    }>(`/ai-test-cases/requirements/${encodeURIComponent(requirementNo)}/ask`, {
+      method: 'POST',
+      body: JSON.stringify({ question, history })
+    })
+  }
+
   /** 端的字典：客户端 / H5 / 后端 / 管理后台 */
   async fetchSides() {
     return this.request<Array<{ code: string; label: string; hint: string }>>('/ai-test-cases/sides')
@@ -2840,12 +2880,29 @@ class ApiClient {
     return response.json() as Promise<{ urls: string[] }>
   }
 
+  /** 线上问题跟踪截图，支持一次多张 */
+  async uploadIssueImages(files: File[]) {
+    const form = new FormData()
+    files.forEach((f) => form.append('files', f))
+    const response = await authFetch(`${this.baseURL}/issue-tracking/images`, {
+      method: 'POST',
+      body: form
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ message: '上传失败' }))
+      throw new Error(err.message || `HTTP ${response.status}`)
+    }
+    return response.json() as Promise<{ urls: string[] }>
+  }
+
   /** 线上/测试问题持续跟踪 */
   async listIssueTracking(params?: {
     environment?: string
     status?: string
     priority?: string
     trackingTester?: string
+    projectType?: string
+    developer?: string
     q?: string
   }) {
     const q = new URLSearchParams()
@@ -2853,11 +2910,14 @@ class ApiClient {
     if (params?.status) q.set('status', params.status)
     if (params?.priority) q.set('priority', params.priority)
     if (params?.trackingTester) q.set('trackingTester', params.trackingTester)
+    if (params?.projectType) q.set('projectType', params.projectType)
+    if (params?.developer) q.set('developer', params.developer)
     if (params?.q) q.set('q', params.q)
     const qs = q.toString()
     return this.request<{
       issues: Array<Record<string, any>>
       testers: string[]
+      developers: string[]
       statusCounts: Record<string, number>
     }>(qs ? `/issue-tracking?${qs}` : '/issue-tracking')
   }
@@ -2880,6 +2940,21 @@ class ApiClient {
     return this.request<{ success: boolean }>(`/issue-tracking/${encodeURIComponent(id)}`, {
       method: 'DELETE'
     })
+  }
+
+  async syncIssueTrackingWiki(id?: string) {
+    const path = id
+      ? `/issue-tracking/sync-wiki?id=${encodeURIComponent(id)}`
+      : '/issue-tracking/sync-wiki'
+    return this.request<{
+      ok: boolean
+      wikiPageUrl: string
+      title?: string
+      count: number
+      appended?: number
+      skipped?: number
+      uploadedImages?: number
+    }>(path, { method: 'POST' })
   }
 
   /** 人工补一个接口到需求单上——分析只认这个分支改过的，没改但会调到的要自己加 */
