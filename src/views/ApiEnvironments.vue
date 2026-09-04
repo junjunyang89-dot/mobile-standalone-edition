@@ -32,10 +32,14 @@
       </div>
 
       <div class="base-block">
-        <span class="base-label">当前 baseUrl</span>
+        <span class="base-label">兜底 baseUrl</span>
         <code class="base-value">{{ currentEnv.baseUrl || '（未配置）' }}</code>
         <el-button link type="primary" @click="$router.push('/api-urls')">去 URL 管理修改</el-button>
-        <span class="base-hint">用例默认拼在它后面；用例上选了具体 URL 时以那个为准</span>
+        <!--
+          叫「兜底」而不是「当前」：解析顺序是 用例选的 URL → 这里。
+          叫「当前」会让人以为所有用例都走它，于是改了这里发现没生效。
+        -->
+        <span class="base-hint">仅在用例没选具体 URL 时才用它；选了就以那个为准</span>
       </div>
 
       <!--

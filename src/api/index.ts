@@ -1633,6 +1633,41 @@ class ApiClient {
     }>(`/tree${qs}`)
   }
 
+  /**
+   * 接口覆盖差集：白盒（代码变更分析）与黑盒（前端抓包）两边结论的对照。
+   *
+   * changedNotCaptured 是最该看的那个数——接口改了但抓包一次都没捕获到，
+   * 要么这条路没测到，要么前端本来就不调它。
+   */
+  async getCoverageGapSummary(includeArchived = false) {
+    const qs = includeArchived ? '?includeArchived=true' : ''
+    return this.request<Array<{
+      requirementNo: string
+      total: number
+      changedNotCaptured: number
+      covered: number
+      capturedNotChanged: number
+      manual: number
+    }>>(`/coverage-gap${qs}`)
+  }
+
+  async getCoverageGap(requirementNo: string, includeArchived = false) {
+    const qs = includeArchived ? '?includeArchived=true' : ''
+    return this.request<{
+      requirementNo: string
+      total: number
+      coveredCount: number
+      changedNotCapturedCount: number
+      capturedNotChangedCount: number
+      manualCount: number
+      /** 一句人话，直接说下一步做什么 */
+      hint: string
+      covered: Array<Record<string, unknown>>
+      changedNotCaptured: Array<Record<string, unknown>>
+      capturedNotChanged: Array<Record<string, unknown>>
+    }>(`/coverage-gap/${encodeURIComponent(requirementNo)}${qs}`)
+  }
+
   /** 客户端 App ↔ 项目 关联，UI 自动化资产靠它归属到项目 */
   async getAppProjectLinks(params: { appId?: string; projectCode?: string } = {}) {
     const qs = new URLSearchParams()
