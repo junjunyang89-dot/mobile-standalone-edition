@@ -2474,6 +2474,15 @@ class ApiClient {
     })
   }
 
+  // ---------- 变更影响：表→接口、变更→需复查用例 ----------
+  async getTableImpact(table: string, project?: string) {
+    const q = project ? `?project=${encodeURIComponent(project)}` : ''
+    return this.request<any>(`/table-impact/${encodeURIComponent(table)}${q}`)
+  }
+  async getCaseReview(body: { project?: string; changedFields?: string[]; changedTables?: string[] }) {
+    return this.request<any>('/case-review', { method: 'POST', body: JSON.stringify(body) })
+  }
+
   async analyzeApiChanges(body: { project: string; baseRef?: string; headRef?: string }) {
     return this.request<any>('/api-changes/analyze', {
       method: 'POST',

@@ -119,6 +119,32 @@
           </template>
           <span v-else>本次没有接口变更，清单里上一轮的标记已清空</span>
         </div>
+
+        <!-- 变更牵动哪些已有用例需复查：断言取了变更字段、或读写了改结构的表。
+             它们现在可能还显示绿，其实已经不对——这是上线同步最容易漏的一环 -->
+        <div v-if="review && review.count > 0" class="case-review">
+          <div class="cr-head">
+            <el-icon><WarningFilled /></el-icon>
+            <b>{{ review.count }} 条已有用例可能失效，需复查</b>
+          </div>
+          <div class="cr-hint">{{ review.hint }}</div>
+          <el-table :data="review.cases" size="small" border style="margin-top:8px">
+            <el-table-column prop="name" label="用例" min-width="160" show-overflow-tooltip />
+            <el-table-column label="接口" min-width="200">
+              <template #default="{ row }"><span class="cr-ep">{{ row.method }} {{ row.path }}</span></template>
+            </el-table-column>
+            <el-table-column label="为什么要复查" min-width="220">
+              <template #default="{ row }">
+                <div v-for="(r, i) in row.reasons" :key="i" class="cr-reason">
+                  <el-tag size="small" :type="r.kind === 'FIELD' ? 'warning' : 'danger'">
+                    {{ r.kind === 'FIELD' ? '字段' : '表' }}
+                  </el-tag>
+                  {{ r.detail }}
+                </div>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
         <div class="stat-row">
           <a
             v-for="s in statCards"
@@ -547,10 +573,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { apiClient } from '@/api'
+import { WarningFilled } from '@element-plus/icons-vue'
 
 const router = useRouter()
 
@@ -749,6 +776,32 @@ const headRef = ref('')
 const loading = ref(false)
 const errorMsg = ref('')
 const report = ref<any | null>(null)
+const review = ref<any | null>(null)
+
+// 报告一变就重算"哪些已有用例可能失效"。从报告里提出变更字段和变更表——
+// 字段散在每个接口的 fields/bodyFields 里，表在 report.tables
+watch(report, async (r) => {
+  review.value = null
+  if (!r || !r.endpoints?.length) return
+  const fields = new Set<string>()
+  for (const e of r.endpoints) {
+    for (const f of [...(e.fields || []), ...(e.bodyFields || [])]) {
+      // 只有删/改类型的字段才会让老用例失效；纯新增不影响已有断言
+      if ((f.changeType === 'REMOVED' || f.changeType === 'TYPE_CHANGED') && (f.name || f.field)) {
+        fields.add(f.name || f.field)
+      }
+    }
+  }
+  const tables = (r.tables || []).map((t: any) => t.table).filter(Boolean)
+  if (!fields.size && !tables.length) return
+  try {
+    review.value = await apiClient.getCaseReview({
+      project: r.project || project.value || undefined,
+      changedFields: [...fields],
+      changedTables: tables
+    })
+  } catch { /* 复查是锦上添花，失败不打断报告展示 */ }
+})
 
 const historyVisible = ref(false)
 const historyLoading = ref(false)
@@ -1475,4 +1528,10 @@ onMounted(() => {
   color: var(--app-text-secondary);
   line-height: 1.5;
 }
+
+.case-review{margin:12px 0;padding:12px 14px;background:#fff7e6;border:1px solid #ffe0a3;border-radius:8px}
+.case-review .cr-head{display:flex;align-items:center;gap:6px;color:#c67a13;font-size:14px}
+.case-review .cr-hint{color:#8a6d3b;font-size:12.5px;margin:4px 0 2px}
+.case-review .cr-ep{font-family:monospace;font-size:12.5px;color:#606266}
+.case-review .cr-reason{margin:2px 0;font-size:12.5px}
 </style>

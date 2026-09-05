@@ -125,6 +125,18 @@
             </el-table-column>
             <el-table-column prop="path" label="路径" min-width="280" show-overflow-tooltip />
             <el-table-column prop="handler" label="Controller" width="180" show-overflow-tooltip />
+            <el-table-column label="涉及的表" min-width="160">
+              <template #default="{ row }">
+                <el-tag
+                  v-for="t in parseTables(row.tablesJson)"
+                  :key="t"
+                  size="small"
+                  effect="plain"
+                  style="margin: 1px 3px 1px 0"
+                >{{ t }}</el-tag>
+                <span v-if="!parseTables(row.tablesJson).length" class="text-faint">—</span>
+              </template>
+            </el-table-column>
             <el-table-column label="覆盖" width="120">
               <template #default="{ row }">
                 <span :class="row.actionable ? 'text-warn' : ''">{{ row.statusLabel }}</span>
@@ -459,6 +471,11 @@ function openCollection() {
   router.push({ path: '/api-collections', query: q })
 }
 
+function parseTables(json: string | null | undefined): string[] {
+  if (!json) return []
+  try { const a = JSON.parse(json); return Array.isArray(a) ? a : [] } catch { return [] }
+}
+
 function openCases(row: ApiEndpointVo) {
   router.push({ path: '/api-collections', query: { project: row.project } })
 }
@@ -785,4 +802,6 @@ watch([tableRows, pageSize], () => {
   font-size: 12px;
   color: #595959;
 }
+
+.text-faint{color:#c0c4cc}
 </style>
