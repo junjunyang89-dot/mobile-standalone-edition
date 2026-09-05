@@ -3,24 +3,16 @@
     <header class="page-nav">
       <div class="nav-left">
         <span class="nav-title">自动化用例</span>
-        <span class="nav-sub">按环境 · 产品 · 端查看 · 同一条流程两边都能跑</span>
+        <span class="nav-sub">按 环境 · 产品 · 端查看，同一条流程两边都能跑</span>
       </div>
       <div class="nav-right">
-        <div class="nav-actions">
-          <button
-            type="button"
-            class="btn-nav"
-            :disabled="!selectedRows.length"
-            @click="openBatch"
-          >
-            批量执行{{ selectedRows.length ? `（${selectedRows.length}）` : '' }}
-          </button>
-          <button type="button" class="btn-nav btn-nav-primary" @click="goFlows">去编排</button>
-        </div>
+        <el-button :disabled="!selectedRows.length" @click="openBatch">批量执行</el-button>
+        <el-button type="primary" @click="goFlows">去编排</el-button>
         <div v-if="user" class="nav-user">
-          <el-tag size="small" effect="dark" class="nav-user-role">{{ user.roleLabel }}</el-tag>
+          <el-tag size="small" :type="roleTagType">{{ user.roleLabel }}</el-tag>
           <el-dropdown trigger="click" @command="onNavUserCommand">
             <span class="nav-user-name">
+              <el-icon><User /></el-icon>
               {{ user.displayName || user.username }}
               <el-icon><ArrowDown /></el-icon>
             </span>
@@ -34,122 +26,143 @@
       </div>
     </header>
 
-    <div class="filter-bar">
-      <div class="env-tabs">
-        <button
-          type="button"
-          class="env-tab"
-          :class="{ active: environment === 'TEST' }"
-          @click="switchEnv('TEST')"
-        >
-          测试环境
-        </button>
-        <button
-          type="button"
-          class="env-tab"
-          :class="{ active: environment === 'PROD' }"
-          @click="switchEnv('PROD')"
-        >
-          生产环境
-        </button>
+    <div class="filter-panel">
+      <div class="filter-row">
+        <span class="filter-label">环境</span>
+        <div class="seg">
+          <button
+            type="button"
+            class="seg-btn"
+            :class="{ active: environment === 'TEST' }"
+            @click="switchEnv('TEST')"
+          >
+            测试环境
+          </button>
+          <button
+            type="button"
+            class="seg-btn"
+            :class="{ active: environment === 'PROD' }"
+            @click="switchEnv('PROD')"
+          >
+            生产环境
+          </button>
+        </div>
       </div>
-      <div class="env-tabs">
-        <button
-          v-for="p in PRODUCTS"
-          :key="p.value"
-          type="button"
-          class="env-tab"
-          :class="{ active: product === p.value }"
-          @click="switchProduct(p.value)"
-        >
-          {{ p.label }}
-        </button>
+      <div class="filter-row">
+        <span class="filter-label">产品</span>
+        <div class="seg">
+          <button
+            v-for="p in PRODUCTS"
+            :key="p.value"
+            type="button"
+            class="seg-btn"
+            :class="{ active: product === p.value }"
+            @click="switchProduct(p.value)"
+          >
+            {{ p.label }}
+          </button>
+        </div>
       </div>
-      <div class="env-tabs">
-        <button
-          v-for="p in platformTabs"
-          :key="p.value"
-          type="button"
-          class="env-tab"
-          :class="{ active: platform === p.value }"
-          @click="switchPlatform(p.value)"
-        >
-          {{ p.label }}
-        </button>
+      <div class="filter-row">
+        <span class="filter-label">平台</span>
+        <div class="seg">
+          <button
+            v-for="p in platformTabs"
+            :key="p.value"
+            type="button"
+            class="seg-btn"
+            :class="['is-' + p.value.toLowerCase(), { active: platform === p.value }]"
+            @click="switchPlatform(p.value)"
+          >
+            {{ p.label }}
+          </button>
+        </div>
+        <div class="filter-search">
+          <el-input
+            v-model="keyword"
+            class="f-search"
+            size="small"
+            clearable
+            placeholder="搜索流程名称..."
+            @keyup.enter="load"
+          />
+          <el-button type="primary" size="small" :loading="loading" @click="load">查询</el-button>
+          <span class="flow-count">共 {{ rows.length }} 条流程</span>
+        </div>
       </div>
-      <el-input
-        v-model="keyword"
-        class="f-search"
-        size="small"
-        clearable
-        placeholder="搜索流程名"
-        @keyup.enter="load"
-      />
-      <el-button type="primary" size="small" :loading="loading" @click="load">查询</el-button>
     </div>
 
     <div class="status-bar">
-      <span class="path-label">{{ pathLabel }}</span>
-      <span class="path-meta">{{ rows.length }} 条</span>
-      <el-alert
-        v-if="product === 'POGPOG'"
-        type="warning"
-        :closable="false"
-        show-icon
-        class="proxy-alert"
-        title="海外 PogPog：开跑时会走海外代理，请确认执行端 VPN 就绪。"
-      />
+      <div class="path-left">
+        <span class="path-seg">{{ envLabel }}</span>
+        <span class="path-dot">·</span>
+        <span class="path-seg">{{ productLabel }}</span>
+        <span class="path-dot">·</span>
+        <span class="path-seg" :class="'is-' + platform.toLowerCase()">{{ platformLabel }}</span>
+        <span class="path-count">{{ rows.length }}条</span>
+      </div>
+      <div class="stat-pills">
+        <span class="stat-pill">总数 <em class="is-total">{{ stats.total }}</em></span>
+        <span class="stat-pill">已绑 <em class="is-bound">{{ stats.bound }}</em></span>
+        <span class="stat-pill">未跑 <em class="is-idle">{{ stats.idle }}</em></span>
+        <span class="stat-pill">失败 <em class="is-fail">{{ stats.failed }}</em></span>
+      </div>
     </div>
+    <el-alert
+      v-if="product === 'POGPOG'"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="proxy-alert"
+      title="海外 PogPog：开跑时会走海外代理，请确认执行端 VPN 就绪。"
+    />
 
     <div class="table-wrap" v-loading="loading">
       <el-table
         :data="rows"
-        stripe
-        border
-        size="small"
         height="100%"
+        class="case-table"
+        :header-cell-style="{ background: '#fafafa', color: '#909399', fontWeight: 500 }"
         @selection-change="onSelectionChange"
       >
-        <el-table-column type="selection" width="42" />
-        <el-table-column prop="name" label="名称" min-width="200" show-overflow-tooltip>
+        <el-table-column type="selection" width="48" />
+        <el-table-column prop="name" label="名称" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">
             <div class="name-cell">
-              <span>{{ row.name }}</span>
+              <span class="name-text">{{ row.name }}</span>
               <el-tag v-if="row.enabled === false" size="small" type="info">停用</el-tag>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="覆盖用例" width="100" align="center">
+        <el-table-column label="覆盖用例" width="110" align="center">
           <template #default="{ row }">
-            <span v-if="row.caseCount == null" class="muted">…</span>
-            <span v-else-if="row.caseCount === 0" class="muted">未挂</span>
-            <el-tag v-else size="small" type="success">{{ row.caseCount }}</el-tag>
+            <span v-if="row.caseCount == null" class="pill pill-muted">…</span>
+            <span v-else-if="row.caseCount === 0" class="pill pill-muted">未挂</span>
+            <span v-else class="pill pill-ok">{{ row.caseCount }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="步骤" width="72" align="center">
+        <el-table-column label="步骤" width="80" align="center">
           <template #default="{ row }">{{ stepCount(row) }}</template>
         </el-table-column>
-        <el-table-column label="用途" width="120">
+        <el-table-column label="用途" width="120" align="center">
           <template #default="{ row }">
-            <el-tag size="small" :type="catalogTagType(row.catalog)" effect="light">
-              {{ catalogLabel(row.catalog) }}
-            </el-tag>
+            <span class="pill" :class="catalogPillClass(row.catalog)">{{ catalogLabel(row.catalog) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="最近结果" width="100" align="center">
+        <el-table-column label="最近结果" width="110" align="center">
           <template #default="{ row }">
             <el-tag v-if="row.lastRunStatus" size="small" :type="runTagType(row.lastRunStatus)">
               {{ runLabel(row.lastRunStatus) }}
             </el-tag>
-            <span v-else class="muted">未跑</span>
+            <span v-else class="result-idle">未跑</span>
           </template>
         </el-table-column>
-        <el-table-column label="更新" width="110">
+        <el-table-column label="更新" width="120">
           <template #default="{ row }">{{ fmtDate(row.updatedAt) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="148" fixed="right">
+        <el-table-column label="操作" width="140" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="openExecute(row)">执行</el-button>
+            <el-button link type="success" size="small" @click="openExecute(row)">执行</el-button>
             <el-button link type="primary" size="small" @click="openFlowEditor(row)">编排</el-button>
           </template>
         </el-table-column>
@@ -206,7 +219,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowDown } from '@element-plus/icons-vue'
+import { ArrowDown, User } from '@element-plus/icons-vue'
 import { apiClient } from '@/api'
 import { logout, user } from '@/stores/auth'
 import { isAndroidFamilyPlatform, isIosFamilyPlatform } from '@/utils/platform'
@@ -274,11 +287,29 @@ const currentAppId = computed(() => {
   return 'DOMESTIC_ESPORTS'
 })
 
-const pathLabel = computed(() => {
-  const env = environment.value === 'TEST' ? '测试环境' : '生产环境'
-  const prod = product.value === 'ESPORTS' ? '完美电竞' : 'POGPOG'
-  const plat = platform.value === 'HARMONYOS' ? 'HarmonyOS' : platform.value === 'IOS' ? 'iOS' : 'ANDROID'
-  return `${env} · ${prod} · ${plat}`
+const envLabel = computed(() => (environment.value === 'TEST' ? '测试环境' : '生产环境'))
+const productLabel = computed(() => (product.value === 'ESPORTS' ? '完美电竞' : 'POGPOG'))
+const platformLabel = computed(() =>
+  platform.value === 'HARMONYOS' ? 'HarmonyOS' : platform.value === 'IOS' ? 'iOS' : 'ANDROID'
+)
+const pathLabel = computed(() => `${envLabel.value} · ${productLabel.value} · ${platformLabel.value}`)
+
+const roleTagType = computed(() => {
+  const r = user.value?.role
+  if (user.value?.bootstrapping) return 'info'
+  if (r === 'ADMIN') return 'danger'
+  if (r === 'TESTER') return 'warning'
+  return 'info'
+})
+
+const stats = computed(() => {
+  const list = rows.value
+  return {
+    total: list.length,
+    bound: list.filter((r) => Number(r.caseCount) > 0).length,
+    idle: list.filter((r) => !r.lastRunStatus).length,
+    failed: list.filter((r) => String(r.lastRunStatus || '').toUpperCase() === 'FAILED').length
+  }
 })
 
 const emptyHint = computed(() => {
@@ -347,11 +378,11 @@ function catalogLabel(c: string) {
   return c || '—'
 }
 
-function catalogTagType(c: string): 'primary' | 'success' | 'warning' | 'info' {
-  if (c === 'AUTOMATION') return 'primary'
-  if (c === 'SHARED') return 'info'
-  if (c === 'ONLINE') return 'success'
-  return 'info'
+function catalogPillClass(c: string) {
+  if (c === 'AUTOMATION') return 'pill-auto'
+  if (c === 'SHARED') return 'pill-shared'
+  if (c === 'ONLINE') return 'pill-online'
+  return 'pill-muted'
 }
 
 function runLabel(status: string) {
@@ -615,142 +646,260 @@ onMounted(load)
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: #f0f2f5;
+  background: #fff;
 }
 
 .page-nav {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
-  height: 52px;
-  background: linear-gradient(90deg, #0f2744 0%, #1a365d 100%);
-  color: #fff;
+  padding: 0 24px;
+  height: 60px;
+  background: #fff;
+  border-bottom: 1px solid #eef0f3;
+  color: #1f2329;
   flex-shrink: 0;
 }
+.nav-left {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
 .nav-title {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2329;
+  white-space: nowrap;
 }
 .nav-sub {
-  margin-left: 12px;
-  font-size: 12px;
-  opacity: 0.75;
+  font-size: 13px;
+  color: #909399;
+  white-space: nowrap;
 }
 .nav-right {
   display: flex;
   align-items: center;
-  gap: 16px;
-}
-.nav-actions {
-  display: flex;
-  gap: 8px;
-}
-.btn-nav {
-  padding: 6px 14px;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  background: transparent;
-  color: #fff;
-  font-size: 13px;
-  cursor: pointer;
-}
-.btn-nav:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
-}
-.btn-nav:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.btn-nav-primary {
-  background: #2563eb;
-  border-color: #2563eb;
-}
-.btn-nav-primary:hover:not(:disabled) {
-  background: #1d4ed8;
+  gap: 10px;
+  flex-shrink: 0;
 }
 .nav-user {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-left: 6px;
 }
 .nav-user-name {
-  color: #fff;
+  color: #1f2329;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 4px;
   font-size: 13px;
+  outline: none;
 }
 
-.filter-bar {
+.filter-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 24px 8px;
+  background: #fff;
+  flex-shrink: 0;
+}
+.filter-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
-  background: #fff;
-  border-bottom: 1px solid #e8ecf0;
-  flex-shrink: 0;
-  flex-wrap: wrap;
+  gap: 12px;
+  min-height: 32px;
 }
-.f-search {
-  width: 200px;
+.filter-label {
+  width: 36px;
+  flex: none;
+  font-size: 13px;
+  color: #909399;
 }
-.env-tabs {
+.seg {
   display: flex;
-  gap: 4px;
-  margin-right: 8px;
+  gap: 8px;
 }
-.env-tab {
-  padding: 4px 12px;
+.seg-btn {
+  padding: 5px 16px;
   border: 1px solid #dcdfe6;
-  border-radius: 4px;
+  border-radius: 16px;
   background: #fff;
   font-size: 13px;
   cursor: pointer;
   color: #606266;
 }
-.env-tab.active {
-  background: #2563eb;
-  border-color: #2563eb;
+.seg-btn:hover {
+  border-color: #409eff;
+  color: #409eff;
+}
+.seg-btn.active {
+  background: #409eff;
+  border-color: #409eff;
   color: #fff;
+}
+.seg-btn.is-android.active {
+  background: #67c23a;
+  border-color: #67c23a;
+  color: #fff;
+}
+.seg-btn.is-ios.active {
+  background: #409eff;
+  border-color: #409eff;
+  color: #fff;
+}
+.seg-btn.is-harmonyos.active {
+  background: #e6a23c;
+  border-color: #e6a23c;
+  color: #fff;
+}
+.filter-search {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.f-search {
+  width: 220px;
+}
+.flow-count {
+  font-size: 12px;
+  color: #909399;
+  white-space: nowrap;
 }
 
 .status-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 16px;
+  gap: 16px;
+  padding: 10px 24px 12px;
   background: #fff;
-  border-bottom: 1px solid #e8ecf0;
+  border-bottom: 1px solid #eef0f3;
   flex-shrink: 0;
 }
-.path-label {
+.path-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 13px;
   font-weight: 600;
-  color: #303133;
 }
-.path-meta {
+.path-seg {
+  color: #409eff;
+}
+.path-seg.is-android {
+  color: #67c23a;
+}
+.path-seg.is-ios {
+  color: #409eff;
+}
+.path-seg.is-harmonyos {
+  color: #e6a23c;
+}
+.path-dot {
+  color: #c0c4cc;
+  font-weight: 400;
+}
+.path-count {
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: #f4f4f5;
+  color: #909399;
+  font-size: 12px;
+  font-weight: 500;
+}
+.stat-pills {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.stat-pill {
   font-size: 12px;
   color: #909399;
 }
+.stat-pill em {
+  margin-left: 4px;
+  font-style: normal;
+  font-weight: 700;
+  font-size: 14px;
+}
+.stat-pill .is-total {
+  color: #409eff;
+}
+.stat-pill .is-bound {
+  color: #67c23a;
+}
+.stat-pill .is-idle {
+  color: #909399;
+}
+.stat-pill .is-fail {
+  color: #f56c6c;
+}
 .proxy-alert {
-  margin-left: auto;
-  max-width: 520px;
+  margin: 0 24px 8px;
 }
 
 .table-wrap {
   flex: 1;
   min-height: 0;
-  padding: 12px 16px;
+  padding: 0 12px 8px;
   position: relative;
+}
+.case-table {
+  --el-table-border-color: #f0f2f5;
+  --el-table-header-bg-color: #fafafa;
+  --el-table-row-hover-bg-color: #f5f9ff;
+}
+.table-wrap :deep(.el-table__inner-wrapper::before) {
+  display: none;
+}
+.table-wrap :deep(.el-table th.el-table__cell),
+.table-wrap :deep(.el-table td.el-table__cell) {
+  border-right: none;
 }
 .name-cell {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.muted {
+.name-text {
+  font-weight: 600;
+  color: #1f2329;
+}
+.pill {
+  display: inline-block;
+  min-width: 28px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 20px;
+}
+.pill-muted {
+  background: #f4f4f5;
+  color: #909399;
+}
+.pill-ok {
+  background: #f0f9eb;
+  color: #67c23a;
+}
+.pill-auto {
+  background: #ecf5ff;
+  color: #409eff;
+}
+.pill-shared {
+  background: #f4f4f5;
+  color: #606266;
+}
+.pill-online {
+  background: #f0f9eb;
+  color: #67c23a;
+}
+.result-idle {
   color: #c0c4cc;
 }
 

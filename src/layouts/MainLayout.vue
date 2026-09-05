@@ -1,4 +1,8 @@
 <template>
+  <div class="app-shell">
+    <div class="window-titlebar">
+      <span class="window-titlebar-text">APP自动化管理平台 — {{ windowPageTitle }}</span>
+    </div>
   <el-container class="main-layout">
     <el-aside width="240px" class="sidebar">
       <div class="logo">
@@ -223,10 +227,11 @@
       </template>
     </el-dialog>
   </el-container>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
@@ -442,6 +447,19 @@ const currentTitle = computed(() => {
   if (titleMap[p]) return titleMap[p]
   return (route.meta?.title as string) || '移动自动化测试'
 })
+
+const windowPageTitle = computed(() => {
+  if (route.path.startsWith('/app-automation')) return 'APP 自动化用例'
+  return currentTitle.value
+})
+
+watch(
+  windowPageTitle,
+  (t) => {
+    document.title = `APP自动化管理平台 — ${t}`
+  },
+  { immediate: true }
+)
 const isAgentPage = computed(() => route.path.includes('codewords-agent'))
 const isTestCasesPage = computed(
   () => route.path.startsWith('/test-cases') || route.path.startsWith('/ai-test-cases')
@@ -454,14 +472,45 @@ const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
 </script>
 
 <style scoped>
-.main-layout {
+.app-shell {
+  display: flex;
+  flex-direction: column;
   height: 100vh;
+  overflow: hidden;
+}
+
+.window-titlebar {
+  position: relative;
+  height: 38px;
+  flex-shrink: 0;
+  background: #151c2f;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.window-titlebar-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  user-select: none;
+}
+
+.main-layout {
+  flex: 1;
+  min-height: 0;
+  height: auto;
   background-color: var(--app-main-bg);
 }
 
 .sidebar {
   background-color: var(--app-sidebar-bg);
-  height: 100vh;
+  height: 100%;
   overflow-y: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -693,13 +742,13 @@ const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
 .main-content.is-api-reports {
   padding: 0;
   overflow: hidden;
-  height: calc(100vh - 60px);
+  height: 100%;
   display: flex;
   flex-direction: column;
 }
 
 .main-content.is-api-reports {
-  height: 100vh;
+  height: 100%;
 }
 
 .main-content.is-api-reports :deep(.reports-page) {
@@ -744,7 +793,7 @@ const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
 .main-content.is-bug-management,
 .main-content.is-issue-tracking,
 .main-content.is-app-automation {
-  height: 100vh;
+  height: 100%;
 }
 
 .main-content.is-test-cases :deep(.ai-cases) {
