@@ -3978,6 +3978,67 @@ class ApiClient {
     })
   }
 
+  // ---------- 功能模块树 ----------
+  async getProjectModuleTree(category?: string, enabledOnly?: boolean) {
+    const qs = new URLSearchParams()
+    if (category) qs.set('category', category)
+    if (enabledOnly != null) qs.set('enabledOnly', String(enabledOnly))
+    const q = qs.toString()
+    return this.request<any[]>(`/project-modules/tree${q ? '?' + q : ''}`)
+  }
+  async saveProjectModule(body: Record<string, unknown>) {
+    return this.request<any>('/project-modules', { method: 'POST', body: JSON.stringify(body) })
+  }
+  async deleteProjectModule(id: string) {
+    return this.request<any>(`/project-modules/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  // ---------- 需求登记 ----------
+  async getRequirements(params: { projectCode?: string; versionId?: string; status?: string; keyword?: string } = {}) {
+    const qs = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => { if (v) qs.set(k, String(v)) })
+    const q = qs.toString()
+    return this.request<any[]>(`/requirements${q ? '?' + q : ''}`)
+  }
+  async saveRequirement(requirement: Record<string, unknown>, moduleIds?: string[]) {
+    return this.request<any>('/requirements', {
+      method: 'POST',
+      body: JSON.stringify({ requirement, moduleIds })
+    })
+  }
+  async deleteRequirement(requirementNo: string) {
+    return this.request<any>(`/requirements/${encodeURIComponent(requirementNo)}`, { method: 'DELETE' })
+  }
+
+  // ---------- PVP 接口签名 ----------
+  async pvpSign(body: { environment?: string; r?: string; t?: string; params: Record<string, string> }) {
+    return this.request<{ a: string; r: string; t: string; s: string; signedRequest: string }>(
+      '/pvp-sign', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  // ---------- 接口响应快照 ----------
+  async getResponseSnapshots(requirementNo?: string) {
+    const q = requirementNo ? `?requirementNo=${encodeURIComponent(requirementNo)}` : ''
+    return this.request<any[]>(`/response-snapshots${q}`)
+  }
+  async promoteResponseSnapshot(body: { sessionId: string; name: string; requirementNo?: string; note?: string }) {
+    return this.request<any>('/response-snapshots/promote', { method: 'POST', body: JSON.stringify(body) })
+  }
+  async diffResponseSnapshot(snapshotId: string, sessionId: string) {
+    return this.request<any>(`/response-snapshots/${encodeURIComponent(snapshotId)}/diff`, {
+      method: 'POST', body: JSON.stringify({ sessionId })
+    })
+  }
+  async deleteResponseSnapshot(snapshotId: string) {
+    return this.request<any>(`/response-snapshots/${encodeURIComponent(snapshotId)}`, { method: 'DELETE' })
+  }
+
+  // ---------- 抓包会话（快照的原料） ----------
+  async getCaptureSessions(requirementNo?: string) {
+    const q = requirementNo ? `?requirementNo=${encodeURIComponent(requirementNo)}` : ''
+    return this.request<any[]>(`/packet-capture/sessions${q}`)
+  }
+
 }
 
 export interface AiTestCaseStep {

@@ -49,6 +49,8 @@
             <span>资产管理</span>
           </template>
           <el-menu-item index="/api-projects">项目管理</el-menu-item>
+          <el-menu-item index="/project-tree">统一项目树</el-menu-item>
+          <el-menu-item index="/requirements">需求登记</el-menu-item>
           <el-menu-item index="/api-urls">URL 管理</el-menu-item>
           <el-menu-item v-if="canVisit('/devices')" index="/devices">设备管理</el-menu-item>
           <el-menu-item v-if="canVisit('/ui-apps')" index="/ui-apps">应用管理</el-menu-item>
@@ -69,6 +71,7 @@
           <el-menu-item v-if="canVisit('/api-environments')" index="/api-environments">环境变量</el-menu-item>
           <el-menu-item index="/api-reports">执行报告</el-menu-item>
           <el-menu-item index="/api-changes">接口对比分析</el-menu-item>
+          <el-menu-item index="/coverage-gap">覆盖差集</el-menu-item>
         </el-sub-menu>
 
         <el-sub-menu v-if="canVisit('/api-schedules')" index="schedules">
@@ -86,6 +89,7 @@
           </template>
           <el-menu-item index="/web-test">Web 测试</el-menu-item>
           <el-menu-item v-if="canVisit('/ui-h5-pages')" index="/ui-h5-pages">H5 页面</el-menu-item>
+          <el-menu-item index="/activity-page-check">活动页体检</el-menu-item>
         </el-sub-menu>
 
         <el-sub-menu v-if="showAppAutoMenu" index="app-auto">
@@ -354,7 +358,7 @@ const defaultOpeneds = computed(() => {
   ) {
     return ['assets']
   }
-  if (p.startsWith('/web-test') || p.startsWith('/ui-h5-pages')) {
+  if (p.startsWith('/web-test') || p.startsWith('/ui-h5-pages') || p.startsWith('/activity-page-check')) {
     return ['web-test-menu']
   }
   if (
@@ -409,6 +413,10 @@ const titleMap: Record<string, string> = {
   '/ui-keywords': '关键字库',
   '/ui-inspector-import': 'Inspector XML 导入',
   '/ui-h5-pages': 'H5 页面',
+  '/project-tree': '统一项目树',
+  '/requirements': '需求登记',
+  '/coverage-gap': '覆盖差集',
+  '/activity-page-check': '活动页体检',
   '/api-projects': '项目管理',
   '/api-urls': 'URL 管理',
   '/devices': '设备管理',

@@ -264,6 +264,30 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '接口清单' }
       },
       {
+        path: 'project-tree',
+        name: 'ProjectTree',
+        component: () => import('../views/ProjectTree.vue'),
+        meta: { title: '统一项目树' }
+      },
+      {
+        path: 'requirements',
+        name: 'Requirements',
+        component: () => import('../views/Requirements.vue'),
+        meta: { title: '需求登记' }
+      },
+      {
+        path: 'coverage-gap',
+        name: 'CoverageGap',
+        component: () => import('../views/CoverageGap.vue'),
+        meta: { title: '接口覆盖差集' }
+      },
+      {
+        path: 'activity-page-check',
+        name: 'ActivityPageCheck',
+        component: () => import('../views/ActivityPageCheck.vue'),
+        meta: { title: '活动页体检' }
+      },
+      {
         path: 'packet-capture',
         name: 'PacketCapture',
         component: () => import('../views/PacketCapture.vue'),
