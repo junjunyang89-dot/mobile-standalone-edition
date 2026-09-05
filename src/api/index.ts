@@ -4033,6 +4033,11 @@ class ApiClient {
     return this.request<any>(`/response-snapshots/${encodeURIComponent(snapshotId)}`, { method: 'DELETE' })
   }
 
+  // ---------- 活动页奖励顺序自动校验（从抓包读接口，不用手抄） ----------
+  async auditRewardOrder(body: { sessionId: string; ladder?: string[][]; aliases?: Record<string, string> }) {
+    return this.request<any>('/reward-audit', { method: 'POST', body: JSON.stringify(body) })
+  }
+
   // ---------- 抓包会话（快照的原料） ----------
   async getCaptureSessions(requirementNo?: string) {
     const q = requirementNo ? `?requirementNo=${encodeURIComponent(requirementNo)}` : ''

@@ -17,56 +17,60 @@
         <!-- ========== 奖励顺序校验 ========== -->
         <el-tab-pane label="奖励顺序" name="order">
           <el-alert type="info" :closable="false" show-icon style="margin-bottom: 12px">
-            把页面上一个任务里的奖品名按展示顺序填进去（一行一个），看是否符合需求文档的优先级。
-            换皮不影响——比的是规则，不是具体奖品。
+            选一场抓包，平台自动从奖励接口读出每个任务的奖品、按优先级校验——不用手抄。
+            读的是接口 JSON 不是页面，换皮打不穿。先在「抓包」里抓一次活动页即可。
           </el-alert>
-          <el-form label-width="96px">
+          <el-form label-width="96px" :inline="false">
+            <el-form-item label="抓包会话">
+              <el-select v-model="auditSession" filterable placeholder="选一场抓了活动页的抓包" style="width: 420px">
+                <el-option
+                  v-for="c in captureSessions"
+                  :key="c.id"
+                  :label="`${c.id}（${c.flow_count || 0} 条 · ${c.requirement_no || '无单号'}）`"
+                  :value="c.id"
+                />
+              </el-select>
+              <el-button style="margin-left: 8px" @click="loadSnapshots">刷新</el-button>
+            </el-form-item>
             <el-form-item label="优先级阶梯">
               <el-input
                 v-model="ladderText"
                 type="textarea"
                 :rows="3"
-                placeholder="一行一级，高到低；同级用 = 连接。如：大会员&#10;改名卡&#10;动态头像=其他"
               />
-            </el-form-item>
-            <el-form-item label="页面奖品">
-              <el-input
-                v-model="rewardsText"
-                type="textarea"
-                :rows="5"
-                placeholder="一行一个，按页面上的展示顺序。如：大会员(31天)&#10;ROLL房好运券x1&#10;神马币x200"
-              />
+              <div class="tip">来自需求文档，一行一级、高到低，同级用 = 连接。基本不用改。</div>
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" @click="checkOrder">校验顺序</el-button>
+              <el-button type="primary" :loading="auditing" @click="runAudit">开始校验</el-button>
             </el-form-item>
           </el-form>
 
-          <div v-if="orderResult">
+          <div v-if="auditResult">
             <el-alert
-              v-if="orderResult.ok"
-              type="success"
+              :type="auditResult.ok ? 'success' : 'error'"
               :closable="false"
               show-icon
-              title="顺序符合优先级"
+              :title="auditResult.hint || auditResult.note"
+              style="margin-bottom: 10px"
             />
-            <el-alert
-              v-for="(v, i) in orderResult.violations"
-              :key="i"
-              type="error"
-              :closable="false"
-              show-icon
-              :title="v"
-              style="margin-bottom: 6px"
-            />
-            <el-alert
-              v-if="orderResult.unmatched.length"
-              type="warning"
-              :closable="false"
-              show-icon
-              style="margin-top: 6px"
-              :title="`这些奖品没匹配到优先级类目，已按「其他」排：${orderResult.unmatched.join('、')}`"
-            />
+            <div v-for="(t, i) in auditResult.tasks || []" :key="i" class="task-audit">
+              <div class="task-head">
+                <el-tag size="small" :type="t.ok ? 'success' : 'danger'">{{ t.ok ? '通过' : '顺序不对' }}</el-tag>
+                <span class="task-name">{{ t.taskName }}</span>
+                <span class="task-rewards">{{ (t.rewards || []).join(' → ') }}</span>
+              </div>
+              <el-alert
+                v-for="(v, j) in t.violations || []"
+                :key="j"
+                type="error"
+                :closable="false"
+                :title="v"
+                style="margin: 4px 0 0 60px"
+              />
+              <div v-if="(t.unmatched || []).length" class="unmatched">
+                没匹配到类目（按「其他」排）：{{ t.unmatched.join('、') }}
+              </div>
+            </div>
           </div>
         </el-tab-pane>
 
@@ -223,46 +227,26 @@ import { apiClient } from '../api'
 
 const tab = ref('order')
 
-// ---- 奖励顺序（纯前端算，规则简单，不必往返后端） ----
+// ---- 奖励顺序（选抓包，平台自动读接口校验） ----
 const ladderText = ref(
   '大会员\n改名卡\n赛季重置卡\n天梯双倍卡\n段位保护盾\n击杀特效\n进房音效\n个人主页背景\n天梯房间背景\n赛季房间卡背景\n动态头像=其他'
 )
-const rewardsText = ref('')
-const orderResult = ref<{ ok: boolean; violations: string[]; unmatched: string[] } | null>(null)
+const auditSession = ref('')
+const auditing = ref(false)
+const auditResult = ref<any | null>(null)
 
-function normalize(raw: string): string {
-  let t = (raw || '').trim().replace(/[（(\[][^）)\]]*[）)\]]/g, '')
-  const m = t.match(/^(.*?)[xX*×]\s*\d+$/)
-  if (m) t = m[1]
-  return t.trim()
-}
-function checkOrder() {
-  const tiers = ladderText.value.split('\n').map((l) => l.trim()).filter(Boolean)
+async function runAudit() {
+  if (!auditSession.value) { ElMessage.warning('先选一场抓包'); return }
+  const ladder = ladderText.value.split('\n').map((l) => l.trim()).filter(Boolean)
     .map((l) => l.split('=').map((x) => x.trim()))
-  const rewards = rewardsText.value.split('\n').map((l) => l.trim()).filter(Boolean)
-  const fallback = tiers.length - 1
-  const categoryOf = (raw: string) => {
-    const norm = normalize(raw)
-    let best: string | null = null
-    tiers.forEach((tier) => tier.forEach((cat) => {
-      if (cat !== '其他' && norm.includes(cat) && (!best || cat.length > best.length)) best = cat
-    }))
-    return best
+  auditing.value = true
+  try {
+    auditResult.value = await apiClient.auditRewardOrder({ sessionId: auditSession.value, ladder })
+  } catch (e: any) {
+    ElMessage.error(e?.message || '校验失败')
+  } finally {
+    auditing.value = false
   }
-  const tierOf = (cat: string | null) => cat ? tiers.findIndex((t) => t.includes(cat)) : fallback
-  const items = rewards.map((r) => { const c = categoryOf(r); return { raw: r, cat: c, tier: tierOf(c) } })
-  const violations: string[] = []
-  const unmatched: string[] = []
-  items.forEach((it) => { if (!it.cat) unmatched.push(it.raw) })
-  for (let i = 1; i < items.length; i++) {
-    let worst: typeof items[0] | null = null
-    for (let j = 0; j < i; j++) if (items[j].tier > items[i].tier && (!worst || items[j].tier > worst.tier)) worst = items[j]
-    if (worst) {
-      const nm = (x: typeof items[0]) => x.cat || `${x.raw}(未匹配，按其他)`
-      violations.push(`「${items[i].raw}」应排在「${worst.raw}」前面——按优先级：${nm(items[i])} > ${nm(worst)}`)
-    }
-  }
-  orderResult.value = { ok: violations.length === 0, violations, unmatched }
 }
 
 // ---- 响应快照 ----
@@ -333,4 +317,10 @@ onMounted(loadSnapshots)
 .drift { margin-bottom: 12px; }
 .drift-ep { font-family: monospace; font-size: 13px; margin-bottom: 4px; color: #303133; }
 code.wrap { word-break: break-all; }
+.tip { color: #909399; font-size: 12px; margin-top: 4px; }
+.task-audit { padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+.task-head { display: flex; align-items: center; gap: 8px; }
+.task-name { font-weight: 600; }
+.task-rewards { color: #606266; font-size: 13px; }
+.unmatched { color: #e6a23c; font-size: 12px; margin: 4px 0 0 60px; }
 </style>
