@@ -3721,6 +3721,26 @@ class ApiClient {
   }
 
   /**
+   * 步骤截图带登录头拉成 object URL。
+   * &lt;img src&gt; 拼相对路径时浏览器加不上 Authorization，鉴权一开图就裂。
+   */
+  async fetchTaskStepScreenshotObjectUrl(screenshotUrl: string): Promise<string> {
+    const path = String(screenshotUrl || '').trim()
+    if (!path) throw new Error('这一步没有截图')
+    if (path.startsWith('blob:')) return path
+    const url = path.startsWith('http')
+      ? path
+      : this.endpointUrl(path.startsWith('/') ? path : `/${path}`)
+    const res = await authFetch(url)
+    if (!res.ok) {
+      throw new Error(res.status === 404 ? '截图文件不存在' : `截图加载失败（${res.status}）`)
+    }
+    const blob = await res.blob()
+    if (!blob.size) throw new Error('截图为空')
+    return URL.createObjectURL(blob)
+  }
+
+  /**
    * 性能基础质量测试报告：GET /functional-test/tasks/{id}/performance-report
    * 仅对性能基础质量测试任务有效，返回最新一次执行的 result_data 解析后的 JSON；非性能任务或尚无执行结果时 404。
    */
