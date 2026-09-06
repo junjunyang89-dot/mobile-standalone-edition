@@ -170,26 +170,103 @@
       <el-empty v-if="!loading && !rows.length" :description="emptyHint" />
     </div>
 
-    <el-dialog v-model="execVisible" title="执行流程" width="480px" destroy-on-close>
-      <div v-if="execRow" class="exec-body">
-        <div class="exec-name">{{ execRow.name }}</div>
-        <div class="exec-ctx">{{ pathLabel }}</div>
+    <el-dialog
+      v-model="execVisible"
+      width="560px"
+      destroy-on-close
+      align-center
+      class="auto-exec-dialog"
+      :show-close="false"
+    >
+      <template #header>
+        <div class="exec-dlg-header">
+          <div class="exec-dlg-title">执行流程</div>
+          <button type="button" class="exec-dlg-close" aria-label="关闭" @click="execVisible = false">
+            <el-icon><Close /></el-icon>
+          </button>
+        </div>
+      </template>
+
+      <div v-if="execRow" v-loading="execLoading" class="exec-body">
+        <div class="exec-flow-card">
+          <div class="exec-flow-title-row">
+            <span class="exec-flow-name">{{ execRow.name }}</span>
+            <span class="exec-plat-pill" :class="'plat-' + platform.toLowerCase()">{{ platformLabel }}</span>
+          </div>
+          <div class="exec-flow-meta">{{ envLabel }} • {{ productLabel }}</div>
+          <div class="exec-flow-stats">
+            <span class="exec-stat">
+              <el-icon><Operation /></el-icon>
+              步骤 <b>{{ stepCount(execRow) }} 步</b>
+            </span>
+            <span class="exec-stat">
+              <el-icon><Clock /></el-icon>
+              上次 <b :class="'run-' + lastRunTone(execRow.lastRunStatus)">{{ execRow.lastRunStatus ? runLabel(execRow.lastRunStatus) : '未跑' }}</b>
+            </span>
+            <span class="exec-stat">
+              <el-icon><CircleCheck /></el-icon>
+              覆盖用例 <b>{{ execRow.caseCount == null ? '—' : execRow.caseCount + ' 条' }}</b>
+            </span>
+          </div>
+        </div>
+
         <div class="exec-field">
-          <div class="exec-field-label">执行设备</div>
-          <el-select v-model="execDeviceId" filterable placeholder="选择已连接设备" style="width: 100%">
-            <el-option
-              v-for="d in deviceOptions"
+          <div class="exec-dev-head">
+            <div class="exec-field-label">选择执行设备</div>
+            <el-button link type="primary" class="exec-refresh-btn" :loading="execRefreshing" @click="refreshExecDevices">
+              <el-icon v-if="!execRefreshing"><Refresh /></el-icon>
+              刷新设备
+            </el-button>
+          </div>
+          <div v-if="!execDevices.length" class="exec-hint">当前没有在线设备，点「刷新设备」扫描，或先到设备管理连接</div>
+          <div v-else class="exec-dev-list">
+            <button
+              v-for="d in execDevices"
               :key="d.id"
-              :label="`${d.name || d.id}（${d.platform || '-'}）`"
-              :value="d.id"
-            />
-          </el-select>
-          <div v-if="!deviceOptions.length" class="exec-hint">当前没有已连接且匹配该端的设备</div>
+              type="button"
+              class="exec-dev-card"
+              :class="[execDeviceKind(d), { selected: execDeviceId === d.id }]"
+              :disabled="execDeviceKind(d) === 'offline'"
+              @click="selectExecDevice(d)"
+            >
+              <span class="exec-dev-radio" :class="{ on: execDeviceId === d.id }" />
+              <span class="exec-dev-icon"><el-icon><Iphone /></el-icon></span>
+              <span class="exec-dev-main">
+                <span class="exec-dev-name">{{ execDeviceTitle(d) }}</span>
+                <span class="exec-dev-sub">{{ execDeviceSub(d) }}</span>
+              </span>
+              <span class="exec-dev-status" :class="execDeviceKind(d)">
+                <i />{{ execDeviceStatusText(d) }}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <div class="exec-opt-card">
+          <div class="exec-opt-row">
+            <div>
+              <div class="exec-opt-title">立即执行</div>
+              <div class="exec-opt-sub">开启后创建任务并马上开始跑；关闭则只创建待执行任务</div>
+            </div>
+            <el-switch v-model="execRunNow" />
+          </div>
         </div>
       </div>
+
       <template #footer>
-        <el-button @click="execVisible = false">取消</el-button>
-        <el-button type="primary" :loading="executing" @click="submitExecute">开始执行</el-button>
+        <div class="exec-dlg-footer">
+          <div class="exec-picked">
+            <template v-if="selectedExecDevice">已选: {{ execDeviceTitle(selectedExecDevice) }}</template>
+            <template v-else>尚未选择设备</template>
+          </div>
+          <div class="exec-dlg-actions">
+            <el-button @click="execVisible = false">取消</el-button>
+            <el-button type="primary" :loading="executing" @click="submitExecute">
+              <el-icon v-if="!executing" class="el-icon--left"><VideoPlay /></el-icon>
+              开始执行
+            </el-button>
+          </div>
+        </div>
       </template>
     </el-dialog>
 
@@ -212,15 +289,24 @@
         <el-button type="primary" :loading="batchStarting" @click="submitBatch">开始执行</el-button>
       </template>
     </el-dialog>
+
+    <ProdExecuteConfirm
+      v-model="prodDlg"
+      :flow-name="prodMeta.flowName"
+      :device-name="prodMeta.deviceName"
+      @confirm="onProdConfirmed"
+      @cancel="onProdCancelled"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowDown, User } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { ArrowDown, CircleCheck, Clock, Close, Iphone, Operation, Refresh, User, VideoPlay } from '@element-plus/icons-vue'
 import { apiClient } from '@/api'
+import ProdExecuteConfirm from '@/components/ProdExecuteConfirm.vue'
 import { logout, user } from '@/stores/auth'
 import { isAndroidFamilyPlatform, isIosFamilyPlatform } from '@/utils/platform'
 
@@ -263,7 +349,14 @@ const selectedRows = ref<any[]>([])
 const execVisible = ref(false)
 const execRow = ref<any | null>(null)
 const execDeviceId = ref('')
+const execRunNow = ref(true)
+const execLoading = ref(false)
+const execRefreshing = ref(false)
+const execDevices = ref<any[]>([])
 const executing = ref(false)
+const selectedExecDevice = computed(() =>
+  execDevices.value.find((d) => d.id === execDeviceId.value) || null
+)
 
 const batchVisible = ref(false)
 const batchDeviceIds = ref<string[]>([])
@@ -403,6 +496,49 @@ function runTagType(status: string): 'success' | 'danger' | 'warning' | 'info' {
   return 'info'
 }
 
+function lastRunTone(status?: string | null) {
+  const u = String(status || '').toUpperCase()
+  if (u === 'COMPLETED' || u === 'SUCCESS') return 'pass'
+  if (u === 'FAILED') return 'fail'
+  if (u === 'RUNNING' || u === 'PENDING') return 'warn'
+  return 'idle'
+}
+
+function execDeviceTitle(d: any) {
+  return String(d?.id || d?.name || '—')
+}
+
+function execDeviceSub(d: any) {
+  const plat =
+    String(d?.platform || '').toUpperCase().includes('IOS')
+      ? 'iOS'
+      : String(d?.platform || '').toUpperCase().includes('HARMONY')
+        ? 'HarmonyOS'
+        : 'Android'
+  const ver = String(d?.version || '').replace(/^(android|ios|harmonyos)\s*/i, '').trim()
+  const model = d?.name && d.name !== d.id ? String(d.name) : ''
+  const os = plat + (ver ? ' ' + ver : '')
+  return [model, os].filter(Boolean).join(' • ') || '—'
+}
+
+function execDeviceKind(d: any): 'idle' | 'busy' | 'offline' {
+  if (String(d?.status || '').toUpperCase() !== 'CONNECTED') return 'offline'
+  if (d?.locked) return 'busy'
+  return 'idle'
+}
+
+function execDeviceStatusText(d: any) {
+  const k = execDeviceKind(d)
+  if (k === 'idle') return '空闲'
+  if (k === 'busy') return '执行中'
+  return '离线'
+}
+
+function selectExecDevice(d: any) {
+  if (execDeviceKind(d) === 'offline') return
+  execDeviceId.value = d.id
+}
+
 function fmtDate(v: unknown) {
   if (!v) return '—'
   const s = String(v)
@@ -538,33 +674,100 @@ function openFlowEditor(row: any) {
     .catch(() => ElMessage.error('跳转流程编排失败'))
 }
 
-async function confirmProd() {
-  if (environment.value !== 'PROD') return true
+const prodDlg = ref(false)
+const prodMeta = ref({ flowName: '', deviceName: '' })
+let prodResolve: ((ok: boolean) => void) | null = null
+
+function execDeviceModel(d: any) {
+  const name = String(d?.name || '').trim()
+  const id = String(d?.id || '').trim()
+  if (name && name !== id) return name
+  return name || id || '—'
+}
+
+function confirmProd(meta: { flowName?: string; deviceName?: string }) {
+  if (environment.value !== 'PROD') return Promise.resolve(true)
+  prodMeta.value = { flowName: meta.flowName || '—', deviceName: meta.deviceName || '—' }
+  prodDlg.value = true
+  return new Promise<boolean>((resolve) => {
+    prodResolve = resolve
+  })
+}
+
+function onProdConfirmed() {
+  prodResolve?.(true)
+  prodResolve = null
+}
+
+function onProdCancelled() {
+  prodResolve?.(false)
+  prodResolve = null
+}
+
+async function loadExecDevices() {
   try {
-    await ElMessageBox.confirm(
-      '当前选的是<span style="color:#ff4d4f;font-weight:700">生产环境</span>',
-      '生产环境提醒',
-      {
-        type: 'error',
-        dangerouslyUseHTMLString: true,
-        confirmButtonText: '仍要执行',
-        cancelButtonText: '取消',
-        confirmButtonClass: 'el-button--danger'
-      }
+    const all = await apiClient.getDevices()
+    const rowsAll = Array.isArray(all) ? all : []
+    const seen = new Set<string>()
+    const list = rowsAll.filter((d: any) => {
+      const id = d?.id
+      if (!id || seen.has(id)) return false
+      if (String(d.status || '').toUpperCase() !== 'CONNECTED') return false
+      if (!deviceMatchesPlatform(d)) return false
+      seen.add(id)
+      return true
+    })
+    const lockPairs = await Promise.all(
+      list
+        .filter((d: any) => String(d.status || '').toUpperCase() === 'CONNECTED')
+        .map((d: any) =>
+          apiClient
+            .getDeviceLock(d.id)
+            .then((r) => [d.id, !!r?.locked] as const)
+            .catch(() => [d.id, false] as const)
+        )
     )
-    return true
+    const lockedIds = new Set(lockPairs.filter(([, locked]) => locked).map(([id]) => id))
+    execDevices.value = list.map((d: any) => ({ ...d, locked: lockedIds.has(d.id) }))
+    const stillOk = execDevices.value.some(
+      (d) => d.id === execDeviceId.value && execDeviceKind(d) !== 'offline'
+    )
+    if (!stillOk) {
+      execDeviceId.value = execDevices.value.find((d) => execDeviceKind(d) === 'idle')?.id || ''
+    }
   } catch {
-    return false
+    execDevices.value = []
+  }
+}
+
+async function refreshExecDevices() {
+  execRefreshing.value = true
+  try {
+    await apiClient.scanDevices()
+  } catch {
+    /* 扫描失败仍拉现有列表 */
+  }
+  try {
+    await loadExecDevices()
+    if (!execDevices.value.some((d) => execDeviceKind(d) === 'idle')) {
+      ElMessage.warning('当前没有空闲且匹配该端的设备')
+    }
+  } finally {
+    execRefreshing.value = false
   }
 }
 
 async function openExecute(row: any) {
   execRow.value = row
   execDeviceId.value = ''
+  execRunNow.value = true
+  execDevices.value = []
   execVisible.value = true
-  await loadConnectedDevices()
-  if (deviceOptions.value.length === 1) {
-    execDeviceId.value = deviceOptions.value[0].id
+  execLoading.value = true
+  try {
+    await loadExecDevices()
+  } finally {
+    execLoading.value = false
   }
 }
 
@@ -574,7 +777,22 @@ async function submitExecute() {
     ElMessage.warning('请选择设备')
     return
   }
-  if (!(await confirmProd())) return
+  const picked = selectedExecDevice.value
+  if (picked && execDeviceKind(picked) === 'busy') {
+    ElMessage.warning('这台设备正在执行中，请换一台空闲设备')
+    return
+  }
+  if (picked && execDeviceKind(picked) === 'offline') {
+    ElMessage.warning('这台设备已离线，请换一台或先刷新设备')
+    return
+  }
+  if (
+    !(await confirmProd({
+      flowName: execRow.value.name,
+      deviceName: execDeviceModel(picked)
+    }))
+  )
+    return
   executing.value = true
   try {
     const res = await apiClient.executeUiFlow(execRow.value.id, {
@@ -582,7 +800,7 @@ async function submitExecute() {
       platform: execRow.value.platform || platform.value,
       appId: execRow.value.appId || currentAppId.value,
       environment: environment.value,
-      runNow: true
+      runNow: execRunNow.value
     })
     ElMessage.success(res.message || '已开始执行')
     execVisible.value = false
@@ -613,7 +831,19 @@ async function submitBatch() {
     ElMessage.warning('请选择至少一台设备')
     return
   }
-  if (!(await confirmProd())) return
+  if (
+    !(await confirmProd({
+      flowName:
+        selectedRows.value.length === 1
+          ? selectedRows.value[0].name
+          : `${selectedRows.value.length} 条用例`,
+      deviceName:
+        batchDeviceIds.value.length === 1
+          ? execDeviceModel(deviceOptions.value.find((d) => d.id === batchDeviceIds.value[0]))
+          : `${batchDeviceIds.value.length} 台设备`
+    }))
+  )
+    return
   batchStarting.value = true
   try {
     const res = await apiClient.startOnlineRegressionRun({
@@ -906,24 +1136,286 @@ onMounted(load)
 .exec-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
-.exec-name {
-  font-size: 15px;
-  font-weight: 600;
+.exec-flow-card {
+  padding: 14px 16px 12px;
+  border-radius: 10px;
+  background: #f5f7fa;
 }
-.exec-ctx {
+.exec-flow-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.exec-flow-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1f2329;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.exec-plat-pill {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
+  background: #e8f8ee;
+  color: #237804;
+}
+.exec-plat-pill.plat-ios {
+  background: #fff7e6;
+  color: #d48806;
+}
+.exec-plat-pill.plat-harmonyos {
+  background: #ecf5ff;
+  color: #1677ff;
+}
+.exec-flow-meta {
+  margin-top: 4px;
   font-size: 12px;
   color: #909399;
+  line-height: 1.4;
 }
-.exec-field-label {
-  margin-bottom: 6px;
-  font-size: 13px;
+.exec-flow-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 18px;
+  margin-top: 10px;
+  font-size: 12px;
   color: #606266;
+}
+.exec-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.exec-stat .el-icon {
+  font-size: 14px;
+  color: #909399;
+}
+.exec-stat b {
+  font-weight: 600;
+  color: #303133;
+}
+.exec-stat b.run-pass { color: #52c41a; }
+.exec-stat b.run-fail { color: #f5222d; }
+.exec-stat b.run-warn { color: #fa8c16; }
+.exec-stat b.run-idle { color: #909399; font-weight: 500; }
+.exec-field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+}
+.exec-dev-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.exec-refresh-btn {
+  padding: 0;
+  height: auto;
+  font-size: 13px;
+}
+.exec-dev-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.exec-dev-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #e4e7ed;
+  border-radius: 10px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  color: #303133;
+}
+.exec-dev-card:hover:not(:disabled) {
+  border-color: #b3d8ff;
+}
+.exec-dev-card.selected {
+  border-color: #409eff;
+  background: #ecf5ff;
+}
+.exec-dev-card.offline {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: #fafafa;
+}
+.exec-dev-radio {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid #c0c4cc;
+  border-radius: 50%;
+  background: #fff;
+  box-sizing: border-box;
+}
+.exec-dev-radio.on {
+  border-color: #409eff;
+  box-shadow: inset 0 0 0 4px #409eff;
+}
+.exec-dev-icon {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f0f9eb;
+  color: #67c23a;
+  font-size: 16px;
+}
+.exec-dev-card.offline .exec-dev-icon {
+  background: #f5f7fa;
+  color: #c0c4cc;
+}
+.exec-dev-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.exec-dev-name {
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+.exec-dev-sub {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.exec-dev-status {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.exec-dev-status i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.exec-dev-status.idle { color: #52c41a; }
+.exec-dev-status.busy { color: #fa8c16; }
+.exec-dev-status.offline { color: #c0c4cc; }
+.exec-opt-card {
+  border: 1px solid #ebeef5;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+.exec-opt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+}
+.exec-opt-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+.exec-opt-sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.4;
 }
 .exec-hint {
   margin-top: 6px;
   font-size: 12px;
   color: #e6a23c;
+}
+.exec-dlg-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.exec-picked {
+  font-size: 13px;
+  font-weight: 600;
+  color: #409eff;
+}
+.exec-dlg-actions {
+  display: flex;
+  gap: 8px;
+}
+</style>
+
+<style>
+.auto-exec-dialog.el-dialog {
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.18);
+}
+.auto-exec-dialog .el-dialog__header {
+  margin: 0;
+  padding: 16px 20px 14px;
+  border-bottom: 1px solid #ebeef5;
+}
+.auto-exec-dialog .el-dialog__body {
+  padding: 18px 20px;
+  max-height: min(70vh, 640px);
+  overflow-y: auto;
+}
+.auto-exec-dialog .el-dialog__footer {
+  padding: 14px 20px 18px;
+  border-top: 1px solid #ebeef5;
+}
+.auto-exec-dialog .exec-dlg-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.auto-exec-dialog .exec-dlg-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+.auto-exec-dialog .exec-dlg-close {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: #f0f2f5;
+  color: #909399;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+.auto-exec-dialog .exec-dlg-close:hover {
+  background: #e4e7ed;
+  color: #606266;
 }
 </style>

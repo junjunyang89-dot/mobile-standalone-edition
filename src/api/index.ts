@@ -263,13 +263,25 @@ class ApiClient {
     }
   }
 
-  /** 设备扫描、流程执行走本机 worker；其余（含 Wiki/JIRA）走控制面 */
+  /**
+   * 设备扫描走本机 worker（adb 在哪台机器就打哪台）。
+   * 流程执行：控制面和 worker 若是同一台（都是 127.0.0.1），直接打控制面，
+   * 避免浏览器/开发态还绕到旧的 3001 worker，接口挂住后被前端误报超时。
+   */
   private usesWorker(endpoint: string) {
     const path = endpoint.split('?')[0]
-    return (
-      path.startsWith('/devices') ||
-      /\/ui-flows\/[^/]+\/execute$/.test(path)
-    )
+    if (path.startsWith('/devices')) return true
+    if (/\/ui-flows\/[^/]+\/execute$/.test(path)) {
+      try {
+        const workerHost = new URL(this.workerBaseURL).hostname
+        const controlHost = new URL(this.baseURL).hostname
+        if (workerHost === controlHost) return false
+      } catch {
+        return false
+      }
+      return this.workerBaseURL !== this.baseURL
+    }
+    return false
   }
 
   private endpointUrl(endpoint: string) {
@@ -294,6 +306,9 @@ class ApiClient {
         }
       })
     } catch (e: unknown) {
+      if (options.signal?.aborted || (e instanceof DOMException && e.name === 'AbortError')) {
+        throw e
+      }
       const msg = e instanceof Error ? e.message : String(e)
       if (onWorker) {
         throw new Error(
@@ -533,6 +548,13 @@ class ApiClient {
     )
   }
 
+  /** 这台设备现在被谁占着；没人占 locked=false */
+  async getDeviceLock(deviceId: string) {
+    return this.request<{ locked: boolean; describe?: string; refId?: string; since?: string }>(
+      `/devices/${encodeURIComponent(deviceId)}/lock`
+    )
+  }
+
   /** 获取单个设备详情：GET /devices/{id}，404 表示不存在 */
   async getDevice(deviceId: string) {
     return this.request<any>(`/devices/${deviceId}`)
@@ -691,7 +713,13 @@ class ApiClient {
         matchedNameEn?: string
         matchedNameZh?: string
         matchedStatus?: string
+        /** 这个定位在当前这一屏命中几个节点；后端一直在算，只是以前没人显示 */
+        matchCount?: number
+        /** matchCount === 1；null 表示无法校验（坐标定位、语法错等） */
+        unique?: boolean | null
       }>
+      /** 本次点选发现的问题，如「库里某条元素的定位在这一屏指向了别的节点」 */
+      warnings?: string[]
     }>(`/devices/${deviceId}/inspect/hit-test`, {
       method: 'POST',
       body: JSON.stringify(body)
@@ -704,6 +732,27 @@ class ApiClient {
     if (path.startsWith('http')) return path
     const p = path.startsWith('/') ? path : `/${path}`
     return `${this.baseURL}${p}`
+  }
+
+  /**
+   * 真机点选截图：跟 snapshot 一样走 worker，并且带登录头。
+   * 不能塞进 &lt;img src&gt; 拼控制面地址——图在拍截图那台机器上，控制面 404，
+   * 浏览器也不会给 img 加 Authorization。
+   */
+  async fetchDeviceInspectScreenshotObjectUrl(deviceId: string, cacheBust?: string): Promise<string> {
+    const q = cacheBust ? `?t=${encodeURIComponent(cacheBust)}` : `?t=${Date.now()}`
+    const endpoint = `/devices/${encodeURIComponent(deviceId)}/inspect/screenshot${q}`
+    const res = await authFetch(this.endpointUrl(endpoint))
+    if (!res.ok) {
+      throw new Error(
+        res.status === 404
+          ? '截图文件不存在，请再点「刷新截图」'
+          : `截图加载失败（${res.status}）`
+      )
+    }
+    const blob = await res.blob()
+    if (!blob.size) throw new Error('截图为空')
+    return URL.createObjectURL(blob)
   }
 
   // 任务管理（分页）
@@ -1110,6 +1159,28 @@ class ApiClient {
     return this.request<any>(`/ui-flows/${id}`)
   }
 
+  /** 一批流程各自最近一次执行：通过 / 失败 / 未跑 */
+  async getUiFlowLastRuns(ids: string[]) {
+    const q = ids.filter(Boolean).join(',')
+    if (!q) return {}
+    return this.request<
+      Record<
+        string,
+        {
+          lastRunStatus?: string
+          lastRunAt?: string
+          lastRunTaskId?: string
+          /** 试跑轨（run_track=DEBUG）的最近一次；不算质量数据，但要看得见 */
+          lastDebugStatus?: string
+          lastDebugAt?: string
+          lastDebugTaskId?: string
+        }
+      >
+    >(
+      `/ui-flows/last-runs?ids=${encodeURIComponent(q)}`
+    )
+  }
+
   async createUiFlow(body: Record<string, unknown>) {
     return this.request<any>('/ui-flows', { method: 'POST', body: JSON.stringify(body) })
   }
@@ -1176,17 +1247,40 @@ class ApiClient {
       /** TEST / PROD，缺省 PROD。只决定报告标识与验证码，包名两个环境一致 */
       environment?: string
       runNow?: boolean
+      /**
+       * 传 'DEBUG' ＝ 试跑：结果不算通过率、不当这条流程的「最近结果」、失败不告警。
+       * 流程编排页默认传它——在编辑器里跑本来就是调试，调试挂两次不该拉低质量数据。
+       */
+      track?: string
     }
   ) {
-    return this.request<{
-      taskId: string
-      task: any
-      started: boolean
-      message: string
-    }>(`/ui-flows/${flowId}/execute`, {
-      method: 'POST',
-      body: JSON.stringify(body)
-    })
+    const path = `/ui-flows/${flowId}/execute`
+    const url = this.endpointUrl(path)
+    console.info('[executeUiFlow]', url)
+    const ac = new AbortController()
+    const timer = window.setTimeout(() => ac.abort(), 25000)
+    try {
+      return await this.request<{
+        taskId: string
+        task: any
+        started: boolean
+        message: string
+      }>(path, {
+        method: 'POST',
+        body: JSON.stringify(body),
+        signal: ac.signal
+      })
+    } catch (e: unknown) {
+      if (ac.signal.aborted) {
+        throw new Error(
+          `执行请求超过 25 秒没有返回（${url}）。` +
+            '接口应立刻受理任务；一直转圈通常是后端没重启，或 Java 连的库不通（例如 3307 隧道没开）。'
+        )
+      }
+      throw e
+    } finally {
+      window.clearTimeout(timer)
+    }
   }
 
   // —— 业务应用字典 ——
@@ -3784,6 +3878,12 @@ class ApiClient {
     installStrategy?: string
     /** installStrategy=SPECIFIC 时要装的蒲公英 buildKey */
     installBuildKey?: string
+    /**
+     * 批次级执行参数，覆盖流程里的 ${变量}，只影响这一次。
+     * 常规数据走按环境注入的环境变量；这里适合「同一批用例这次换个账号跑一遍」。
+     * 账号池分配的手机号验证码优先级更高，不会被它覆盖。
+     */
+    params?: Record<string, string>
   }) {
     return this.request<{
       id: string

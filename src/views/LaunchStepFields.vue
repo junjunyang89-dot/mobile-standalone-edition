@@ -1,5 +1,16 @@
 <template>
-  <el-form-item label="启动应用" required>
+  <el-form-item required>
+    <template #label>
+      <span class="launch-label">
+        启动应用
+        <el-popover placement="top" :width="320" trigger="hover">
+          <template #reference>
+            <el-icon class="launch-help-icon"><QuestionFilled /></el-icon>
+          </template>
+          <div class="launch-help-pop">{{ hintText }}</div>
+        </el-popover>
+      </span>
+    </template>
     <el-select
       :model-value="selectedAppId"
       filterable
@@ -24,26 +35,35 @@
   </el-form-item>
 
   <!-- appActivity 只有 Android 用得上；iOS 走 BundleId + WDA forceAppLaunch，填了也不读 -->
-  <el-form-item v-if="!isIos && !isHotStart" label="appActivity">
+  <el-form-item v-if="!isIos && !isHotStart">
+    <template #label>
+      <span class="launch-label">
+        appActivity
+        <el-popover placement="top" :width="320" trigger="hover">
+          <template #reference>
+            <el-icon class="launch-help-icon"><QuestionFilled /></el-icon>
+          </template>
+          <div class="launch-help-pop">
+            建议填。留空时会退回 ADB monkey 拉起 launcher，能力受限且不一定进对页面。
+          </div>
+        </el-popover>
+      </span>
+    </template>
     <el-input
       v-model="step.params.activity"
       placeholder="appium:appActivity，如 .ui.activity.launcher.LauncherActivity"
     />
-    <div class="launch-hint">
-      建议填。留空时会退回 ADB monkey 拉起 launcher，能力受限且不一定进对页面
-    </div>
   </el-form-item>
 
   <el-form-item v-if="isHotStart" label="后台停留">
     <el-input-number v-model="step.params.backgroundMs" :min="500" :max="30000" :step="500" />
     <span class="launch-hint inline">毫秒</span>
   </el-form-item>
-
-  <el-alert type="info" :closable="false" show-icon style="margin-bottom: 12px" :title="hintText" />
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { QuestionFilled } from '@element-plus/icons-vue'
 
 /**
  * 启动 / 冷启动 / 热启动 步骤的表单。
@@ -133,15 +153,28 @@ function onAppChange(appId: string) {
 </script>
 
 <style scoped>
-.launch-hint {
-  margin-top: 6px;
+.launch-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.launch-help-icon {
+  color: #c0c4cc;
+  cursor: pointer;
+  font-size: 14px;
+}
+.launch-help-icon:hover {
+  color: var(--el-color-primary);
+}
+.launch-help-pop {
   font-size: 12px;
-  color: var(--el-text-color-secondary, var(--el-text-color-placeholder));
-  line-height: 1.6;
+  line-height: 1.65;
+  color: #606266;
 }
 .launch-hint.inline {
   display: inline;
-  margin-top: 0;
   margin-left: 8px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary, var(--el-text-color-placeholder));
 }
 </style>

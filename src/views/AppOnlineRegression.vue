@@ -554,6 +554,22 @@
                 </div>
               </div>
             </el-form-item>
+            <el-form-item label="执行参数">
+              <div class="exec-params">
+                <el-input
+                  v-model="execParamsText"
+                  type="textarea"
+                  :rows="3"
+                  placeholder="每行一个，形如&#10;phone=13800000000&#10;matchId=12345"
+                />
+                <div class="install-strategy-hint">
+                  本批次覆盖流程里的 <code>${变量}</code>，只影响这一次。
+                  常规数据请配在「环境变量」里按环境自动注入——改那边会影响所有人，
+                  这里适合「同一批用例这次换个账号/换个赛事跑一遍」。
+                  <br />账号池分配的手机号验证码优先级更高，不会被这里覆盖（多台机共用一个号会互相踢下线）。
+                </div>
+              </div>
+            </el-form-item>
             <el-form-item label="海外代理">
               <el-switch
                 v-model="enableOverseasProxy"
@@ -1049,6 +1065,23 @@ const enableOverseasProxy = ref(false)
  * 这个顺序是有意的：装错包跑出来的绿色比红色更糟，它验的是另一个包。
  */
 const installStrategy = ref('NONE')
+/** 批次级执行参数，每行 key=value */
+const execParamsText = ref('')
+
+/** 解析成对象；空行、没有等号的行、空 key 一律忽略，别让一个手滑的空格把整批跑挂 */
+function parseExecParams(): Record<string, string> | undefined {
+  const out: Record<string, string> = {}
+  for (const raw of String(execParamsText.value || '').split('\n')) {
+    const line = raw.trim()
+    if (!line || line.startsWith('#')) continue
+    const eq = line.indexOf('=')
+    if (eq <= 0) continue
+    const k = line.slice(0, eq).trim()
+    const v = line.slice(eq + 1).trim()
+    if (k) out[k] = v
+  }
+  return Object.keys(out).length ? out : undefined
+}
 const installBuildKey = ref('')
 
 const installStrategyHint = computed(() => {
@@ -1671,6 +1704,7 @@ async function startRegression() {
       enableOverseasProxy: enableOverseasProxy.value,
       installStrategy: installStrategy.value,
       installBuildKey: installStrategy.value === 'SPECIFIC' ? installBuildKey.value : undefined,
+      params: parseExecParams(),
       environment: environment.value
     })
     activeRunId.value = res.id

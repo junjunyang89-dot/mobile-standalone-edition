@@ -50,6 +50,7 @@
             class="inspector-shot"
             alt="设备截图"
             draggable="false"
+            @error="onShotLoadError"
             @click="onShotClick"
           />
           <div
@@ -75,6 +76,22 @@
             show-icon
             title="当前点在 WebView/H5 内容区：原生树看不到帖子卡片。请用「H5坐标点选」，或点上方「动态/评论」等原生 Tab。"
           />
+          <!--
+            这一类问题在候选列表里表达不出来：候选回答的是「这个节点怎么定位」，
+            而它要说的是「库里那条元素坏了」——另一个话题，得单独摆出来。
+          -->
+          <el-alert
+            v-for="(w, i) in warnings"
+            :key="'warn-' + i"
+            class="cand-warn-alert"
+            type="error"
+            :closable="false"
+            show-icon
+            title="元素库里有条定位指向了别的控件"
+          >
+            <div class="cand-warn-text">{{ w }}</div>
+          </el-alert>
+
           <el-empty v-if="!candidates.length && !hitting" description="点击截图上的控件" :image-size="64" />
           <div
             v-for="(c, idx) in candidates"
@@ -88,6 +105,14 @@
               <span>{{ c.suggestedNameZh || c.resourceId || c.className || `方案 ${idx + 1}` }}</span>
             </div>
             <div class="cand-meta">{{ c.locatorValue }}</div>
+            <!--
+              命中数是这个面板里最该显示、以前却唯独没显示的一条。
+              「命中 3 个」意味着执行时 Appium 取第 1 个，而第 1 个未必是你要的那个——
+              这正是「元素找得到、点击也成功、界面没反应」的来源。
+            -->
+            <div v-if="c.matchCount !== undefined && c.matchCount !== null" class="cand-count" :class="countClass(c)">
+              {{ countText(c) }}
+            </div>
             <div v-if="c.visualHint" class="cand-hint">{{ c.visualHint }}</div>
             <div v-if="c.matchedElementId" class="cand-match">
               已匹配：{{ c.matchedNameZh }} / {{ c.matchedNameEn }}（{{ c.matchedStatus }}）
@@ -234,6 +259,7 @@ const shotUrl = ref('')
 const imgRef = ref<HTMLImageElement | null>(null)
 const mark = ref<{ left: number; top: number } | null>(null)
 const candidates = ref<any[]>([])
+const warnings = ref<string[]>([])
 const selectedIdx = ref(-1)
 /** 抽屉内提示条：Message/MessageBox 会被本抽屉盖住，故不用全局弹窗 */
 const formNotice = ref<{
@@ -345,8 +371,13 @@ function onVisibleChange(v: boolean) {
   emit('update:modelValue', v)
 }
 
-function resetPanel() {
+function revokeShotUrl() {
+  if (shotUrl.value.startsWith('blob:')) URL.revokeObjectURL(shotUrl.value)
   shotUrl.value = ''
+}
+
+function resetPanel() {
+  revokeShotUrl()
   candidates.value = []
   selectedIdx.value = -1
   mark.value = null
@@ -493,6 +524,11 @@ watch(
   }
 )
 
+function onShotLoadError() {
+  ElMessage.error('截图显示失败，请再点「刷新截图」')
+  revokeShotUrl()
+}
+
 async function refreshShot() {
   if (!deviceId.value) {
     ElMessage.warning('请选择设备')
@@ -500,11 +536,15 @@ async function refreshShot() {
   }
   loadingShot.value = true
   candidates.value = []
+  warnings.value = []
   selectedIdx.value = -1
   mark.value = null
   try {
     const snap = await apiClient.getDeviceInspectSnapshot(deviceId.value)
-    shotUrl.value = apiClient.resolveAssetUrl(snap.screenshotUrl)
+    const t = String(snap.screenshotUrl || '').split('t=')[1] || String(Date.now())
+    const next = await apiClient.fetchDeviceInspectScreenshotObjectUrl(deviceId.value, t)
+    revokeShotUrl()
+    shotUrl.value = next
     ElMessage.success('截图已刷新，请点击控件')
   } catch (e: any) {
     const msg = e?.message || '截图失败'
@@ -514,7 +554,7 @@ async function refreshShot() {
       duration: Math.min(12000, Math.max(4500, msg.length * 40)),
       showClose: true
     })
-    shotUrl.value = ''
+    revokeShotUrl()
   } finally {
     loadingShot.value = false
   }
@@ -557,6 +597,7 @@ async function onShotClick(ev: MouseEvent) {
       appId: props.appId || undefined
     })
     candidates.value = res.candidates || []
+    warnings.value = res.warnings || []
     if (!candidates.value.length) {
       ElMessage.warning('未命中控件：可换个位置再点；若刚在手机上滑动过，请先「刷新截图」')
       selectedIdx.value = -1
@@ -566,9 +607,30 @@ async function onShotClick(ev: MouseEvent) {
   } catch (e: any) {
     ElMessage.error(e?.message || '命中失败')
     candidates.value = []
+    warnings.value = []
   } finally {
     hitting.value = false
   }
+}
+
+/**
+ * 命中数怎么读给人听。
+ * 「唯一」是结论不是数字，所以正常情况只说一句「本屏唯一」；
+ * 出问题的时候才把数字摆出来，并且直接说后果，不让人自己去推。
+ */
+function countText(c: any) {
+  const n = Number(c?.matchCount)
+  if (!Number.isFinite(n) || n < 0) return '本屏唯一性未知（这类定位没法在控件树上校验）'
+  if (n === 0) return '本屏一个都没命中：这条定位现在是失效的'
+  if (n === 1) return '本屏唯一'
+  return `本屏命中 ${n} 个 · 执行时只会用第 1 个，未必是你要的这个`
+}
+
+function countClass(c: any) {
+  const n = Number(c?.matchCount)
+  if (!Number.isFinite(n) || n < 0) return 'is-unknown'
+  if (n === 1) return 'is-unique'
+  return 'is-dup'
 }
 
 function selectCandidate(idx: number) {
@@ -846,6 +908,29 @@ async function createElement(promote: boolean) {
   font-size: 12px;
   color: var(--app-success);
   margin-top: 4px;
+}
+/* 命中数用颜色分级：唯一是常态、灰着就行；不唯一必须扎眼，它是要人现在就处理的 */
+.cand-count {
+  font-size: 12px;
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.cand-count.is-unique {
+  color: var(--app-text-secondary);
+}
+.cand-count.is-unknown {
+  color: var(--el-text-color-placeholder);
+}
+.cand-count.is-dup {
+  color: var(--el-color-danger);
+  font-weight: 600;
+}
+.cand-warn-alert {
+  margin-bottom: 8px;
+}
+.cand-warn-text {
+  font-size: 12px;
+  line-height: 1.7;
 }
 .inspector-form {
   border: 1px solid var(--app-border);

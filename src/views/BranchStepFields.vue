@@ -1,19 +1,11 @@
 <template>
   <el-form label-position="top" class="step-form">
-    <el-form-item label="描述">
+    <el-form-item label="备注">
       <el-input
         v-model="step.description"
         maxlength="120"
         show-word-limit
-        placeholder="这步干什么，如：点击登录按钮"
-      />
-    </el-form-item>
-    <el-form-item label="期望">
-      <el-input
-        v-model="step.expectation"
-        maxlength="120"
-        show-word-limit
-        placeholder="给人看的预期，如：进入验证码页（不等于断言）"
+        placeholder="可选，给自己看的，如：点底部登录入口"
       />
     </el-form-item>
     <el-form-item v-if="needsElement" :label="elementFieldLabel">
@@ -45,6 +37,7 @@
       v-else-if="!isCustomUi?.(step.keywordCode)"
       :schema="schema"
       :params="step.params"
+      :keyword-code="step.keywordCode"
       :element-options="elementOptions"
       :page-options="pageOptions"
     />

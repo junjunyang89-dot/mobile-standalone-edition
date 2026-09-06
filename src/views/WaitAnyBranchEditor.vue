@@ -75,9 +75,12 @@
         <el-button size="small" type="primary" @click="addStep(ci)">添加命中后步骤</el-button>
       </div>
 
-      <div v-if="!(cand.steps || []).length" class="branch-empty">命中后暂无步骤</div>
+      <div v-if="hideChildCards" class="branch-empty">
+        命中后步骤在左侧大纲里点开（{{ (cand.steps || []).length }} 步）
+      </div>
+      <div v-else-if="!(cand.steps || []).length" class="branch-empty">命中后暂无步骤</div>
       <div
-        v-for="(bs, bi) in cand.steps || []"
+        v-for="(bs, bi) in hideChildCards ? [] : (cand.steps || [])"
         :key="bs._key || `c${ci}-s${bi}`"
         class="branch-step"
         :style="stepColorStyle(bs.keywordCode)"
@@ -142,9 +145,12 @@
         <el-button size="small" type="primary" @click="addNoneStep">添加兜底步骤</el-button>
       </div>
 
-      <div v-if="!(step.params.noneSteps || []).length" class="branch-empty">暂无兜底步骤</div>
+      <div v-if="hideChildCards" class="branch-empty">
+        兜底步骤在左侧大纲里点开（{{ (step.params.noneSteps || []).length }} 步）
+      </div>
+      <div v-else-if="!(step.params.noneSteps || []).length" class="branch-empty">暂无兜底步骤</div>
       <div
-        v-for="(bs, bi) in step.params.noneSteps || []"
+        v-for="(bs, bi) in hideChildCards ? [] : (step.params.noneSteps || [])"
         :key="bs._key || 'n-' + bi"
         class="branch-step"
         :style="stepColorStyle(bs.keywordCode)"
@@ -231,9 +237,11 @@ const props = withDefaults(defineProps<{
   appOptions?: any[]
   platform?: string
   nestLevel?: number
+  hideChildCards?: boolean
 }>(), {
   pathPrefix: '1',
   nestLevel: 0,
+  hideChildCards: false,
   pageOptions: () => [],
   appOptions: () => []
 })
@@ -241,6 +249,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   inspect: [step: FlowStep]
   'refresh-elements': []
+  added: [step: FlowStep]
 }>()
 
 const defaultCode = props.keywordOptions.find((k) => k.code === 'CLICK')?.code
@@ -266,6 +275,7 @@ function migrateNoneMessage() {
   step.params.message = legacyNoneMessage.value
   if (!Array.isArray(props.step.params.noneSteps)) props.step.params.noneSteps = []
   props.step.params.noneSteps.push(step)
+  emit('added', step)
   clearNoneMessage()
   ElMessage.success('已转成结束步骤，请确认判定是否符合预期')
 }
@@ -316,7 +326,9 @@ function addStep(ci: number) {
   }
   const cand = candidates.value[ci]
   if (!Array.isArray(cand.steps)) cand.steps = []
-  cand.steps.push(props.createStep(candAddCode.value))
+  const created = props.createStep(candAddCode.value)
+  cand.steps.push(created)
+  emit('added', created)
 }
 
 function removeStep(ci: number, bi: number) {
@@ -340,7 +352,9 @@ function addNoneStep() {
     return
   }
   if (!Array.isArray(props.step.params.noneSteps)) props.step.params.noneSteps = []
-  props.step.params.noneSteps.push(props.createStep(noneAddCode.value))
+  const created = props.createStep(noneAddCode.value)
+  props.step.params.noneSteps.push(created)
+  emit('added', created)
 }
 
 function removeNoneStep(bi: number) {

@@ -13,9 +13,12 @@
         </el-select>
         <el-button size="small" type="success" @click="add('thenSteps')">添加</el-button>
       </div>
-      <div v-if="!(step.params.thenSteps || []).length" class="branch-empty">暂无步骤</div>
+      <div v-if="hideChildCards" class="branch-empty">
+        子步骤在左侧大纲里点开编辑（{{ (step.params.thenSteps || []).length }} 步）
+      </div>
+      <div v-else-if="!(step.params.thenSteps || []).length" class="branch-empty">暂无步骤</div>
       <div
-        v-for="(bs, bi) in step.params.thenSteps || []"
+        v-for="(bs, bi) in hideChildCards ? [] : (step.params.thenSteps || [])"
         :key="bs._key || 't-' + bi"
         class="branch-step"
         :style="stepColorStyle(bs.keywordCode)"
@@ -89,9 +92,12 @@
         </el-select>
         <el-button size="small" type="primary" @click="add('elseSteps')">添加步骤</el-button>
       </div>
-      <div v-if="!(step.params.elseSteps || []).length" class="branch-empty">暂无额外步骤</div>
+      <div v-if="hideChildCards" class="branch-empty">
+        子步骤在左侧大纲里点开编辑（{{ (step.params.elseSteps || []).length }} 步）
+      </div>
+      <div v-else-if="!(step.params.elseSteps || []).length" class="branch-empty">暂无额外步骤</div>
       <div
-        v-for="(bs, bi) in step.params.elseSteps || []"
+        v-for="(bs, bi) in hideChildCards ? [] : (step.params.elseSteps || [])"
         :key="bs._key || 'e-' + bi"
         class="branch-step"
         :style="stepColorStyle(bs.keywordCode)"
@@ -170,9 +176,12 @@ const props = withDefaults(defineProps<{
   appOptions?: any[]
   platform?: string
   nestLevel?: number
+  /** 大纲+详情布局时不在本卡里再铺子步骤表单 */
+  hideChildCards?: boolean
 }>(), {
   pathPrefix: '1',
   nestLevel: 0,
+  hideChildCards: false,
   pageOptions: () => [],
   appOptions: () => []
 })
@@ -180,6 +189,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   inspect: [step: FlowStep]
   'refresh-elements': []
+  added: [step: FlowStep]
 }>()
 
 /** 存量流程里内联的「不存在时返回提示」；新流程一律用 FINISH_* 步骤 */
@@ -200,6 +210,7 @@ function migrateElseMessage() {
   step.params.message = legacyElseMessage.value
   if (!Array.isArray(props.step.params.elseSteps)) props.step.params.elseSteps = []
   props.step.params.elseSteps.push(step)
+  emit('added', step)
   clearElseMessage()
   ElMessage.success(`已转成「${code === 'FINISH_SUCCESS' ? '成功结束' : code === 'FINISH_SKIPPED' ? '跳过结束' : '失败结束'}」步骤，请确认判定是否符合预期`)
 }
@@ -233,7 +244,9 @@ function add(which: 'thenSteps' | 'elseSteps') {
     return
   }
   if (!Array.isArray(props.step.params[which])) props.step.params[which] = []
-  props.step.params[which].push(props.createStep(code))
+  const created = props.createStep(code)
+  props.step.params[which].push(created)
+  emit('added', created)
 }
 
 function move(which: 'thenSteps' | 'elseSteps', idx: number, delta: number) {

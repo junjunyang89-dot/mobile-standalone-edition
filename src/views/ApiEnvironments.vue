@@ -1,166 +1,178 @@
 <template>
-  <div class="api-envs">
-    <el-card class="main-card" shadow="never">
-      <template #header>
-        <div class="card-header">
-          <div>
-            <span class="card-title">环境变量</span>
-            <p class="card-sub">
-              <strong>接口自动化和 APP UI 自动化共用这一套。</strong>
-              用例/流程里写 <code v-pre>{{变量名}}</code>（UI 流程也认 <code v-pre>${变量名}</code>），
-              执行时换成这里的真值。
-              <b>baseUrl 不在这里</b> —— 它归「资产管理 · URL 管理」，那边能按项目配多个网关，比这里全。
-              同一个东西两个地方能改，迟早对不上。
-            </p>
-          </div>
-        </div>
-      </template>
+  <div class="env-page">
+    <h1 class="page-title">环境变量</h1>
 
-      <!-- 环境切页签，跟顶栏的执行环境是同一套 TEST/PROD -->
+    <div class="notice">
+      <el-icon class="notice-icon"><WarningFilled /></el-icon>
+      <p>
+        接口自动化和 APP UI 自动化共用这一套变量。
+        <b>baseUrl 不在这里管理</b>，请到「资产管理 · URL 管理」配置。
+      </p>
+    </div>
+
+    <div class="env-switch">
       <div class="env-tabs">
         <button
-          v-for="e in envs"
-          :key="e.environment"
+          v-for="tab in ENV_TABS"
+          :key="tab.environment"
+          type="button"
           class="env-tab"
-          :class="{ active: current === e.environment, prod: e.environment === 'PROD' }"
-          @click="switchEnv(e.environment)"
+          :class="{ active: current === tab.environment, prod: tab.environment === 'PROD' }"
+          @click="switchEnv(tab.environment)"
         >
           <span class="dot" />
-          <span class="env-name">{{ envLabel(e) }}</span>
-          <el-tag v-if="current === e.environment" size="small" type="primary" effect="plain">当前</el-tag>
+          <span class="env-name">{{ tab.short }}</span>
+          <span class="env-code">{{ tab.environment }}</span>
+          <span v-if="current === tab.environment" class="now-badge">当前</span>
         </button>
       </div>
+      <span class="env-switch-hint">切换环境后变量列表同步更新</span>
+    </div>
 
-      <div class="base-block">
-        <span class="base-label">兜底 baseUrl</span>
-        <code class="base-value">{{ currentEnv.baseUrl || '（未配置）' }}</code>
-        <el-button link type="primary" @click="$router.push('/api-urls')">去 URL 管理修改</el-button>
-        <!--
-          叫「兜底」而不是「当前」：解析顺序是 用例选的 URL → 这里。
-          叫「当前」会让人以为所有用例都走它，于是改了这里发现没生效。
-        -->
-        <span class="base-hint">仅在用例没选具体 URL 时才用它；选了就以那个为准</span>
-      </div>
-
-      <!--
-        数据库断言的连接。放在环境下面而不是全局：
-        切到预发就该查预发的库，否则「接口打预发、断言查测试库」，结论是反的
-      -->
-      <div class="db-block">
-        <div class="db-head">
-          <span class="section-name">{{ envLabel(currentEnv) }} 数据库断言连接</span>
-          <el-tag v-if="dbConfigured" size="small" type="success" effect="plain">已配置</el-tag>
-          <el-tag v-else size="small" type="info" effect="plain">未配置</el-tag>
-          <span class="db-hint">
-            用例里写 <code>db</code> / <code>dbDelta</code> 断言时查这个库。
-            <b>务必用只读账号</b> —— 平台只放行单条 SELECT，但账号本身是最后一道防线。
-          </span>
-        </div>
-        <div class="db-form">
-          <el-input v-model="db.dbHost" placeholder="库地址，如 10.0.0.12" style="width: 190px" />
-          <el-input v-model.number="db.dbPort" placeholder="3306" style="width: 90px" />
-          <el-input v-model="db.dbName" placeholder="库名" style="width: 160px" />
-          <el-input v-model="db.dbUser" placeholder="只读账号" style="width: 140px" />
-          <el-input
-            v-model="db.dbPassword"
-            type="password"
-            show-password
-            placeholder="密码"
-            style="width: 160px"
-          />
-          <el-button type="primary" :loading="dbSaving" @click="saveDb">保存</el-button>
-          <el-button :loading="dbChecking" :disabled="!dbConfigured" @click="checkDb">测试连接</el-button>
-        </div>
-        <div v-if="dbMsg" class="db-msg" :class="{ bad: !dbOk }">{{ dbMsg }}</div>
-      </div>
-
-      <div class="section-head">
-        <span class="section-name">{{ envLabel(currentEnv) }} 变量</span>
-        <el-button link type="primary" @click="openAdd">+ 新增变量</el-button>
-      </div>
-
-      <el-table :data="variables" v-loading="loading" size="default" class="var-table">
-        <el-table-column width="56" align="center">
-          <template #default="{ row }">
-            <!-- 关掉相当于没配这个变量，用来临时试「不传会怎样」而不用删掉重配 -->
-            <el-checkbox
-              :model-value="row.enabled !== false"
-              @change="(v: any) => toggleEnabled(row, v)"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column label="变量" min-width="200">
-          <template #default="{ row }">
-            <span class="var-name">
-              <el-icon v-if="row.secret" class="key-icon"><Key /></el-icon>
-              {{ row.name }}
+    <div class="env-layout">
+      <div class="env-main">
+        <section class="panel">
+          <div class="panel-head">
+            <span class="panel-title">
+              <el-icon><Link /></el-icon>
+              兜底 baseUrl
             </span>
-            <div v-if="row.description" class="var-desc">{{ row.description }}</div>
-          </template>
-        </el-table-column>
-        <el-table-column label="值" min-width="280">
-          <template #default="{ row }">
-            <span :class="{ masked: row.secret }">{{ row.value || '（空）' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="引用" width="200">
-          <template #default="{ row }">
-            <code class="ref-code">{{ refOf(row.name) }}</code>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="130" align="right">
-          <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button v-perm:delete link type="danger" size="small" @click="removeVar(row)">删除</el-button>
-          </template>
-        </el-table-column>
-        <template #empty>
-          <div class="empty-tip">
-            还没有变量。最常见的是 <code>token</code> —— 建议不要在这里填死值，
-            让登录用例执行后自动抽出来（见下方说明）。
+            <span class="env-chip" :class="current === 'PROD' ? 'is-prod' : 'is-test'">
+              {{ current === 'PROD' ? 'PROD 环境' : 'TEST 环境' }}
+            </span>
           </div>
-        </template>
-      </el-table>
+          <div class="base-box">
+            <span class="base-k">当前</span>
+            <code class="base-v">{{ currentEnv.baseUrl || '（未配置）' }}</code>
+          </div>
+          <el-button type="primary" class="base-btn" @click="$router.push('/api-urls')">
+            去 URL 管理修改
+          </el-button>
+          <p class="panel-hint">仅在用例没选具体 URL 时才用它</p>
+        </section>
 
-      <!-- 内置变量：每次求值都不同，造数据时用 -->
-      <div class="builtin-block">
-        <div class="builtin-head">内置变量</div>
-        <p class="builtin-sub">
-          不用配，任何环境都能直接用。每次求值都给新值 —— 造数据时手机号/昵称不能重复，
-          写死一个跑第二遍就唯一键冲突。
-        </p>
-        <div class="builtin-grid">
-          <div v-for="b in BUILTINS" :key="b.name" class="builtin-item" @click="copy(b.ref)">
-            <code>{{ b.ref }}</code>
-            <span class="builtin-desc">{{ b.desc }}</span>
+        <section class="panel db-panel">
+          <button type="button" class="collapse-head" @click="dbOpen = !dbOpen">
+            <span class="panel-title">
+              <el-icon><Coin /></el-icon>
+              数据库断言连接
+            </span>
+            <span class="db-status" :class="{ ok: dbConfigured }">{{ dbConfigured ? '已配置' : '未配置' }}</span>
+            <el-icon class="collapse-caret" :class="{ open: dbOpen }"><ArrowRight /></el-icon>
+          </button>
+          <p class="panel-hint db-hint-line">用例里写 db / dbDelta 断言时查这个库，务必只读账号</p>
+          <div v-show="dbOpen" class="db-form">
+            <el-input v-model="db.dbHost" placeholder="库地址，如 10.0.0.12" />
+            <el-input v-model.number="db.dbPort" placeholder="3306" />
+            <el-input v-model="db.dbName" placeholder="库名" />
+            <el-input v-model="db.dbUser" placeholder="只读账号" />
+            <el-input v-model="db.dbPassword" type="password" show-password placeholder="密码" />
+            <el-button type="primary" :loading="dbSaving" @click="saveDb">保存</el-button>
+            <el-button :loading="dbChecking" :disabled="!dbConfigured" @click="checkDb">测试连接</el-button>
           </div>
-        </div>
+          <div v-if="dbOpen && dbMsg" class="db-msg" :class="{ bad: !dbOk }">{{ dbMsg }}</div>
+        </section>
+
+        <section class="var-card">
+          <div class="var-card-head">
+            <div class="var-card-title">
+              <b>{{ current === 'PROD' ? '线上 (PROD)' : '测试 (TEST)' }} 变量</b>
+              <span class="var-count">共 {{ variables.length }} 条</span>
+            </div>
+            <el-button type="primary" @click="openAdd">+ 新增变量</el-button>
+          </div>
+          <el-table :data="variables" v-loading="loading" class="var-table" size="default">
+            <el-table-column width="48" align="center">
+              <template #default="{ row }">
+                <el-checkbox
+                  :model-value="row.enabled !== false"
+                  @change="(v: any) => toggleEnabled(row, v)"
+                />
+              </template>
+            </el-table-column>
+            <el-table-column label="变量名" min-width="180">
+              <template #default="{ row }">
+                <span class="var-name">
+                  <el-icon v-if="row.secret" class="key-icon"><Key /></el-icon>
+                  {{ row.name }}
+                </span>
+                <div v-if="row.description" class="var-desc">{{ row.description }}</div>
+              </template>
+            </el-table-column>
+            <el-table-column label="值" min-width="200">
+              <template #default="{ row }">
+                <span :class="{ masked: row.secret }">{{ row.value || '（空）' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="引用（点击复制）" min-width="200">
+              <template #default="{ row }">
+                <button type="button" class="ref-pill" @click="copy(refOf(row.name))">
+                  {{ refOf(row.name) }}
+                </button>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="120" align="right">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+                <el-button v-perm:delete link type="danger" @click="removeVar(row)">删除</el-button>
+              </template>
+            </el-table-column>
+            <template #empty>
+              <div class="empty-tip">还没有变量，点右上角新增。token 不要在这里填死。</div>
+            </template>
+          </el-table>
+        </section>
       </div>
 
-      <!-- 用法说明默认收起：常驻占一整屏，配过的人每次进来都要滚过去 -->
-      <div class="howto" :class="{ open: howtoOpen }">
-        <button type="button" class="howto-toggle" @click="howtoOpen = !howtoOpen">
-          <span class="howto-toggle-title">token 别在这里填死</span>
-          <span class="howto-toggle-hint">{{ howtoOpen ? '收起' : '点击展开：登录抽 token、UI 流程怎么用变量' }}</span>
-        </button>
-        <div v-show="howtoOpen" class="howto-body">
-          填死的 token 一过期，几百条用例集体变红，你得回来手动粘一个新的 —— 那就成了每次都要人管的事。
-          正确做法是让登录用例把它抽出来：
-          <ol>
-            <li>建一条登录用例，在「执行后抽变量」里填 <code>{{ '{"token":"$.result.token"}' }}</code></li>
-            <li>把它排在最前面（sortOrder 最小）</li>
-            <li>其余用例的请求头写 <code v-pre>token: {{token}}</code></li>
-          </ol>
-          抽出来的值只在<strong>本次执行</strong>内有效，下一轮重新登录取新的。
-          <div class="howto-ui">
-            <strong>APP UI 自动化同理。</strong>用例两边一样、<strong>数据两边不一样</strong>——
-            测试环境和线上的登录手机号、搜索关键词、比赛 ID 都不是同一份。
-            把它们配成变量（如 <code>phone</code>、<code>keyword</code>），流程里写
-            <code v-pre>${phone}</code>，一条流程就能既跑线上包又跑测试包，流程本身一个字不用改。
+      <aside class="env-side">
+        <section class="side-card">
+          <button type="button" class="collapse-head" @click="builtinOpen = !builtinOpen">
+            <span class="panel-title">
+              <el-icon class="collapse-caret side-caret" :class="{ open: builtinOpen }"><ArrowRight /></el-icon>
+              内置变量
+            </span>
+          </button>
+          <p class="side-sub">无需配置，直接引用。造数据时每次都是新值，避免唯一键冲突。</p>
+          <div v-show="builtinOpen" class="chip-list">
+            <button
+              v-for="b in BUILTINS"
+              :key="b.name"
+              type="button"
+              class="var-chip"
+              :title="b.desc"
+              @click="copy(b.ref)"
+            >
+              <code>{{ b.ref }}</code>
+              <span>{{ b.desc }}</span>
+            </button>
           </div>
-        </div>
-      </div>
-    </el-card>
+          <p class="side-foot">点击 chip 可复制引用写法</p>
+        </section>
+
+        <section class="side-card token-card">
+          <button type="button" class="collapse-head" @click="howtoOpen = !howtoOpen">
+            <span class="panel-title">
+              <el-icon class="token-ico"><WarningFilled /></el-icon>
+              token 别在这里填死
+            </span>
+            <el-icon class="collapse-caret" :class="{ open: howtoOpen }"><ArrowRight /></el-icon>
+          </button>
+          <div v-show="howtoOpen" class="howto-body">
+            填死的 token 一过期，用例会集体变红。让登录用例执行后抽出来：
+            <ol>
+              <li>登录用例「执行后抽变量」填 <code>{{ '{"token":"$.result.token"}' }}</code></li>
+              <li>把它排在最前面</li>
+              <li>其余用例请求头写 <code v-pre>token: {{token}}</code></li>
+            </ol>
+            抽出来的值只在本次执行内有效。
+            <p>
+              APP UI 同理：测试和线上数据不同，配成变量后流程里写
+              <code v-pre>${phone}</code>，一条流程两边都能跑。
+            </p>
+          </div>
+        </section>
+      </aside>
+    </div>
 
     <el-dialog v-model="dialog" :title="editing ? '编辑变量' : '新增变量'" width="520px" destroy-on-close>
       <el-form :model="form" label-width="90px">
@@ -201,23 +213,23 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Key } from '@element-plus/icons-vue'
+import { ArrowRight, Coin, Key, Link, WarningFilled } from '@element-plus/icons-vue'
 import { apiClient } from '../api'
 
-/**
- * 接口测试的环境与变量。
- *
- * 只管变量。baseUrl 归「URL 管理」（api_url_entries，按项目可配多个网关），这里只读地显示一下——
- * 同一个值有两个入口能改，迟早对不上，那种不一致查起来极其费时。
- */
+const ENV_TABS = [
+  { environment: 'TEST', short: '测试' },
+  { environment: 'PROD', short: '线上' }
+]
 
 const howtoOpen = ref(false)
+const builtinOpen = ref(true)
+const dbOpen = ref(false)
 
 const BUILTINS = [
   { name: '$timestamp', ref: '{{$timestamp}}', desc: '13 位毫秒时间戳' },
   { name: '$timestampSec', ref: '{{$timestampSec}}', desc: '10 位秒级时间戳' },
   { name: '$randomInt', ref: '{{$randomInt}}', desc: '0 ~ 999999 随机整数' },
-  { name: '$guid', ref: '{{$guid}}', desc: 'UUID，造唯一数据用' }
+  { name: '$guid', ref: '{{$guid}}', desc: 'UUID' }
 ]
 
 const envs = ref<any[]>([])
@@ -245,14 +257,12 @@ const dbOk = ref(true)
 
 const dbConfigured = computed(() => !!(db.dbHost && db.dbName))
 
-/** 切环境时把这个环境自己的库配置读进来——两个环境是两套库 */
 function syncDbForm() {
   const e: any = currentEnv.value || {}
   db.dbHost = e.dbHost || ''
   db.dbPort = e.dbPort || undefined
   db.dbName = e.dbName || ''
   db.dbUser = e.dbUser || ''
-  // 后端回显的是遮罩，原样传回去就是「不改密码」
   db.dbPassword = e.dbPassword || ''
   dbMsg.value = ''
 }
@@ -260,7 +270,6 @@ function syncDbForm() {
 async function saveDb() {
   const e: any = currentEnv.value || {}
   if (!e.baseUrl) {
-    // saveEnv 要求 baseUrl 必填，而它归 URL 管理那边
     ElMessage.warning('这个环境还没有 baseUrl，先去「URL 管理」配一个')
     return
   }
@@ -279,7 +288,6 @@ async function saveDb() {
       dbPassword: db.dbPassword || undefined
     })
     await loadEnvs()
-  syncDbForm()
     syncDbForm()
     ElMessage.success('已保存')
   } catch (e: any) {
@@ -304,29 +312,16 @@ async function checkDb() {
   }
 }
 
-/** 模板里写不了字面的 }}，统一在这儿拼 */
 function refOf(name: string) {
   return `{{${name}}}`
 }
 
-/**
- * 把人顺手带上的括号去掉。
- *
- * 说明里写着「用例里写 {{变量名}}」，于是很多人会把 {{phone}} 整个粘进变量名框，
- * 然后收到一句「变量名只能是字母/数字…」——意图完全清楚，却要人自己去猜哪里多打了字。
- * 能确定意图的就直接接住，不要制造这种来回。
- */
 function stripBraces(v: string) {
   return String(v || '')
     .trim()
     .replace(/^\$?\{+\s*/, '')
     .replace(/\s*\}+$/, '')
     .trim()
-}
-
-function envLabel(e: any) {
-  if (!e?.environment) return ''
-  return e.environment === 'PROD' ? '线上（PROD）' : '测试（TEST）'
 }
 
 async function loadEnvs() {
@@ -354,7 +349,6 @@ async function loadVariables() {
 function switchEnv(env: string) {
   current.value = env
   loadVariables()
-  // 两个环境是两套库，切过去必须换成那边的配置，不然会把预发的库存到测试上
   syncDbForm()
 }
 
@@ -402,7 +396,6 @@ async function save() {
 
 async function toggleEnabled(row: any, enabled: boolean) {
   try {
-    // 传掩码回去后端会保留原值，所以这里不用先取真值
     await apiClient.saveApiTestVariable(current.value, { ...row, enabled })
     await loadVariables()
   } catch (e: any) {
@@ -441,274 +434,348 @@ async function copy(text: string) {
 
 onMounted(async () => {
   await loadEnvs()
+  syncDbForm()
   await loadVariables()
 })
 </script>
 
 <style scoped>
-.db-block {
-  margin-top: 18px;
-  padding: 14px 16px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 6px;
-  background: var(--el-fill-color-blank);
+.env-page {
+  padding: 20px 24px 32px;
+  background: #f4f6f8;
+  min-height: 100%;
 }
-
-.db-head {
+.page-title {
+  margin: 0 0 14px;
+  font-size: 20px;
+  font-weight: 700;
+  color: #1f2329;
+}
+.notice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  background: #fff8e6;
+  border: 1px solid #f3d19e;
+  border-radius: 8px;
+  color: #8a6116;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.notice p {
+  margin: 0;
+}
+.notice-icon {
+  margin-top: 2px;
+  color: #e6a23c;
+  font-size: 16px;
+}
+.env-switch {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-
-.db-hint {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-
-.db-form {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.db-msg {
-  margin-top: 10px;
-  font-size: 13px;
-  color: var(--el-color-success);
-}
-
-.db-msg.bad {
-  color: var(--el-color-danger);
-}
-</style>
-
-<style scoped>
-.api-envs {
-  padding: 16px;
-}
-.card-header {
-  display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-}
-.card-title {
-  font-size: 16px;
-  font-weight: 600;
-}
-.card-sub {
-  margin: 6px 0 0;
-  font-size: 13px;
-  color: var(--el-text-color-secondary);
-  line-height: 1.6;
+  gap: 16px;
+  margin-bottom: 16px;
 }
 .env-tabs {
   display: flex;
-  gap: 12px;
-  margin-bottom: 20px;
+  gap: 10px;
 }
 .env-tab {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 18px;
-  border: 1px solid var(--el-border-color);
+  padding: 8px 14px;
+  border: 1px solid #dcdfe6;
   border-radius: 8px;
-  background: var(--el-bg-color);
+  background: #fff;
   cursor: pointer;
-  font-size: 14px;
-  color: var(--el-text-color-primary);
-  transition: all 0.15s;
-}
-.env-tab:hover {
-  border-color: var(--el-color-primary-light-5);
-}
-.env-tab.active {
-  border-color: var(--el-color-primary);
-  box-shadow: 0 0 0 1px var(--el-color-primary-light-7);
+  color: #303133;
 }
 .env-tab .dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--el-color-success);
+  background: #67c23a;
 }
 .env-tab.prod .dot {
-  background: var(--el-color-danger);
+  background: #f56c6c;
 }
 .env-name {
-  font-weight: 500;
-}
-.base-block {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 14px 16px;
-  background: var(--el-fill-color-lighter);
-  border-radius: 8px;
-  margin-bottom: 20px;
-}
-.base-label {
-  font-size: 13px;
   font-weight: 600;
-  color: var(--el-text-color-regular);
-}
-.base-value {
-  font-size: 13px;
-  color: var(--el-color-primary);
-}
-.base-hint {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-.section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-.section-name {
   font-size: 14px;
+}
+.env-code {
+  font-size: 12px;
+  color: #909399;
+}
+.now-badge {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #ecf5ff;
+  color: #409eff;
+  font-size: 11px;
   font-weight: 600;
+}
+.env-tab.active {
+  border-color: #409eff;
+  background: #f0f7ff;
+  box-shadow: 0 0 0 1px #c6e2ff;
+}
+.env-switch-hint {
+  font-size: 12px;
+  color: #909399;
+}
+.env-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 16px;
+  align-items: start;
+}
+.env-main,
+.env-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.panel,
+.var-card,
+.side-card {
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.panel-head,
+.collapse-head,
+.var-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.collapse-head {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+.panel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 650;
+  color: #303133;
+}
+.env-chip {
+  margin-left: auto;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f0f9eb;
+  color: #67c23a;
+}
+.env-chip.is-prod {
+  background: #fef0f0;
+  color: #f56c6c;
+}
+.base-box {
+  margin: 12px 0 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f0f7ff;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.base-k {
+  font-size: 12px;
+  color: #909399;
+}
+.base-v {
+  font-size: 13px;
+  color: #303133;
+}
+.base-btn {
+  margin-bottom: 8px;
+}
+.panel-hint {
+  margin: 0;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
+}
+.db-status {
+  margin-left: auto;
+  font-size: 12px;
+  color: #909399;
+}
+.db-status.ok {
+  color: #67c23a;
+}
+.collapse-caret {
+  color: #c0c4cc;
+  transition: transform 0.15s;
+}
+.collapse-caret.open {
+  transform: rotate(90deg);
+}
+.side-caret {
+  margin-right: 2px;
+}
+.db-hint-line {
+  margin-top: 8px;
+}
+.db-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.db-form :deep(.el-input) {
+  width: 160px;
+}
+.db-msg {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #67c23a;
+}
+.db-msg.bad {
+  color: #f56c6c;
+}
+.var-card {
+  padding: 0;
+  overflow: hidden;
+}
+.var-card-head {
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+}
+.var-card-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.var-count {
+  font-size: 12px;
+  color: #909399;
 }
 .var-table {
-  margin-bottom: 24px;
+  width: 100%;
 }
 .var-name {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-family: var(--el-font-family-mono, monospace);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 13px;
 }
 .key-icon {
-  color: var(--el-color-warning);
-  font-size: 13px;
+  color: #e6a23c;
 }
 .var-desc {
   margin-top: 3px;
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: #909399;
 }
 .masked {
   letter-spacing: 2px;
-  color: var(--el-text-color-secondary);
+  color: #909399;
 }
-.ref-code {
+.ref-pill {
+  border: none;
+  background: #ecf5ff;
+  color: #409eff;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: var(--el-fill-color);
-  color: var(--el-color-primary);
+  cursor: pointer;
+}
+.ref-pill:hover {
+  background: #d9ecff;
 }
 .empty-tip {
   padding: 20px;
+  color: #909399;
   font-size: 13px;
-  color: var(--el-text-color-secondary);
-  line-height: 1.7;
 }
-.builtin-block {
-  padding: 16px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
-  margin-bottom: 16px;
-}
-.builtin-head {
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-.builtin-sub {
-  margin: 0 0 12px;
+.side-sub,
+.side-foot {
+  margin: 8px 0 0;
   font-size: 12px;
-  color: var(--el-text-color-secondary);
-  line-height: 1.6;
+  color: #909399;
+  line-height: 1.5;
 }
-.builtin-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 10px;
-}
-.builtin-item {
+.chip-list {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border-radius: 6px;
-  background: var(--el-fill-color-lighter);
-  cursor: pointer;
-  font-size: 12px;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
 }
-.builtin-item:hover {
-  background: var(--el-fill-color);
-}
-.builtin-item code {
-  color: var(--el-color-primary);
-  white-space: nowrap;
-}
-.builtin-desc {
-  color: var(--el-text-color-secondary);
-}
-.howto {
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--el-color-info) 6%, var(--el-bg-color));
-}
-.howto.open {
-  background: color-mix(in srgb, var(--el-color-info) 8%, var(--el-bg-color));
-}
-.howto-toggle {
+.var-chip {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
   width: 100%;
-  padding: 12px 16px;
+  padding: 8px 10px;
   border: none;
-  background: transparent;
+  border-radius: 8px;
+  background: #eef2ff;
   cursor: pointer;
   text-align: left;
 }
-.howto-toggle:hover .howto-toggle-title {
-  color: var(--el-color-primary);
+.var-chip:hover {
+  background: #e0e7ff;
 }
-.howto-toggle-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  white-space: nowrap;
-}
-.howto-toggle-hint {
+.var-chip code {
+  color: #4f46e5;
   font-size: 12px;
-  color: var(--el-text-color-placeholder);
+}
+.var-chip span {
+  font-size: 11px;
+  color: #6b7280;
+}
+.token-card {
+  background: #fff8e6;
+  border-color: #f3d19e;
+}
+.token-ico {
+  color: #e6a23c;
 }
 .howto-body {
+  margin-top: 10px;
   font-size: 13px;
-  line-height: 1.8;
-  padding: 0 16px 14px;
-  color: var(--el-text-color-regular);
+  line-height: 1.7;
+  color: #606266;
 }
 .howto-body ol {
-  margin: 8px 0 4px;
-  padding-left: 20px;
+  margin: 8px 0;
+  padding-left: 18px;
 }
 .howto-body code {
   padding: 1px 5px;
   border-radius: 4px;
-  background: var(--el-fill-color);
-}
-.howto-ui {
-  margin-top: 10px;
+  background: #fff;
 }
 .form-tip {
   margin-top: 6px;
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: #909399;
   line-height: 1.6;
 }
 .form-tip.inline {
   margin-top: 0;
   margin-left: 10px;
+}
+@media (max-width: 1100px) {
+  .env-layout {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

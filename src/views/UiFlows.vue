@@ -1,76 +1,100 @@
 <template>
   <div class="ui-flows">
-    <el-card class="main-card" shadow="hover">
-      <template #header>
-        <div class="card-header">
-          <div>
-            <span class="card-title">流程编排</span>
-            <p class="card-sub">支持冷启动/热启动、启动应用、点击输入，以及「元素存在判断」分支</p>
-          </div>
-          <el-button
-            :disabled="!batchSelection.length"
-            @click="openBatch"
-          >批量执行{{ batchSelection.length ? `（${batchSelection.length}）` : '' }}</el-button>
-          <el-button type="primary" @click="openAdd">
-            <el-icon><Plus /></el-icon>
-            新建流程
-          </el-button>
-        </div>
-      </template>
-
-      <div class="filter-bar">
-        <el-form :inline="true" @submit.prevent>
-          <el-form-item label="名称">
-            <el-input
-              v-model="filterName"
-              clearable
-              placeholder="流程名称模糊搜索"
-              style="width: 200px"
-              @keyup.enter="loadList"
-            />
-          </el-form-item>
-          <el-form-item label="应用">
-            <el-select v-model="filterAppId" clearable filterable placeholder="选择应用" style="width: 220px">
-              <el-option
-                v-for="a in appOptions"
-                :key="a.id"
-                :label="`${a.nameZh} (${a.id})`"
-                :value="a.id" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="平台">
-            <el-select v-model="filterPlatform" clearable style="width: 140px">
-              <el-option v-for="p in platforms" :key="p.value" :label="p.label" :value="p.value" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="环境">
-            <el-select v-model="filterEnvironment" clearable style="width: 130px" placeholder="全部">
-              <el-option label="生产环境" value="PROD" />
-              <el-option label="测试环境" value="TEST" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="用途">
-            <el-select v-model="filterCatalog" clearable style="width: 190px" placeholder="全部">
-              <el-option label="回归 + 自动化编排" value="SHARED" />
-              <el-option label="仅自动化编排" value="AUTOMATION" />
-              <el-option label="仅回归" value="ONLINE" />
-              <el-option label="仅性能测试" value="PERFORMANCE" />
-              <el-option label="装包准备（不是用例）" value="INSTALL" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="仅组件">
-            <el-switch v-model="componentOnly" />
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" @click="loadList">查询</el-button>
-          </el-form-item>
-        </el-form>
+    <div class="toolbar">
+      <div class="toolbar-tools">
+        <el-button
+          :disabled="!batchSelection.length"
+          @click="openBatch"
+        >批量执行{{ batchSelection.length ? `（${batchSelection.length}）` : '' }}</el-button>
       </div>
+      <div class="toolbar-create">
+        <el-button type="primary" @click="openAdd">
+          <el-icon class="el-icon--left"><Plus /></el-icon>
+          新建流程
+        </el-button>
+      </div>
+    </div>
 
+    <div class="filter-panel">
+      <div class="chip-row">
+        <span class="chip-label">产品</span>
+        <div class="chip-list">
+          <button
+            v-for="p in PRODUCTS"
+            :key="p.id"
+            type="button"
+            class="app-chip"
+            :class="{ active: filterProduct === p.id }"
+            @click="selectProduct(p.id)"
+          >{{ p.label }}</button>
+        </div>
+      </div>
+      <div class="chip-row">
+        <span class="chip-label">平台</span>
+        <div class="chip-list">
+          <button
+            v-for="p in visiblePlatforms"
+            :key="p.value"
+            type="button"
+            class="plat-chip"
+            :class="{ active: filterPlatform === p.value }"
+            @click="selectPlatform(p.value)"
+          >{{ p.label }}</button>
+        </div>
+      </div>
+      <div class="chip-row">
+        <span class="chip-label">环境</span>
+        <div class="chip-list">
+          <button
+            v-for="e in ENV_CHIPS"
+            :key="e.value || 'ALL'"
+            type="button"
+            class="env-chip"
+            :class="{ active: filterEnvironment === e.value, prod: e.value === 'PROD', test: e.value === 'TEST' }"
+            @click="selectEnvironment(e.value)"
+          >{{ e.label }}</button>
+        </div>
+      </div>
+      <div class="chip-row">
+        <span class="chip-label">用途</span>
+        <div class="chip-list">
+          <button
+            v-for="c in CATALOG_CHIPS"
+            :key="c.value || 'ALL'"
+            type="button"
+            class="app-chip"
+            :class="{ active: filterCatalog === c.value }"
+            @click="selectCatalog(c.value)"
+          >{{ c.label }}</button>
+        </div>
+      </div>
+      <div class="search-row">
+        <el-input
+          v-model="filterName"
+          clearable
+          class="search-input"
+          placeholder="搜索流程名称..."
+          @keyup.enter="onFilterChange"
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+        <label class="comp-switch">
+          <el-switch v-model="componentOnly" @change="onFilterChange" />
+          仅组件
+        </label>
+        <el-button type="primary" @click="onFilterChange">查询</el-button>
+        <el-button @click="resetFilters">重置</el-button>
+        <span class="search-count">{{ listContextText }}</span>
+      </div>
+    </div>
+
+    <div class="list-panel">
       <el-table
         v-loading="loading"
         class="flow-list-table"
-        :data="list"
+        :data="pagedList"
         stripe
         style="width: 100%"
         :header-cell-style="{ background: '#f5f7fa', color: '#1f2329' }"
@@ -150,9 +174,34 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="应用" min-width="140" show-overflow-tooltip>
+        <el-table-column label="最近结果" width="148" align="center">
           <template #default="{ row }">
-            <span class="flow-app">{{ appLabel(row.appId) }}</span>
+            <div class="result-cell">
+              <el-tag
+                v-if="row.lastRunStatus"
+                size="small"
+                :type="runTagType(row.lastRunStatus)"
+                :style="row.lastRunTaskId ? 'cursor:pointer' : ''"
+                @click="openLastRun(row)"
+              >
+                {{ runLabel(row.lastRunStatus) }}
+              </el-tag>
+              <!--
+                试跑必须单独挂出来：正式结果在时，旧逻辑会把试跑藏掉——
+                人刚点完试跑，列上还是上次正式的「通过」，以为这次没跑或没结果。
+              -->
+              <el-tag
+                v-if="row.lastDebugStatus"
+                size="small"
+                effect="plain"
+                :type="runTagType(row.lastDebugStatus)"
+                :style="row.lastDebugTaskId ? 'cursor:pointer' : ''"
+                @click="openDebugRun(row)"
+              >
+                试跑·{{ runLabel(row.lastDebugStatus) }}
+              </el-tag>
+              <span v-if="!row.lastRunStatus && !row.lastDebugStatus" class="result-idle">未跑</span>
+            </div>
           </template>
         </el-table-column>
         <el-table-column prop="description" label="描述" min-width="160" show-overflow-tooltip>
@@ -162,7 +211,7 @@
         </el-table-column>
         <el-table-column label="操作" width="290" fixed="right">
           <template #default="{ row }">
-            <el-button type="success" link size="small" @click="openExecute(row)">执行</el-button>
+            <el-button type="success" link size="small" @click="openExecute(row)">试跑</el-button>
             <el-button
               type="warning"
               link
@@ -177,8 +226,18 @@
           </template>
         </el-table-column>
       </el-table>
-      <el-empty v-if="!loading && list.length === 0" description="暂无流程，可新建一条「登录」试编排" />
-    </el-card>
+      <el-empty v-if="!loading && list.length === 0" description="当前筛选下没有流程，可换环境或新建一条" />
+      <div v-if="list.length" class="pagination-wrap">
+        <el-pagination
+          v-model:current-page="listPage"
+          v-model:page-size="listPageSize"
+          :page-sizes="[10, 20, 50]"
+          :total="list.length"
+          layout="total, sizes, prev, pager, next"
+          @size-change="listPage = 1"
+        />
+      </div>
+    </div>
 
     <!--
       跨环境可用性：同一条流程要在测试环境和线上都跑，写死的手机号 / 赛事 ID 就是拦路石。
@@ -211,7 +270,7 @@
 
     <el-dialog
       v-model="execVisible"
-      width="520px"
+      width="560px"
       destroy-on-close
       align-center
       class="exec-flow-dialog"
@@ -219,10 +278,7 @@
     >
       <template #header>
         <div class="exec-dlg-header">
-          <div class="exec-dlg-title">
-            <span class="exec-dlg-icon"><el-icon><VideoPlay /></el-icon></span>
-            <span>执行流程</span>
-          </div>
+          <div class="exec-dlg-title">执行流程</div>
           <button type="button" class="exec-dlg-close" aria-label="关闭" @click="execVisible = false">
             <el-icon><Close /></el-icon>
           </button>
@@ -230,37 +286,69 @@
       </template>
 
       <div v-loading="execLoading" element-loading-text="正在读取设备与安装包…" class="exec-dlg-body">
-        <div class="exec-info-card">
-          <div class="exec-info-row">
-            <div class="exec-info-label">流程</div>
-            <div class="exec-info-value">{{ execFlow?.name || '—' }}</div>
+        <div class="exec-flow-card">
+          <div class="exec-flow-title-row">
+            <span class="exec-flow-name">{{ execFlow?.name || '—' }}</span>
+            <span class="exec-plat-pill" :class="'plat-' + execPlatformKey">{{ execPlatformText }}</span>
           </div>
-          <div class="exec-info-row">
-            <div class="exec-info-label">启动配置</div>
-            <div class="exec-info-value">
-              <div>{{ execLaunchSummary.appLabel }}</div>
-              <div class="exec-mono">{{ execLaunchSummary.packageName || '—' }}</div>
-              <div v-if="execLaunchSummary.activity" class="exec-mono muted">{{ execLaunchSummary.activity }}</div>
-            </div>
+          <div class="exec-flow-meta">{{ execEnvAppText }}</div>
+          <div class="exec-flow-stats">
+            <span class="exec-stat">
+              <el-icon><Operation /></el-icon>
+              步骤 <b>{{ execStepCount }} 步</b>
+            </span>
+            <span class="exec-stat">
+              <el-icon><Clock /></el-icon>
+              上次 <b :class="'run-' + execLastRunTone">{{ execLastRunLabel }}</b>
+            </span>
+            <span class="exec-stat">
+              <el-icon><CircleCheck /></el-icon>
+              覆盖用例 <b>{{ execCaseCountText }}</b>
+            </span>
           </div>
         </div>
 
         <div class="exec-field">
-          <div class="exec-field-label"><span class="req">*</span>设备</div>
-          <el-select
-            v-model="execForm.deviceId"
-            filterable
-            placeholder="选择已连接设备"
-            class="exec-field-control"
-            @change="onExecDeviceChange"
-          >
-            <el-option
-              v-for="d in deviceOptions"
+          <div class="exec-dev-head">
+            <div class="exec-field-label">选择执行设备</div>
+            <el-button
+              link
+              type="primary"
+              class="exec-refresh-btn"
+              :loading="execRefreshing"
+              @click="refreshExecDevices"
+            >
+              <el-icon v-if="!execRefreshing"><Refresh /></el-icon>
+              刷新设备
+            </el-button>
+          </div>
+          <div v-if="!execDevices.length" class="exec-hint">
+            当前没有在线的 {{ execPlatformText }} 设备，点「刷新设备」扫描，或先到设备管理连接
+          </div>
+          <div v-else class="exec-dev-list">
+            <button
+              v-for="d in execDevices"
               :key="d.id"
-              :label="`${d.name || d.id} (${d.platform || ''})`"
-              :value="d.id" />
-          </el-select>
-          <div v-if="deviceOptions.length === 0" class="exec-hint">暂无已连接设备，请先在设备管理中连接</div>
+              type="button"
+              class="exec-dev-card"
+              :class="[
+                execDeviceKind(d),
+                { selected: execForm.deviceId === d.id }
+              ]"
+              :disabled="execDeviceKind(d) === 'offline'"
+              @click="selectExecDevice(d)"
+            >
+              <span class="exec-dev-radio" :class="{ on: execForm.deviceId === d.id }" />
+              <span class="exec-dev-icon"><el-icon><Iphone /></el-icon></span>
+              <span class="exec-dev-main">
+                <span class="exec-dev-name">{{ execDeviceTitle(d) }}</span>
+                <span class="exec-dev-sub">{{ execDeviceSub(d) }}</span>
+              </span>
+              <span class="exec-dev-status" :class="execDeviceKind(d)">
+                <i />{{ execDeviceStatusText(d) }}
+              </span>
+            </button>
+          </div>
         </div>
 
         <div v-if="execInstallSummary.mode === 'LOCAL_APK'" class="exec-field">
@@ -344,24 +432,55 @@
           </div>
         </div>
 
-        <div class="exec-runnow-card">
-          <div class="exec-runnow-text">
-            <div class="exec-runnow-title">立即执行</div>
-            <div class="exec-runnow-sub">开启后创建任务并马上开始跑；关闭则只创建待执行任务</div>
+        <div class="exec-opt-card">
+          <div class="exec-opt-row">
+            <div class="exec-opt-text">
+              <div class="exec-opt-title">立即执行</div>
+              <div class="exec-opt-sub">开启后创建任务并马上开始跑；关闭则只创建待执行任务</div>
+            </div>
+            <el-switch v-model="execForm.runNow" />
           </div>
-          <el-switch v-model="execForm.runNow" />
+          <div class="exec-opt-row">
+            <div class="exec-opt-text">
+              <div class="exec-opt-title">记入统计</div>
+              <div class="exec-opt-sub">
+                默认关＝试跑：结果不算通过率、不当这条流程的「最近结果」、失败不告警。
+                在这里改完步骤跑一下本来就是调试，调试挂两次不该拉低质量数据。
+                要作为一次正式执行留档时再打开。
+              </div>
+            </div>
+            <el-switch v-model="execForm.countInStats" />
+          </div>
         </div>
       </div>
 
       <template #footer>
         <div class="exec-dlg-footer">
-          <el-button class="exec-btn-cancel" @click="execVisible = false">取消</el-button>
-          <el-button type="primary" class="exec-btn-primary" :loading="executing" @click="submitExecute">
-            开始执行
-          </el-button>
+          <div class="exec-picked">
+            <template v-if="selectedExecDevice">已选: {{ execDeviceTitle(selectedExecDevice) }}</template>
+            <template v-else>尚未选择设备</template>
+          </div>
+          <div class="exec-dlg-actions">
+            <el-button class="exec-btn-cancel" @click="execVisible = false">取消</el-button>
+            <el-button type="primary" class="exec-btn-primary" :loading="executing" @click="submitExecute">
+              <el-icon v-if="!executing" class="el-icon--left"><VideoPlay /></el-icon>
+              {{ execForm.countInStats ? '开始执行' : '开始试跑' }}
+            </el-button>
+          </div>
         </div>
       </template>
     </el-dialog>
+
+    <!--
+      试跑跑完不该让人自己去找结果。这个弹窗跟着执行接口返回的 taskId 走，
+      结果、卡在哪一步、那一刻的截图都在里头。
+    -->
+    <FlowRunWatch
+      v-model:visible="watchVisible"
+      :task-id="watchTaskId"
+      :flow-name="watchFlowName"
+      :debug-run="watchIsDebug"
+    />
 
     <!--
       批量执行：勾一批用例 → 按前置依赖拓扑排序 → 顺序跑。
@@ -452,57 +571,112 @@
       </template>
     </el-dialog>
 
+    <ProdExecuteConfirm
+      v-model="prodDlg"
+      :flow-name="prodMeta.flowName"
+      :device-name="prodMeta.deviceName"
+      @confirm="onProdConfirmed"
+      @cancel="onProdCancelled"
+    />
+
     <el-drawer
       v-model="drawerVisible"
       class="ui-flow-drawer"
-      size="58%"
+      size="86%"
       destroy-on-close
       append-to-body
       :close-on-click-modal="false"
       @close="onDrawerClosed"
     >
       <template #header>
-        <div class="drawer-header-row">
-          <span class="drawer-title">
-            <template v-if="editingId">
-              编辑流程
-              <span v-if="form.name" class="drawer-flow-name">· {{ form.name }}</span>
-            </template>
-            <template v-else>新建流程</template>
-          </span>
-          <el-button type="primary" link class="flow-chart-btn" @click="openFlowChart">
-            查看流程图
-          </el-button>
+        <div class="drawer-header-bar">
+          <div class="drawer-header-main">
+            <span class="drawer-title">
+              <template v-if="editingId">
+                编辑流程
+                <span v-if="form.name" class="drawer-flow-name">· {{ form.name }}</span>
+              </template>
+              <template v-else>新建流程</template>
+            </span>
+            <el-button type="primary" link class="flow-chart-btn" @click="openFlowChart">
+              <el-icon><TrendCharts /></el-icon>
+              查看流程图
+            </el-button>
+            <div class="flow-config-summary">
+              <el-tag v-for="chip in configSummaryChips" :key="chip.text" size="small" :type="chip.type" effect="plain">
+                {{ chip.text }}
+              </el-tag>
+            </div>
+          </div>
+          <div class="drawer-header-actions">
+            <el-button @click="closeDrawer">取消</el-button>
+            <el-button type="primary" :loading="saving" @click="submit">保存流程</el-button>
+          </div>
         </div>
       </template>
+
+      <div class="flow-config-section">
+        <div class="flow-config-head">流程配置</div>
       <!-- 元信息单独一张 form，避免包住步骤区造成 form 嵌套，浏览器会拆 DOM 导致抽屉关不掉 -->
       <el-form
         ref="formRef"
         class="flow-meta-form"
         :model="form"
         :rules="rules"
-        label-position="top"
-        require-asterisk-position="left"
+        label-position="left"
+        label-width="108px"
+        require-asterisk-position="right"
         @submit.prevent
       >
-        <el-divider content-position="left">基本信息</el-divider>
-        <el-form-item label="名称" prop="name">
-          <el-input v-model="form.name" placeholder="如 登录" />
-        </el-form-item>
-        <el-form-item label="描述">
-          <el-input v-model="form.description" type="textarea" :rows="2" placeholder="可选，说明这条流程做什么" />
-        </el-form-item>
-        <div class="flow-form-row">
+        <section class="flow-section">
+          <h3 class="flow-section-title">基本信息</h3>
+          <el-form-item label="名称" prop="name">
+            <el-input v-model="form.name" placeholder="如 发现页底部登录" />
+          </el-form-item>
+          <el-form-item>
+            <template #label>
+              <span class="form-label-with-help">
+                排序
+                <el-popover placement="top" :width="300" trigger="hover">
+                  <template #reference>
+                    <el-icon class="form-help-icon"><QuestionFilled /></el-icon>
+                  </template>
+                  <div class="form-help-pop">
+                    回归批次里的列表与执行顺序，数字越小越靠前（默认 100）。装包、登录这类前置流程排最前。
+                  </div>
+                </el-popover>
+              </span>
+            </template>
+            <el-input-number v-model="form.sortOrder" :min="0" :max="9999" controls-position="right" />
+          </el-form-item>
+          <el-form-item>
+            <template #label>
+              <span class="form-label-with-help">
+                描述
+                <el-popover placement="top" :width="280" trigger="hover">
+                  <template #reference>
+                    <el-icon class="form-help-icon"><QuestionFilled /></el-icon>
+                  </template>
+                  <div class="form-help-pop">给人看的说明，执行引擎不读。</div>
+                </el-popover>
+              </span>
+            </template>
+            <el-input v-model="form.description" placeholder="一句话说明这条流程做什么（可选）" />
+          </el-form-item>
+        </section>
+
+        <section class="flow-section">
+          <h3 class="flow-section-title">运行与用途</h3>
           <el-form-item>
             <template #label>
               <span class="form-label-with-help">
                 运行应用
-                <el-popover placement="top" :width="340" trigger="click">
+                <el-popover placement="top" :width="340" trigger="hover">
                   <template #reference>
-                    <el-icon class="form-help-icon" @click.prevent.stop><QuestionFilled /></el-icon>
+                    <el-icon class="form-help-icon"><QuestionFilled /></el-icon>
                   </template>
                   <div class="form-help-pop">
-                    <p><strong>清空</strong>表示通用流程：回归选电竞/Pog 等都会列出；卸装/启动跟当次所选 APP（应用字典包名）。</p>
+                    <p><strong>清空</strong>表示通用流程：回归选电竞/Pog 等都会列出；卸装/启动跟当次所选 APP。</p>
                     <p>用途为「仅自动化」的流程必须绑定应用，别留空。</p>
                     <p>选具体应用后，点击/输入等步骤可下拉该应用下已「选用」的元素。</p>
                   </div>
@@ -523,278 +697,210 @@
                 :label="appExecLabel(a)"
                 :value="a.id" />
             </el-select>
-            <button
-              type="button"
-              class="form-help-toggle"
-              :class="{ open: helpOpen.app }"
-              @click="helpOpen.app = !helpOpen.app"
-            >
-              ▸ 清空表示通用流程 · 点击了解更多
-            </button>
-            <div v-if="helpOpen.app" class="form-help-body">
-              <strong>清空</strong>表示通用流程：回归选电竞/Pog 等都会列出；卸装/启动跟当次所选 APP（应用字典包名）。
-              用途为「仅自动化」的流程必须绑定应用，别留空。选具体应用后，点击/输入等步骤可下拉该应用下已「选用」的元素。
-            </div>
           </el-form-item>
           <el-form-item label="平台">
-            <el-select
-              v-model="form.platform"
-              clearable
-              placeholder="如 Android"
-              style="width: 100%"
-              @change="loadElementsForFlow"
-            >
-              <el-option v-for="p in platforms" :key="p.value" :label="p.label" :value="p.value" />
-            </el-select>
-          </el-form-item>
-        </div>
-
-        <el-divider content-position="left">执行配置</el-divider>
-        <div class="flow-form-row">
-          <el-form-item>
-            <template #label>
-              <span class="form-label-with-help">
-                环境
-                <el-popover placement="top" :width="340" trigger="click">
-                  <template #reference>
-                    <el-icon class="form-help-icon" @click.prevent.stop><QuestionFilled /></el-icon>
-                  </template>
-                  <div class="form-help-pop">
-                    <template v-if="linksCases">
-                      <p><strong>自动化流程不绑环境</strong>——同一条流程既能跑线上包也能跑测试包，差别只在装哪个包、用哪套数据（数据在「环境变量」里按环境配，流程里写 <code v-pre>${phone}</code> 即可）。</p>
-                      <p>这里选的值不参与筛选，执行时再选环境。</p>
-                    </template>
-                    <template v-else>
-                      <p>这条流程属于哪个环境的用例。<strong>环境和用途是两回事</strong>：环境说的是「验哪个包」，用途说的是「哪个入口用」。</p>
-                      <p v-if="form.envBound">开启「绑定环境」时，两个环境跑的是两批不同的流程，不会互相串（装包类请保持开启）。</p>
-                      <p v-else>已关闭「绑定环境」：这条功能验证流程会出现在两个环境的回归列表里。</p>
-                    </template>
-                  </div>
-                </el-popover>
-              </span>
-            </template>
-            <el-radio-group v-model="form.environment" :disabled="!form.envBound && !linksCases">
-              <el-radio-button label="PROD">生产</el-radio-button>
-              <el-radio-button label="TEST">测试</el-radio-button>
+            <el-radio-group v-model="form.platform" class="seg-platform" @change="loadElementsForFlow">
+              <el-radio-button v-for="p in platforms" :key="p.value" :label="p.value">
+                {{ p.label }}
+              </el-radio-button>
             </el-radio-group>
-          </el-form-item>
-          <!--
-            回归用途下才有意义：装包类必须绑环境；纯功能验证可不绑，发版前线上回归能直接勾到测试侧写好的流程。
-            仅自动化编排本身就不绑环境，不必再开这个开关。
-          -->
-          <el-form-item v-if="!linksCases">
-            <template #label>
-              <span class="form-label-with-help">
-                绑定环境
-                <el-popover placement="top" :width="360" trigger="click">
-                  <template #reference>
-                    <el-icon class="form-help-icon" @click.prevent.stop><QuestionFilled /></el-icon>
-                  </template>
-                  <div class="form-help-pop">
-                    <p><strong>开（默认）</strong>：装包类流程——测试装蒲公英 debug、线上装渠道包，必须按环境隔离。</p>
-                    <p><strong>关</strong>：纯功能验证——登录、评论、赛程等，测试回归 / 发版前线上回归 / 线上巡检都能勾到，不用重写一遍。</p>
-                    <p>关掉后上面的「环境」只作登记参考，不参与回归筛选。</p>
-                  </div>
-                </el-popover>
-              </span>
-            </template>
-            <el-switch
-              v-model="form.envBound"
-              active-text="按环境隔离"
-              inactive-text="功能验证·不绑"
-            />
           </el-form-item>
           <el-form-item>
             <template #label>
               <span class="form-label-with-help">
                 用途
-                <el-popover placement="top" :width="360" trigger="click">
+                <el-popover placement="top" :width="360" trigger="hover">
                   <template #reference>
-                    <el-icon class="form-help-icon" @click.prevent.stop><QuestionFilled /></el-icon>
+                    <el-icon class="form-help-icon"><QuestionFilled /></el-icon>
                   </template>
                   <div class="form-help-pop">
-                    <p>决定这条流程出现在哪个入口，<strong>不区分环境</strong>（环境单独选）：</p>
-                    <p><strong>回归 + 自动化编排</strong>：既进「APP 回归」批次，也能在本页单跑——大多数用例选这个。</p>
-                    <p><strong>仅自动化编排</strong>：只在本页单跑，不进回归。<u>只有这一类能关联测试用例</u>。</p>
+                    <p>决定这条流程出现在哪个入口，<strong>不区分环境</strong>：</p>
+                    <p><strong>回归 + 自动化编排</strong>：既进「APP 回归」批次，也能在本页单跑。</p>
+                    <p><strong>仅自动化编排</strong>：只在本页单跑，不进回归。只有这一类能关联测试用例。</p>
                     <p><strong>仅回归</strong>：只进回归批次。</p>
-                    <p><strong>仅性能测试</strong>：只出现在安卓性能测试。请单独建，别和回归混。</p>
-                    <p>
-                      <strong>装包准备</strong>：装包不是用例，是把设备弄成可测状态的前置动作。
-                      标成这个之后<u>不再出现在回归/自动化的勾选列表里</u>——
-                      混在里面的话通过率会被稀释（两条装包通过不说明任何功能是好的），
-                      流程一多也找不着。执行时从批次的「装包」配置里选。
-                    </p>
+                    <p><strong>仅性能测试</strong>：只出现在安卓性能测试。</p>
+                    <p><strong>装包准备</strong>：不是用例，不进回归勾选列表，避免稀释通过率。</p>
                   </div>
                 </el-popover>
               </span>
             </template>
-            <el-select v-model="form.catalog" style="width: 100%">
+            <el-select v-model="form.catalog" style="width: 100%" @change="loadLinkableCases">
               <el-option label="回归 + 自动化编排" value="SHARED" />
               <el-option label="仅自动化编排" value="AUTOMATION" />
               <el-option label="仅回归" value="ONLINE" />
               <el-option label="仅性能测试" value="PERFORMANCE" />
               <el-option label="装包准备（不是用例）" value="INSTALL" />
             </el-select>
-            <button
-              type="button"
-              class="form-help-toggle"
-              :class="{ open: helpOpen.catalog }"
-              @click="helpOpen.catalog = !helpOpen.catalog"
-            >
-              ▸ 了解各选项区别
-            </button>
-            <div v-if="helpOpen.catalog" class="form-help-body">
-              决定这条流程出现在哪个入口，<strong>不区分环境</strong>（环境单独选）：<br />
-              <strong>回归 + 自动化编排</strong>：既进「APP 回归」的批次，也能在本页单跑调试——大多数用例选这个。<br />
-              <strong>仅自动化编排</strong>：只在本页单跑，不进回归批次。<u>只有这一类能关联测试用例</u>——
-              它替代的是「人工执行某条用例」，而回归验的是「这个包能不能用」，两条轨互不相干。<br />
-              <strong>仅回归</strong>：只进回归批次。<br />
-              <strong>仅性能测试</strong>：只出现在安卓性能测试。性能流程请单独建，别和回归用例混。
+          </el-form-item>
+          <el-form-item>
+            <template #label>
+              <span class="form-label-with-help">
+                功能阶段
+                <el-popover placement="top" :width="360" trigger="hover">
+                  <template #reference>
+                    <el-icon class="form-help-icon"><QuestionFilled /></el-icon>
+                  </template>
+                  <div class="form-help-pop">
+                    <p>决定会不会进「APP 线上回归」（那边跑的是上个版本的线上包）。</p>
+                    <p><strong>本版新功能</strong>：线上包还没有，只进测试回归和发版前回归。</p>
+                    <p><strong>已上线</strong>：三种回归都进。稳定后来这里改，或在用例侧「提升为线上版」。</p>
+                  </div>
+                </el-popover>
+              </span>
+            </template>
+            <div class="stage-chips">
+              <button
+                type="button"
+                class="stage-chip"
+                :class="{ active: form.releaseStage === 'TESTING' }"
+                @click="form.releaseStage = 'TESTING'"
+              >本版新功能</button>
+              <button
+                type="button"
+                class="stage-chip stage-online"
+                :class="{ active: form.releaseStage === 'ONLINE' }"
+                @click="form.releaseStage = 'ONLINE'"
+              >已上线</button>
             </div>
           </el-form-item>
-        </div>
-        <!--
-          只在用途包含「自动化编排」时显示。回归流程在验「这个包能不能用」，
-          不对应任何用例——「安装+启动」硬要挂就得造一条假用例，
-          而且一旦算进覆盖率，那个数字就不能看了。
-        -->
-        <!--
-          场景是算出来的，不是第五个要选的字段。
-          但四个开关组合出四种结果、又没有任何反馈，人只能靠试：
-          建完去回归页看勾不勾得到，勾不到再回来改。这里把推导结果直接摆出来。
-        -->
-        <el-form-item label="会出现在">
-          <div v-if="flowScenes.length" class="flow-scene-list">
-            <el-tag v-for="sc in flowScenes" :key="sc" size="small" type="success" effect="plain">
-              {{ sc }}
-            </el-tag>
-          </div>
-          <div v-else class="exec-hint">
-            <strong>不进任何一轮回归。</strong>
-            {{ form.catalog === 'AUTOMATION'
-              ? '用途是「仅自动化编排」——只在流程编排页单跑，这是刻意的：它替代的是某条用例的人工执行，不是验包。'
-              : form.catalog === 'PERFORMANCE'
-                ? '用途是「仅性能测试」——只出现在性能测试入口。'
-                : form.catalog === 'INSTALL'
-                  ? '用途是「装包准备」——装包不是用例，不进回归的勾选列表；执行时从批次的「装包」配置里选。这样通过率不会被它稀释，流程多了也能按用途一眼筛出来。'
-                  : '把「用途」改成含回归的选项才会进回归批次。' }}
-          </div>
-          <div class="exec-hint" style="margin-top: 6px">
-            由下面的「用途 / 环境 / 绑定环境 / 功能阶段」四项推导出来，改任意一项这里都会跟着变。
-          </div>
-        </el-form-item>
-
-        <el-form-item label="功能阶段">
-          <div class="form-field-stack">
-            <el-radio-group v-model="form.releaseStage">
-              <el-radio-button value="TESTING">本版新功能</el-radio-button>
-              <el-radio-button value="ONLINE">已上线</el-radio-button>
-            </el-radio-group>
-            <div class="exec-hint">
-              决定这条流程<strong>会不会进「APP 线上回归」</strong>——那边跑的是上个版本的线上包。<br />
-              <strong>本版新功能</strong>：线上包里还没有这个功能，跑上去必然失败，所以只进测试环境回归和发版前线上回归（都是 debug 包）。<br />
-              <strong>已上线</strong>：三种回归都进。<br />
-              版本上线稳定后来这里改；或者直接去用例那边点「提升为线上版」，关联的流程会自动跟着提升。
-            </div>
-          </div>
-        </el-form-item>
-        <el-form-item v-if="linksCases" label="覆盖用例">
-          <el-select
-            v-model="form.caseIds"
-            multiple
-            filterable
-            clearable
-            :loading="loadingCases"
-            placeholder="这条流程替代了哪几条人工用例"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="c in linkableCases"
-              :key="c.id"
-              :label="`${c.caseId || ''} ${c.title}`"
-              :value="c.id"
-            />
-          </el-select>
-          <button
-            type="button"
-            class="form-help-toggle"
-            :class="{ open: helpOpen.cases }"
-            @click="helpOpen.cases = !helpOpen.cases"
-          >
-            ▸ 了解覆盖规则
-          </button>
-          <div v-if="helpOpen.cases" class="form-help-body">
-            <strong>一条流程覆盖多条用例是常态</strong>——跑一遍登录流程，顺带把手机号登录、区号选择都验了。<br />
-            勾上之后那几条用例的「是否已实现自动化」就变成已覆盖，执行状态也跟着这条流程走。<br />
-            <strong>只要这条流程执行了那条用例的步骤，就算覆盖</strong>——跟它进不进回归批次无关。
-            装包准备和仅性能测试除外：前者不执行任何用例步骤，后者采的是资源曲线。<br />
-            列表里只有<strong>同平台、且没被别的流程占用</strong>的用例：两端用例是分开的两套，
-            要把用例从别的流程转过来，请去用例那边明确改，免得原流程被悄悄抢走还没有提示。
-            <template v-if="!editingId">
-              <br /><strong>新建时先保存流程，再回来勾选</strong>——关联需要流程 id。
+          <el-form-item>
+            <template #label>
+              <span class="form-label-with-help">
+                覆盖用例
+                <el-popover placement="top" :width="360" trigger="hover">
+                  <template #reference>
+                    <el-icon class="form-help-icon"><QuestionFilled /></el-icon>
+                  </template>
+                  <div class="form-help-pop">
+                    <p>一条流程覆盖多条用例是常态。勾上后这些用例算已实现自动化。</p>
+                    <p>装包准备和仅性能测试不能挂用例。列表只有同平台、且没被别的流程占用的用例。</p>
+                    <p v-if="!editingId">新建时先保存流程，再回来勾选——关联需要流程 id。</p>
+                  </div>
+                </el-popover>
+              </span>
             </template>
-          </div>
-        </el-form-item>
-        <el-form-item label="前置流程">
-          <el-select
-            v-model="form.dependsOn"
-            multiple
-            filterable
-            clearable
-            placeholder="留空＝无前置。批量执行时会自动排在本流程之前"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="f in dependencyCandidates"
-              :key="f.id"
-              :label="f.name"
-              :value="f.id"
-            />
-          </el-select>
-          <button
-            type="button"
-            class="form-help-toggle"
-            :class="{ open: helpOpen.deps }"
-            @click="helpOpen.deps = !helpOpen.deps"
-          >
-            ▸ 前置与「调用组件」的区别
-          </button>
-          <div v-if="helpOpen.deps" class="form-help-body">
-            批量执行时，前置会自动排到本流程之前；<strong>多条用例依赖同一个前置，一批里只跑一次</strong>。
-            没勾的前置也会被自动补进来。<br />
-            跟「调用组件」的区别：调用组件是<strong>本流程的一部分</strong>，每次执行都跑（清弹窗、切 tab）；
-            前置流程是<strong>执行前提</strong>，一批里满足一次就够（装包、登录）。
-          </div>
-        </el-form-item>
-        <div class="flow-form-row flow-form-row-switches">
+            <el-select
+              v-model="form.caseIds"
+              multiple
+              filterable
+              clearable
+              :disabled="!linksCases || !editingId"
+              :loading="loadingCases"
+              :placeholder="caseSelectPlaceholder"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="c in linkableCases"
+                :key="c.id"
+                :label="`${c.caseId || ''} ${c.title}`"
+                :value="c.id"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item>
+            <template #label>
+              <span class="form-label-with-help">
+                前置流程
+                <el-popover placement="top" :width="340" trigger="hover">
+                  <template #reference>
+                    <el-icon class="form-help-icon"><QuestionFilled /></el-icon>
+                  </template>
+                  <div class="form-help-pop">
+                    <p>批量执行时自动排到本流程之前；多条依赖同一个前置，一批里只跑一次。</p>
+                    <p>跟「调用组件」不同：组件是本流程的一部分，每次都跑；前置是执行前提，满足一次就够。</p>
+                  </div>
+                </el-popover>
+              </span>
+            </template>
+            <el-select
+              v-model="form.dependsOn"
+              multiple
+              filterable
+              clearable
+              placeholder="留空 = 无前置"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="f in dependencyCandidates"
+                :key="f.id"
+                :label="f.name"
+                :value="f.id"
+              />
+            </el-select>
+          </el-form-item>
+        </section>
+
+        <section class="flow-section">
+          <h3 class="flow-section-title">环境与状态</h3>
+          <el-form-item>
+            <template #label>
+              <span class="form-label-with-help">
+                环境
+                <el-popover placement="top" :width="340" trigger="hover">
+                  <template #reference>
+                    <el-icon class="form-help-icon"><QuestionFilled /></el-icon>
+                  </template>
+                  <div class="form-help-pop">
+                    <template v-if="form.catalog === 'AUTOMATION'">
+                      <p>自动化流程不绑环境——同一条既能跑线上包也能跑测试包，差别只在装哪个包、用哪套变量。</p>
+                      <p>这里只是登记，执行时再选环境。</p>
+                    </template>
+                    <template v-else>
+                      <p>这条流程属于哪个环境的用例。环境和用途是两回事：环境是验哪个包，用途是哪个入口用。</p>
+                    </template>
+                  </div>
+                </el-popover>
+              </span>
+            </template>
+            <el-radio-group v-model="form.environment" class="seg-env">
+              <el-radio-button label="TEST">测试</el-radio-button>
+              <el-radio-button label="PROD">生产</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
           <el-form-item label="存为组件">
-            <el-switch v-model="form.isComponent" />
+            <div class="switch-with-hint">
+              <el-switch v-model="form.isComponent" />
+              <span class="switch-hint">可被其他流程调用，每次都会跑</span>
+            </div>
           </el-form-item>
           <el-form-item label="启用">
-            <el-switch v-model="form.enabled" />
+            <div class="switch-with-hint">
+              <el-switch v-model="form.enabled" />
+              <span class="switch-hint">禁用后不出现在批量执行列表</span>
+            </div>
           </el-form-item>
-        </div>
-        <el-form-item>
-          <template #label>
-            <span class="form-label-with-help">
-              排序
-              <el-popover placement="top" :width="300" trigger="click">
-                <template #reference>
-                  <el-icon class="form-help-icon" @click.prevent.stop><QuestionFilled /></el-icon>
-                </template>
-                <div class="form-help-pop">
-                  回归批次里的列表与执行顺序，数字越小越靠前（默认 100）。装包、登录这类前置流程排最前，后面的流程直接复用设备上的状态。
-                </div>
-              </el-popover>
-            </span>
-          </template>
-          <el-input-number v-model="form.sortOrder" :min="0" :max="9999" />
-        </el-form-item>
+          <el-form-item>
+            <template #label>
+              <span class="form-label-with-help">
+                会出现在
+                <el-popover placement="top" :width="340" trigger="hover">
+                  <template #reference>
+                    <el-icon class="form-help-icon"><QuestionFilled /></el-icon>
+                  </template>
+                  <div class="form-help-pop">
+                    由用途、环境、功能阶段推出来，改任意一项这里都会跟着变。不是单独要选的字段。
+                  </div>
+                </el-popover>
+              </span>
+            </template>
+            <div class="appear-box">
+              <template v-if="flowScenes.length">
+                <el-tag v-for="sc in flowScenes" :key="sc" size="small" type="primary" effect="plain">
+                  {{ sc }}
+                </el-tag>
+              </template>
+              <template v-else>
+                <el-tag size="small" type="primary" effect="plain">{{ appearFallback.tag }}</el-tag>
+                <span class="appear-text">{{ appearFallback.text }}</span>
+              </template>
+            </div>
+          </el-form-item>
+        </section>
       </el-form>
+      </div>
 
-      <el-divider content-position="left">步骤</el-divider>
-      <p class="steps-section-hint">从上到下执行 · 编号 1 / 1.1 / 1.1.1 表示归属</p>
-
+      <div class="steps-hdr">步骤</div>
+      <div class="steps-add-bar">
         <div class="steps-toolbar">
           <el-select v-model="addKeywordCode" placeholder="选择关键字" filterable style="width: 320px">
             <el-option
@@ -807,38 +913,69 @@
               <span style="float: right; color: #909399; font-size: 12px">{{ k.code }}</span>
             </el-option>
           </el-select>
-          <!--
-            插入位置就放在添加区：调试时常常是「第 8 步后要补一步」，
-            让人先滚到第 8 步点按钮、再滚回来选关键字，比加到最后一路上移还烦。
-          -->
           <el-select
-            v-model="insertSelIdx"
+            v-model="insertSelId"
             placeholder="插入位置"
             class="insert-pos-select"
-            filterable
-            style="width: 280px"
+            style="width: 360px"
             :disabled="!insertPoints.length"
             popper-class="insert-pos-popper"
+            @visible-change="onInsertVisible"
           >
-            <el-option :value="null" label="追加到末尾（默认）" />
+            <el-option disabled value="__search" class="ins-search-opt">
+              <el-input
+                v-model="insertQuery"
+                size="small"
+                clearable
+                placeholder="按步骤名搜索..."
+                :prefix-icon="Search"
+                @click.stop
+                @mousedown.stop
+              />
+            </el-option>
             <el-option
-              v-for="(p, i) in insertPoints"
-              :key="i"
-              :value="i"
-              :label="`插到 ${insertPointLabel(p)} 之后`"
+              v-if="insertAppendVisible"
+              value=""
+              label="追加到末尾"
+              class="ins-opt-append"
             >
-              <div class="insert-opt">
-                <span class="insert-opt-left" :style="{ paddingLeft: p.depth * 12 + 'px' }">
-                  插到 <b>{{ p.no }}</b
-                  ><span v-if="p.branch" style="color: #faad14">（{{ p.branch }}）</span> 之后
-                </span>
-                <span class="insert-opt-right" :title="stepFullLabel(p.step)">
-                  {{ stepBriefLabel(p.step) }}
-                </span>
+              <div class="ins-append">
+                <span class="ins-plus">+</span>
+                <span class="ins-append-name">追加到末尾</span>
+                <span class="ins-default">默认</span>
               </div>
             </el-option>
+            <el-option-group v-if="filteredInsertPoints.length" label="步骤">
+              <el-option
+                v-for="p in filteredInsertPoints"
+                :key="p.id"
+                :value="p.id"
+                :label="insertAfterClosedLabel(p)"
+                :class="['ins-opt', p.depth ? 'is-child' : 'is-root', branchRailClass(p.branch)]"
+              >
+                <div class="ins-row" :class="{ child: p.depth }">
+                  <span
+                    v-if="!p.depth"
+                    class="ins-no"
+                    :style="insertBadgeStyle(p.step.keywordCode)"
+                  >{{ p.no }}</span>
+                  <div class="ins-body">
+                    <div v-if="!p.depth" class="ins-hint">插到之后</div>
+                    <div class="ins-name">
+                      <template v-if="p.depth">{{ p.no }} {{ keywordName(p.step.keywordCode) }}</template>
+                      <template v-else>{{ keywordName(p.step.keywordCode) }}</template>
+                    </div>
+                  </div>
+                  <span v-if="p.branch" class="ins-branch" :class="branchRailClass(p.branch)">{{ p.branch }}</span>
+                  <span class="ins-tag" :class="'tone-' + insertMetaTag(p.step.keywordCode).tone">
+                    {{ insertMetaTag(p.step.keywordCode).text }}
+                  </span>
+                  <el-icon v-if="insertSelId === p.id" class="ins-check"><Check /></el-icon>
+                </div>
+              </el-option>
+            </el-option-group>
           </el-select>
-          <el-button type="primary" @click="addStep">{{ insertButtonText }}</el-button>
+          <el-button type="primary" @click="addStep">添加步骤</el-button>
           <el-dropdown trigger="click" @command="onInsertTemplate">
             <span class="template-dropdown-trigger">
               <el-button type="button">
@@ -855,130 +992,131 @@
             </template>
           </el-dropdown>
         </div>
-        <div class="keyword-quick">
-          <span class="keyword-quick-label">常用</span>
-          <el-button
-            v-for="k in quickKeywordsPrimary"
-            :key="k.code"
-            size="small"
-            round
-            :title="`${k.nameZh} (${k.code})`"
-            @click="quickAdd(k.code)"
+      </div>
+
+      <div class="steps-split">
+        <aside class="steps-outline">
+          <div class="outline-head">大纲 · {{ outlineRootCount }} 步</div>
+          <div v-if="!insertPoints.length" class="outline-empty">还没有步骤</div>
+          <button
+            v-for="p in visibleOutlinePoints"
+            :key="p.step._key || p.no + p.branch"
+            type="button"
+            class="outline-item"
+            :class="{
+              active: selectedStep === p.step,
+              ['tone-' + stepTone(p.step.keywordCode).category.toLowerCase()]: true
+            }"
+            :style="{ paddingLeft: 8 + p.depth * 14 + 'px', ...stepToneStyle(p.step.keywordCode) }"
+            @click="selectStep(p.step)"
           >
-            {{ quickKeywordLabel(k) }}
-          </el-button>
-          <template v-if="quickKeywordsMore.length">
-            <el-button
-              v-if="!quickMoreOpen"
-              size="small"
-              round
-              class="keyword-more-btn"
-              @click="quickMoreOpen = true"
+            <span
+              v-if="outlineHasChildren(p.step)"
+              class="outline-caret"
+              :class="{ open: outlineExpanded.has(p.step) }"
+              @click="toggleOutlineExpand(p.step, $event)"
             >
-              更多…
-            </el-button>
-            <template v-else>
-              <el-button
-                v-for="k in quickKeywordsMore"
-                :key="k.code"
-                size="small"
-                round
-                :title="`${k.nameZh} (${k.code})`"
-                @click="quickAdd(k.code)"
-              >
-                {{ quickKeywordLabel(k) }}
-              </el-button>
-              <el-button size="small" round class="keyword-more-btn" @click="quickMoreOpen = false">
-                收起
-              </el-button>
-            </template>
-          </template>
+              <el-icon><ArrowRight /></el-icon>
+            </span>
+            <span v-else class="outline-caret-spacer" />
+            <span class="outline-no">{{ p.no }}</span>
+            <span class="outline-main">
+              <span class="outline-name">{{ keywordName(p.step.keywordCode) }}</span>
+              <span v-if="p.branch" class="outline-branch">{{ p.branch }}</span>
+              <span
+                v-if="outlineHasChildren(p.step) && !outlineExpanded.has(p.step)"
+                class="outline-kids"
+              >{{ outlineChildCount(p.step) }}</span>
+              <span v-if="p.step.description" class="outline-desc">{{ p.step.description }}</span>
+            </span>
+          </button>
+        </aside>
+        <section class="steps-pane">
+        <div v-if="!selectedStep" class="steps-empty">
+          {{ insertPoints.length ? '从左侧点一步开始编辑' : '暂无步骤，请从上方添加关键字或插入模板' }}
         </div>
 
-        <div v-if="steps.length === 0" class="steps-empty">暂无步骤，请从上方添加关键字或插入模板</div>
-
         <div
-          v-for="(step, idx) in steps"
-          :key="step._key || 'step-' + idx"
+          v-else
+          :key="selectedStep._key || selectedPoint?.no || 'selected'"
           class="step-card"
-          :class="`step-card-${stepTone(step.keywordCode).category.toLowerCase()}`"
-          :style="stepToneStyle(step.keywordCode)"
+          :class="`step-card-${stepTone(selectedStep.keywordCode).category.toLowerCase()}`"
+          :style="stepToneStyle(selectedStep.keywordCode)"
         >
           <div class="step-head">
-            <span class="step-idx">{{ idx + 1 }}</span>
-            <span class="step-name">{{ keywordName(step.keywordCode) }}</span>
-            <span class="step-cat-tag">{{ stepTone(step.keywordCode).categoryLabel }}</span>
-            <el-tag size="small" type="info" effect="plain" class="step-code-tag">{{ step.keywordCode }}</el-tag>
-            <span v-if="step.description" class="step-desc-inline" :title="step.description">{{ step.description }}</span>
+            <span class="step-idx">{{ selectedPoint?.no || '·' }}</span>
+            <span class="step-name">{{ keywordName(selectedStep.keywordCode) }}</span>
+            <span class="step-cat-tag">{{ stepTone(selectedStep.keywordCode).categoryLabel }}</span>
+            <el-tag size="small" type="info" effect="plain" class="step-code-tag">{{ selectedStep.keywordCode }}</el-tag>
+            <span v-if="selectedPoint?.branch" class="outline-branch">{{ selectedPoint.branch }}</span>
+            <span v-if="selectedStep.description" class="step-desc-inline" :title="selectedStep.description">{{ selectedStep.description }}</span>
             <span class="step-spacer" />
-            <el-button link size="small" class="step-action-btn" @click="setInsertAfter(step)">在此后插入</el-button>
-            <el-button link size="small" class="step-action-btn" :disabled="idx === 0" @click="moveStep(idx, -1)">上移</el-button>
-            <el-button link size="small" class="step-action-btn" :disabled="idx === steps.length - 1" @click="moveStep(idx, 1)">下移</el-button>
-            <el-button link size="small" class="step-delete-btn" @click="removeStep(idx)">删除</el-button>
+            <el-button link size="small" class="step-action-btn" :disabled="!canMoveSelected(-1)" @click="moveSelected(-1)">上移</el-button>
+            <el-button link size="small" class="step-action-btn" :disabled="!canMoveSelected(1)" @click="moveSelected(1)">下移</el-button>
+            <el-button link size="small" class="step-delete-btn" @click="removeSelected">删除</el-button>
           </div>
 
           <el-form label-position="top" class="step-form">
-            <el-form-item label="描述">
+            <el-form-item label="备注">
               <el-input
-                v-model="step.description"
+                v-model="selectedStep.description"
                 maxlength="120"
                 show-word-limit
-                placeholder="这步干什么，如：点击「同意」按钮"
+                placeholder="可选，给自己看的，如：点底部登录入口"
               />
             </el-form-item>
-            <el-form-item label="期望">
-              <el-input
-                v-model="step.expectation"
-                maxlength="120"
-                show-word-limit
-                placeholder="给人看的预期，如：进入验证码页（不等于断言，不会自动失败）"
-              />
-            </el-form-item>
-            <el-form-item v-if="needsElement(step.keywordCode)" :label="elementFieldLabel(step.keywordCode)">
+            <el-form-item v-if="needsElement(selectedStep.keywordCode)">
+              <template #label>
+                <span class="form-label-with-help">
+                  {{ elementFieldLabel(selectedStep.keywordCode) }}
+                  <el-popover placement="top" :width="320" trigger="hover">
+                    <template #reference>
+                      <el-icon class="form-help-icon"><QuestionFilled /></el-icon>
+                    </template>
+                    <div class="form-help-pop">
+                      {{ elementScopeHint }}。两端会有同名元素，列表已按流程平台筛过，避免挂错端。
+                    </div>
+                  </el-popover>
+                </span>
+              </template>
               <ElementKeySelect
-                v-model="step.elementKey"
+                v-model="selectedStep.elementKey"
                 :elements="elementOptions"
                 :pages="flowPageOptions"
                 :placeholder="elementSelectPlaceholder"
               />
               <div class="element-pick-actions">
-                <!--
-                  两端会有同名元素（warm_tip 安卓一个、iOS 一个），
-                  光看名字分不出这条是哪端的。列表本来就按流程平台筛过了，
-                  但不写出来人没法确认——只能凭感觉，而凭感觉迟早会挂错端。
-                -->
-                <span class="element-scope">{{ elementScopeHint }}</span>
-                <el-button link type="primary" @click="goDeviceInspect(step)">记不住？真机点选</el-button>
+                <el-button link type="primary" @click="goDeviceInspect(selectedStep)">记不住？真机点选</el-button>
                 <el-button link @click="loadElementsForFlow">刷新列表</el-button>
               </div>
               <div v-if="!form.appId || !form.platform" class="exec-hint" style="margin-top: 6px">
                 请先选择「运行应用」和「平台」，再按「页面 → 元素」选择（展示中文名，保存用英文 key）。
               </div>
             </el-form-item>
-            <el-form-item v-if="step.keywordCode === 'IF_ELEMENT_EXISTS'" label="探测超时">
-              <el-input-number v-model="step.params.timeoutSec" :min="1" :max="60" />
+            <el-form-item v-if="selectedStep.keywordCode === 'IF_ELEMENT_EXISTS'" label="探测超时">
+              <el-input-number v-model="selectedStep.params.timeoutSec" :min="1" :max="60" />
               <span class="exec-hint" style="margin-left: 8px">秒</span>
             </el-form-item>
             <!-- 启动 / 冷启动 / 热启动：表单按流程平台渲染，iOS 不显示 appActivity -->
             <LaunchStepFields
-              v-if="isLaunchLikeStep(step.keywordCode)"
-              :step="step"
+              v-if="isLaunchLikeStep(selectedStep.keywordCode)"
+              :step="selectedStep"
               :app-options="appOptions"
               :platform="form.platform"
               @app-selected="onLaunchAppSelected"
             />
-            <template v-if="isInstallStep(step.keywordCode)">
+            <template v-if="isInstallStep(selectedStep.keywordCode)">
               <el-form-item label="安装方式">
-                <el-select v-model="step.params.installMode" style="width: 100%">
+                <el-select v-model="selectedStep.params.installMode" style="width: 100%">
                   <el-option label="渠道页 / 应用商店（默认）" value="CHANNEL_PAGE" />
                   <el-option label="蒲公英下载安装" value="PGYER" />
                   <el-option label="已上传本地 APK" value="LOCAL_APK" />
                   <el-option label="扫码辅助安装（人机）" value="QR_ASSIST" />
                 </el-select>
               </el-form-item>
-              <el-form-item v-if="step.params.installMode === 'CHANNEL_PAGE'" label="渠道页 URL">
+              <el-form-item v-if="selectedStep.params.installMode === 'CHANNEL_PAGE'" label="渠道页 URL">
                 <el-input
-                  v-model="step.params.channelUrl"
+                  v-model="selectedStep.params.channelUrl"
                   clearable
                   placeholder="可选；优先于应用字典 channel_urls / 厂商默认 URI"
                 />
@@ -989,30 +1127,30 @@
                 都会习惯性去填，而填错一次要走完「下载→安装→看报错」才知道。
                 已经有值时自动展开，免得存量流程里的脏值被藏起来。
               -->
-              <template v-if="step.params.installMode === 'PGYER'">
+              <template v-if="selectedStep.params.installMode === 'PGYER'">
                 <el-form-item label="版本">
                   <div class="install-note">
                     这里不用填。<b>执行流程时会列出最近 5 个版本让你选</b>，默认最新的一个。
-                    <span v-if="!pgyerReady(step)">
+                    <span v-if="!pgyerReady(selectedStep)">
                       需要先在「应用字典」为该应用配置蒲公英 appKey。
                     </span>
                   </div>
                 </el-form-item>
                 <el-form-item label=" ">
-                  <el-button link type="primary" size="small" @click="toggleInstallAdvanced(step)">
-                    {{ showInstallAdvanced(step) ? '收起高级设置' : '高级设置（固定版本 / 自定义直链）' }}
+                  <el-button link type="primary" size="small" @click="toggleInstallAdvanced(selectedStep)">
+                    {{ showInstallAdvanced(selectedStep) ? '收起高级设置' : '高级设置（固定版本 / 自定义直链）' }}
                   </el-button>
                 </el-form-item>
-                <template v-if="showInstallAdvanced(step)">
+                <template v-if="showInstallAdvanced(selectedStep)">
                   <el-form-item label="固定 buildKey">
                     <el-input
-                      v-model="step.params.pgyerBuildKey"
+                      v-model="selectedStep.params.pgyerBuildKey"
                       clearable
                       placeholder="留空即可；填了会锁死装这个版本，每次发版都要来改" />
                   </el-form-item>
                   <el-form-item label="APK/IPA 直链">
                     <el-input
-                      v-model="step.params.pgyerUrl"
+                      v-model="selectedStep.params.pgyerUrl"
                       clearable
                       placeholder="留空即可；只接受以 .apk / .ipa 结尾的直链" />
                     <div class="install-note warn">
@@ -1022,23 +1160,23 @@
                   </el-form-item>
                 </template>
               </template>
-              <template v-if="step.params.installMode === 'LOCAL_APK'">
+              <template v-if="selectedStep.params.installMode === 'LOCAL_APK'">
                 <el-form-item label="上传应用 ID">
-                  <el-input v-model="step.params.apkArtifactId" clearable placeholder="applications 表记录 ID" />
+                  <el-input v-model="selectedStep.params.apkArtifactId" clearable placeholder="applications 表记录 ID" />
                 </el-form-item>
                 <el-form-item label="本地路径">
-                  <el-input v-model="step.params.apkPath" clearable placeholder="可选：服务器上的 apk 绝对路径" />
+                  <el-input v-model="selectedStep.params.apkPath" clearable placeholder="可选：服务器上的 apk 绝对路径" />
                 </el-form-item>
               </template>
-              <el-form-item v-if="step.params.installMode === 'QR_ASSIST'" label="扫码页 URL">
+              <el-form-item v-if="selectedStep.params.installMode === 'QR_ASSIST'" label="扫码页 URL">
                 <el-input
-                  v-model="step.params.qrPayload"
+                  v-model="selectedStep.params.qrPayload"
                   clearable
                   placeholder="https 安装页；执行日志会展示二维码，人工扫码后轮询包名"
                 />
               </el-form-item>
               <el-form-item label="安装前卸载">
-                <el-switch v-model="step.params.uninstallFirst" />
+                <el-switch v-model="selectedStep.params.uninstallFirst" />
               </el-form-item>
               <el-alert
                 type="info"
@@ -1050,9 +1188,11 @@
             </template>
             <!-- 参数表单由后端 param_schema 驱动，新增关键字前端无需改动 -->
             <KeywordParamFields
-              v-if="!isCustomUiKeyword(step.keywordCode)"
-              :schema="keywordSchema(step.keywordCode)"
-              :params="step.params"
+              v-if="!isCustomUiKeyword(selectedStep.keywordCode)"
+              :schema="keywordSchema(selectedStep.keywordCode)"
+              :params="selectedStep.params"
+              :keyword-code="selectedStep.keywordCode"
+              :environment="form.environment"
               :element-options="elementOptions"
               :page-options="flowPageOptions"
             />
@@ -1060,8 +1200,8 @@
 
           <!-- 清理已知弹窗：列表式，出现哪个关哪个 -->
           <DismissPopupsEditor
-            v-if="step.keywordCode === 'DISMISS_POPUPS'"
-            :step="step"
+            v-if="selectedStep.keywordCode === 'DISMISS_POPUPS'"
+            :step="selectedStep"
             :element-options="elementOptions"
             :page-options="flowPageOptions"
             @refresh-elements="loadElementsForFlow"
@@ -1069,9 +1209,9 @@
 
           <!-- 竞速等待：多候选，谁先出现走谁 -->
           <WaitAnyBranchEditor
-            v-if="step.keywordCode === 'WAIT_ANY'"
-            :step="step"
-            :path-prefix="String(idx + 1)"
+            v-if="selectedStep.keywordCode === 'WAIT_ANY'"
+            :step="selectedStep"
+            :path-prefix="selectedPoint?.no || '1'"
             :element-options="elementOptions"
             :page-options="flowPageOptions"
             :keyword-options="keywords"
@@ -1082,16 +1222,18 @@
             :is-custom-ui="isCustomUiKeyword"
             :app-options="appOptions"
             :platform="form.platform"
-            :nest-level="0"
+            :nest-level="selectedPoint?.depth || 0"
+            hide-child-cards
+            @added="selectStep"
             @inspect="goDeviceInspect"
             @refresh-elements="loadElementsForFlow"
           />
 
           <!-- 元素存在判断：存在 / 不存在 两支（支持嵌套） -->
           <IfBranchEditor
-            v-if="step.keywordCode === 'IF_ELEMENT_EXISTS'"
-            :step="step"
-            :path-prefix="String(idx + 1)"
+            v-if="selectedStep.keywordCode === 'IF_ELEMENT_EXISTS'"
+            :step="selectedStep"
+            :path-prefix="selectedPoint?.no || '1'"
             :element-options="elementOptions"
             :page-options="flowPageOptions"
             :keyword-options="keywords"
@@ -1102,15 +1244,15 @@
             :is-custom-ui="isCustomUiKeyword"
             :app-options="appOptions"
             :platform="form.platform"
-            :nest-level="0"
+            :nest-level="selectedPoint?.depth || 0"
+            hide-child-cards
+            @added="selectStep"
             @inspect="goDeviceInspect"
             @refresh-elements="loadElementsForFlow"
           />
         </div>
-      <template #footer>
-        <el-button type="button" @click="closeDrawer">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="submit">保存流程</el-button>
-      </template>
+        </section>
+      </div>
     </el-drawer>
 
     <FlowChartDialog v-model="flowChartVisible" :steps="steps" />
@@ -1129,14 +1271,17 @@ import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { scenesForFlow } from '@/utils/appOnlineRegression'
 import { useRoute, useRouter } from 'vue-router'
 import KeywordParamFields from '../components/KeywordParamFields.vue'
+import FlowRunWatch from '../components/FlowRunWatch.vue'
+import ProdExecuteConfirm from '../components/ProdExecuteConfirm.vue'
 import ElementKeySelect from '../components/ElementKeySelect.vue'
 import WaitAnyBranchEditor from './WaitAnyBranchEditor.vue'
 import DismissPopupsEditor from './DismissPopupsEditor.vue'
 import LaunchStepFields from './LaunchStepFields.vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { ArrowDown, Close, Plus, QuestionFilled, VideoPlay } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowRight, Check, CircleCheck, Clock, Close, Iphone, Operation, Plus, QuestionFilled, Refresh, Search, TrendCharts, VideoPlay } from '@element-plus/icons-vue'
 import { apiClient } from '@/api'
 import { stepColorByCode, stepColorStyle } from '@/utils/stepKeywordColor'
+import { deviceRowMatchesTaskPlatform, platformUiLabel } from '@/utils/platform'
 import IfBranchEditor from './IfBranchEditor.vue'
 import DeviceInspectDrawer from '@/components/DeviceInspectDrawer.vue'
 import FlowChartDialog from '@/components/FlowChartDialog.vue'
@@ -1157,44 +1302,6 @@ interface FlowStep {
 /** 建流程时「启动应用程序」默认写入的 Appium capabilities（完美世界电竞） */
 const DEFAULT_LAUNCH_APP_PACKAGE = 'com.pwrd.steam.esports'
 const DEFAULT_LAUNCH_APP_ACTIVITY = '.ui.activity.launcher.LauncherActivity'
-
-/** 关键字已按平台合并，编排时不用再选端——平台由任务/设备决定。前 10 个常显，其余进「更多…」 */
-const QUICK_CODES = [
-  'COLD_START',
-  'HOT_START',
-  'LAUNCH_APP',
-  'CLICK',
-  'INPUT',
-  'WAIT_ELEMENT',
-  'SWIPE',
-  'SCREENSHOT',
-  'IF_ELEMENT_EXISTS',
-  'WAIT',
-  'UNINSTALL_APP',
-  'INSTALL_APP',
-  'DISMISS_POPUPS',
-  'WAIT_ANY',
-  'RETURN_MESSAGE',
-  'SCROLL_UNTIL',
-  'BACK',
-  'GO_HOME',
-  'ASSERT_NO_ERROR'
-]
-const QUICK_PRIMARY_COUNT = 10
-
-/** 常用条太挤时用短名，悬停仍看完整中文+code */
-const QUICK_SHORT_LABEL: Record<string, string> = {
-  GO_HOME: '回主屏',
-  IF_ELEMENT_EXISTS: '元素存在判断',
-  DISMISS_POPUPS: '清弹窗',
-  WAIT_ANY: '竞速等待',
-  ASSERT_NO_ERROR: '无报错'
-}
-
-function quickKeywordLabel(k: { code?: string; nameZh?: string }) {
-  const code = String(k.code || '')
-  return QUICK_SHORT_LABEL[code] || k.nameZh || code
-}
 
 function isScrollUntilStep(code: string) {
   return code === 'SCROLL_UNTIL' || code === 'SCROLL_UNTIL_IOS'
@@ -1251,20 +1358,131 @@ const platforms = [
   { value: 'IOS', label: 'iOS' },
   { value: 'HARMONYOS', label: 'HarmonyOS' },
 ]
+type ProductId = 'ESPORTS' | 'POGPOG'
+const PRODUCTS: { id: ProductId; label: string; platforms: string[] }[] = [
+  { id: 'ESPORTS', label: '完美电竞', platforms: ['ANDROID', 'IOS', 'HARMONYOS'] },
+  { id: 'POGPOG', label: 'POGPOG', platforms: ['ANDROID', 'IOS'] }
+]
+const ENV_CHIPS = [
+  { value: '', label: '全部' },
+  { value: 'TEST', label: '测试' },
+  { value: 'PROD', label: '生产' }
+]
+const CATALOG_CHIPS = [
+  { value: '', label: '全部' },
+  { value: 'SHARED', label: '回归+自动化' },
+  { value: 'AUTOMATION', label: '仅自动化' },
+  { value: 'ONLINE', label: '仅回归' },
+  { value: 'INSTALL', label: '装包准备' },
+  { value: 'PERFORMANCE', label: '仅性能' }
+]
 
-const filterAppId = ref('')
-const filterPlatform = ref('')
+const filterProduct = ref<ProductId>('ESPORTS')
+const filterAppId = ref('DOMESTIC_ESPORTS')
+const filterPlatform = ref('ANDROID')
 const filterCatalog = ref('')
 const filterName = ref('')
-/** 空＝全部环境。默认不过滤，免得新人以为用例丢了 */
-const filterEnvironment = ref('')
+/** 默认测试：测试/生产是两批流程，全铺出来会混在一起 */
+const filterEnvironment = ref('TEST')
 const componentOnly = ref(false)
+const listPage = ref(1)
+const listPageSize = ref(20)
+
+const visiblePlatforms = computed(() => {
+  const allowed = PRODUCTS.find((p) => p.id === filterProduct.value)?.platforms || []
+  return platforms.filter((p) => allowed.includes(p.value))
+})
+
+function resolveAppId(product: ProductId, platform: string) {
+  if (product === 'POGPOG') return 'OVERSEAS_POGPOG'
+  if (String(platform || '').toUpperCase() === 'HARMONYOS') return 'DOMESTIC_ESPORTS_HARMONY'
+  return 'DOMESTIC_ESPORTS'
+}
+
+function productFromAppId(appId: string): ProductId {
+  return String(appId || '').toUpperCase().includes('POGPOG') ? 'POGPOG' : 'ESPORTS'
+}
+
+function applyProductSelection(product: ProductId, platform?: string) {
+  filterProduct.value = product
+  const allowed = PRODUCTS.find((p) => p.id === product)?.platforms || []
+  const next = String(platform || filterPlatform.value || 'ANDROID').toUpperCase()
+  filterPlatform.value = allowed.includes(next) ? next : allowed[0] || 'ANDROID'
+  filterAppId.value = resolveAppId(filterProduct.value, filterPlatform.value)
+}
+
+function selectProduct(id: ProductId) {
+  if (filterProduct.value === id) return
+  applyProductSelection(id)
+  onFilterChange()
+}
+
+function selectPlatform(value: string) {
+  if (filterPlatform.value === value) return
+  applyProductSelection(filterProduct.value, value)
+  onFilterChange()
+}
+
+function selectEnvironment(value: string) {
+  if (filterEnvironment.value === value) return
+  filterEnvironment.value = value
+  onFilterChange()
+}
+
+function selectCatalog(value: string) {
+  if (filterCatalog.value === value) return
+  filterCatalog.value = value
+  onFilterChange()
+}
+
+function onFilterChange() {
+  listPage.value = 1
+  loadList()
+}
+
+function resetFilters() {
+  filterName.value = ''
+  filterCatalog.value = ''
+  componentOnly.value = false
+  applyProductSelection('ESPORTS', 'ANDROID')
+  filterEnvironment.value = 'TEST'
+  onFilterChange()
+}
+
 const loading = ref(false)
 const list = ref<any[]>([])
+
+const listContextText = computed(() => {
+  const product = PRODUCTS.find((p) => p.id === filterProduct.value)?.label || '产品'
+  const pf = platforms.find((p) => p.value === filterPlatform.value)?.label || '平台'
+  const env = ENV_CHIPS.find((e) => e.value === filterEnvironment.value)?.label || '全部'
+  return `${product} · ${pf} · ${env}  ${list.value.length} 条`
+})
+
+const pagedList = computed(() => {
+  const all = list.value
+  const size = listPageSize.value
+  const maxPage = Math.max(1, Math.ceil(all.length / size) || 1)
+  const page = Math.min(listPage.value, maxPage)
+  const start = (page - 1) * size
+  return all.slice(start, start + size)
+})
+
+watch(() => list.value.length, () => {
+  const maxPage = Math.max(1, Math.ceil(list.value.length / listPageSize.value) || 1)
+  if (listPage.value > maxPage) listPage.value = maxPage
+})
 const deviceOptions = ref<any[]>([])
+/** 执行弹窗里的设备卡：含离线 / 占用，跟批量下拉（只列已连接）分开 */
+const execDevices = ref<any[]>([])
+const execRefreshing = ref(false)
 const execVisible = ref(false)
 /** 弹窗先开、内容后到时的骨架态：设备枚举走 adb/idevice_id，蒲公英列表要发网络请求 */
 const execLoading = ref(false)
+const execMeta = reactive({
+  lastRunStatus: '' as string,
+  caseCount: null as number | null
+})
 
 /**
  * 执行环境和流程登记的环境对不上——只对<b>回归流程</b>成立。
@@ -1279,9 +1497,44 @@ const execEnvMismatch = computed(() => {
 })
 const executing = ref(false)
 const execFlow = ref<any>(null)
+/** 试跑结果弹窗：跟着执行接口返回的 taskId 走 */
+const watchVisible = ref(false)
+const watchTaskId = ref('')
+const watchFlowName = ref('')
+const watchIsDebug = ref(true)
+const prodDlg = ref(false)
+const prodMeta = ref({ flowName: '', deviceName: '' })
+let prodResolve: ((ok: boolean) => void) | null = null
+
+function execDeviceModel(d: any) {
+  const name = String(d?.name || '').trim()
+  const id = String(d?.id || '').trim()
+  if (name && name !== id) return name
+  return name || id || '—'
+}
+
+function askProdConfirm(meta: { flowName?: string; deviceName?: string }) {
+  prodMeta.value = { flowName: meta.flowName || '—', deviceName: meta.deviceName || '—' }
+  prodDlg.value = true
+  return new Promise<boolean>((resolve) => {
+    prodResolve = resolve
+  })
+}
+
+function onProdConfirmed() {
+  prodResolve?.(true)
+  prodResolve = null
+}
+
+function onProdCancelled() {
+  prodResolve?.(false)
+  prodResolve = null
+}
 const execForm = reactive({
   deviceId: '',
   runNow: true,
+  /** 默认关＝试跑。这个页面是编辑器，在这儿跑就是调试，别污染质量数据 */
+  countInStats: false,
   /** 缺省生产：存量行为不能因为加了环境而改变 */
   environment: 'PROD',
   pgyerBuildKey: '',
@@ -1311,13 +1564,6 @@ const elementOptions = ref<any[]>([])
 const flowPageOptions = ref<any[]>([])
 const appOptions = ref<any[]>([])
 
-const quickKeywords = computed(() => {
-  const map = new Map(keywords.value.map((k) => [k.code, k]))
-  return QUICK_CODES.map((code) => map.get(code)).filter(Boolean) as any[]
-})
-const quickKeywordsPrimary = computed(() => quickKeywords.value.slice(0, QUICK_PRIMARY_COUNT))
-const quickKeywordsMore = computed(() => quickKeywords.value.slice(QUICK_PRIMARY_COUNT))
-const quickMoreOpen = ref(false)
 const helpOpen = reactive({
   app: false,
   catalog: false,
@@ -1427,6 +1673,19 @@ async function submitBatch() {
     ElMessage.warning('勾选的用例横跨测试和生产环境，请分开执行')
     return
   }
+  if (envs[0] === 'PROD') {
+    const ok = await askProdConfirm({
+      flowName:
+        batchSelection.value.length === 1
+          ? batchSelection.value[0].name
+          : `${batchSelection.value.length} 条用例`,
+      deviceName:
+        batchDeviceIds.value.length === 1
+          ? execDeviceModel(deviceOptions.value.find((d) => d.id === batchDeviceIds.value[0]))
+          : `${batchDeviceIds.value.length} 台设备`
+    })
+    if (!ok) return
+  }
   batchStarting.value = true
   try {
     const res = await apiClient.startOnlineRegressionRun({
@@ -1495,6 +1754,15 @@ function catalogLabel(c: string) {
   if (c === 'SHARED') return '回归+自动化'
   if (c === 'INSTALL') return '装包准备'
   return c || '—'
+}
+
+function catalogLabelFull(c: string) {
+  if (c === 'AUTOMATION') return '仅自动化编排'
+  if (c === 'ONLINE') return '仅回归'
+  if (c === 'PERFORMANCE') return '仅性能测试'
+  if (c === 'SHARED') return '回归 + 自动化编排'
+  if (c === 'INSTALL') return '装包准备'
+  return catalogLabel(c)
 }
 
 function catalogTagType(c: string): 'primary' | 'success' | 'warning' | 'info' | 'danger' {
@@ -1814,12 +2082,78 @@ async function loadList() {
       name: filterName.value.trim() || undefined,
       componentOnly: componentOnly.value || undefined
     })
+    void loadLastRuns()
   } catch (e: any) {
     ElMessage.error(e?.message || '加载失败（请确认已执行 schema_ui_assets.sql）')
     list.value = []
   } finally {
     loading.value = false
   }
+}
+
+/**
+ * 补拉每条流程最近一次执行。
+ * <p>不 await：结果列晚一点出来没关系，但不能让它拖住整张表——
+ * 这个接口要按 id 逐个查库，流程一多就明显。查失败也只是显示「未跑」。
+ * <p>正式结果里已排除试跑（run_track=DEBUG），所以你在这页调试挂几次不会让列表变成一片红；
+ * 试跑单独一份跟着回来，没有正式结果时顶上，免得跑完一片空白。
+ */
+async function loadLastRuns() {
+  const ids = list.value.map((f: any) => f?.id).filter(Boolean)
+  if (!ids.length) return
+  try {
+    const map = await apiClient.getUiFlowLastRuns(ids)
+    for (const row of list.value as any[]) {
+      const hit = map?.[row.id]
+      row.lastRunStatus = hit?.lastRunStatus || ''
+      row.lastRunTaskId = hit?.lastRunTaskId || ''
+      row.lastDebugStatus = hit?.lastDebugStatus || ''
+      row.lastDebugTaskId = hit?.lastDebugTaskId || ''
+    }
+  } catch {
+    /* 查不到就保持「未跑」，别挡整张表 */
+  }
+}
+
+// 试跑弹窗关掉时补拉一次：这次跑的结果得落到列表上，
+// 否则关掉弹窗又回到「什么都看不见」的状态
+watch(watchVisible, (v) => {
+  if (!v) void loadLastRuns()
+})
+
+function runLabel(status?: string | null) {
+  const u = String(status || '').toUpperCase()
+  if (u === 'COMPLETED' || u === 'SUCCESS') return '通过'
+  if (u === 'FAILED') return '失败'
+  if (u === 'RUNNING') return '执行中'
+  if (u === 'STOPPED') return '已停止'
+  if (u === 'PENDING') return '排队'
+  return status || '未跑'
+}
+
+function runTagType(status?: string | null): 'success' | 'danger' | 'warning' | 'info' {
+  const u = String(status || '').toUpperCase()
+  if (u === 'COMPLETED' || u === 'SUCCESS') return 'success'
+  if (u === 'FAILED') return 'danger'
+  if (u === 'RUNNING' || u === 'PENDING') return 'warning'
+  return 'info'
+}
+
+/** 点「失败」直接进任务详情。看到红色却不知道去哪看，是这条链路上最没必要的一道摩擦 */
+function openLastRun(row: any) {
+  const taskId = String(row?.lastRunTaskId || '').trim()
+  if (!taskId) return
+  void router.push({ name: 'TaskOverview', params: { id: taskId } })
+}
+
+/** 试跑结果就地弹，不跳走：调试的时候人还在编辑器里，跳出去等于打断 */
+function openDebugRun(row: any) {
+  const taskId = String(row?.lastDebugTaskId || '').trim()
+  if (!taskId) return
+  watchTaskId.value = taskId
+  watchFlowName.value = String(row?.name || '')
+  watchIsDebug.value = true
+  watchVisible.value = true
 }
 
 async function loadMeta() {
@@ -1875,9 +2209,10 @@ function closeDrawer() {
 
 function onDrawerClosed() {
   // destroy-on-close 后清理，避免残留状态影响下次打开
+  selectedStep.value = null
+  insertAfterId.value = ''
   saving.value = false
   flowChartVisible.value = false
-  quickMoreOpen.value = false
   helpOpen.app = false
   helpOpen.catalog = false
   helpOpen.cases = false
@@ -1940,6 +2275,40 @@ const flowScenes = computed(() =>
   })
 )
 
+const configSummaryChips = computed(() => {
+  const platform =
+    form.platform === 'IOS' ? 'iOS'
+      : form.platform === 'HARMONYOS' ? 'HarmonyOS'
+        : form.platform === 'ANDROID' ? 'Android'
+          : '通用'
+  return [
+    { text: appLabel(form.appId), type: 'info' as const },
+    { text: platform, type: 'info' as const },
+    { text: catalogLabelFull(form.catalog), type: 'info' as const },
+    {
+      text: form.releaseStage === 'ONLINE' ? '已上线' : '本版新功能',
+      type: (form.releaseStage === 'ONLINE' ? 'warning' : 'info') as 'warning' | 'info'
+    },
+    {
+      text: form.enabled ? '启用' : '禁用',
+      type: (form.enabled ? 'success' : 'info') as 'success' | 'info'
+    }
+  ]
+})
+
+const appearFallback = computed(() => {
+  if (form.catalog === 'AUTOMATION') {
+    return { tag: '流程编排', text: '不进任何回归（因「仅自动化编排」）' }
+  }
+  if (form.catalog === 'PERFORMANCE') {
+    return { tag: '性能测试', text: '不进任何回归（因「仅性能测试」）' }
+  }
+  if (form.catalog === 'INSTALL') {
+    return { tag: '装包准备', text: '不进回归勾选列表（装包不是用例）' }
+  }
+  return { tag: '未进回归', text: '把用途改成含回归的选项才会进回归批次' }
+})
+
 /**
  * 能不能关联用例——看这条流程<b>做没做那件事</b>，不看它出现在哪个入口。
  * 排除的只有装包准备（不执行用例步骤）和仅性能测试（采资源曲线、不验功能）。
@@ -1947,6 +2316,12 @@ const flowScenes = computed(() =>
 const linksCases = computed(
   () => form.catalog !== 'INSTALL' && form.catalog !== 'PERFORMANCE'
 )
+
+const caseSelectPlaceholder = computed(() => {
+  if (!linksCases.value) return '装包准备 / 性能测试不能挂用例'
+  if (!editingId.value) return '先保存流程，再回来勾选覆盖用例'
+  return '点击选择覆盖的人工用例'
+})
 const linkableCases = ref<any[]>([])
 const loadingCases = ref(false)
 
@@ -2151,7 +2526,10 @@ async function onInsertTemplate(cmd: string) {
     steps.value = built
   }
   // 模板是整段骨架，追加/替换都会让「插到第 N 步之后」跟原来那条对不上
-  insertAfterStep.value = null
+  insertAfterId.value = ''
+  selectedStep.value = steps.value[0] || null
+  if (selectedStep.value) insertAfterId.value = pointIdOfStep(selectedStep.value)
+  resetOutlineExpand()
   ElMessage.success('已插入「验证码登录骨架」，请改手机号/验证码后保存')
 }
 
@@ -2172,7 +2550,9 @@ async function openAdd() {
     sortOrder: 100
   })
   steps.value = []
-  insertAfterStep.value = null
+  insertAfterId.value = ''
+  selectedStep.value = null
+  resetOutlineExpand()
   // 关键字目录会随后端重启新增（如 GO_HOME）；抽屉打开时再拉一次，避免整页不刷新就看不到
   await loadMeta()
   addKeywordCode.value =
@@ -2205,7 +2585,10 @@ async function openEdit(row: any) {
   await loadMeta()
   loadLinkableCases()
   steps.value = parseSteps(row.steps)
-  insertAfterStep.value = null
+  insertAfterId.value = ''
+  selectedStep.value = steps.value[0] || null
+  if (selectedStep.value) insertAfterId.value = pointIdOfStep(selectedStep.value)
+  resetOutlineExpand()
   // 旧流程可能只在启动类步骤里有包名，回填运行应用/平台
   if (!form.appId) {
     const launch = steps.value.find((s) => isAnyLaunchStep(s.keywordCode))
@@ -2219,15 +2602,76 @@ async function openEdit(row: any) {
 }
 
 /**
- * 新步骤插到哪一步之后。null＝追加到末尾（默认，跟以前行为一致）。
- * <p>
- * 存的是<b>步骤对象本身</b>而不是下标：下标会被上移/下移/删别的步骤搞错位，
- * 而对象引用在这些操作里始终是同一个，「插到这一步之后」永远指同一步。
+ * 插入锚点：insertPoints 里那一项的 id。空字符串＝追加到当前容器末尾。
+ * 必须用 id，不能用步骤对象或摊平下标——对象会被重新 parse，下标会把「第 4 步」对到别的节点。
  */
-const insertAfterStep = ref<any | null>(null)
+const insertAfterId = ref('')
+/** 右侧只编当前选中的一步；点大纲同步选中并作为插入锚点 */
+const selectedStep = ref<any | null>(null)
+
+function pointIdOfStep(step: any | null) {
+  if (!step) return ''
+  const pts = insertPoints.value
+  const hit = pts.find((p) => p.step === step)
+    || pts.find((p) => p.step?._key && step._key && p.step._key === step._key)
+  return hit?.id || ''
+}
+
+function selectStep(step: any | null) {
+  selectedStep.value = step
+  insertAfterId.value = pointIdOfStep(step)
+  if (!step) return
+  expandOutlineAncestors(step)
+  if (outlineHasChildren(step)) expandOutlineStep(step)
+}
+
+function findParentStep(container: (string | number)[]): any | null {
+  let cur: any = steps.value
+  let lastStep: any = null
+  for (const key of container) {
+    cur = cur?.[key as any]
+    if (cur && typeof cur === 'object' && cur.keywordCode) lastStep = cur
+  }
+  return lastStep
+}
+
+function canMoveSelected(delta: number) {
+  const p = selectedPoint.value
+  if (!p) return false
+  const arr = resolveContainer(p.container)
+  if (!arr) return false
+  const to = p.index + delta
+  return to >= 0 && to < arr.length
+}
+
+function moveSelected(delta: number) {
+  const p = selectedPoint.value
+  if (!p || !canMoveSelected(delta)) return
+  const arr = resolveContainer(p.container)
+  if (!arr) return
+  const [item] = arr.splice(p.index, 1)
+  arr.splice(p.index + delta, 0, item)
+}
+
+function removeSelected() {
+  const p = selectedPoint.value
+  if (!p) return
+  const arr = resolveContainer(p.container)
+  if (!arr) return
+  const removed = arr[p.index]
+  arr.splice(p.index, 1)
+  if (insertAfterId.value && !insertPoints.value.some((x) => x.id === insertAfterId.value)) {
+    insertAfterId.value = ''
+  }
+  if (selectedStep.value === removed) {
+    selectedStep.value = arr[Math.min(p.index, arr.length - 1)] || findParentStep(p.container)
+    insertAfterId.value = pointIdOfStep(selectedStep.value)
+  }
+}
 
 /** 一个可插入位置：某个步骤，以及它所在的容器（顶层数组，或某个分支的子步骤数组） */
 interface InsertPoint {
+  id: string
   step: any
   /** 大纲号，跟步骤卡片上显示的编号一致 */
   no: string
@@ -2250,6 +2694,95 @@ const insertPoints = computed<InsertPoint[]>(() => {
   return out
 })
 
+const selectedPoint = computed(() =>
+  insertPoints.value.find((p) => p.step === selectedStep.value) || null
+)
+
+/** 大纲默认只露顶层大步骤；点开判断/等待任意再看子步骤 */
+const outlineExpanded = ref(new Set<any>())
+const outlineRootCount = computed(() => insertPoints.value.filter((p) => !p.depth).length)
+const visibleOutlinePoints = computed(() => {
+  const expanded = outlineExpanded.value
+  return insertPoints.value.filter((p) =>
+    ancestorBranchStepsOf(p).every((st) => expanded.has(st))
+  )
+})
+
+function resetOutlineExpand() {
+  outlineExpanded.value = new Set()
+}
+
+function isBranchKeyword(code: string) {
+  return code === 'IF_ELEMENT_EXISTS' || code === 'WAIT_ANY'
+}
+
+function outlineChildCount(step: any): number {
+  const prm = step?.params || {}
+  if (step?.keywordCode === 'IF_ELEMENT_EXISTS') {
+    return (prm.thenSteps?.length || 0) + (prm.elseSteps?.length || 0)
+  }
+  if (step?.keywordCode === 'WAIT_ANY') {
+    const cands = Array.isArray(prm.candidates) ? prm.candidates : []
+    const n = cands.reduce((sum: number, c: any) => sum + (c?.steps?.length || 0), 0)
+    return n + (prm.noneSteps?.length || 0)
+  }
+  return 0
+}
+
+function outlineHasChildren(step: any) {
+  return outlineChildCount(step) > 0
+}
+
+function ancestorBranchStepsOf(p: InsertPoint): any[] {
+  const ancestors: any[] = []
+  let cur: any = steps.value
+  for (const key of p.container) {
+    cur = cur?.[key as any]
+    if (cur && typeof cur === 'object' && isBranchKeyword(cur.keywordCode)) {
+      ancestors.push(cur)
+    }
+  }
+  return ancestors
+}
+
+function expandOutlineStep(step: any) {
+  if (!step || outlineExpanded.value.has(step)) return
+  const next = new Set(outlineExpanded.value)
+  next.add(step)
+  outlineExpanded.value = next
+}
+
+function expandOutlineAncestors(step: any) {
+  const p = insertPoints.value.find((x) => x.step === step)
+  if (!p) return
+  const next = new Set(outlineExpanded.value)
+  let changed = false
+  for (const a of ancestorBranchStepsOf(p)) {
+    if (!next.has(a)) {
+      next.add(a)
+      changed = true
+    }
+  }
+  if (changed) outlineExpanded.value = next
+}
+
+function toggleOutlineExpand(step: any, ev?: Event) {
+  ev?.stopPropagation()
+  ev?.preventDefault()
+  const next = new Set(outlineExpanded.value)
+  if (next.has(step)) next.delete(step)
+  else next.add(step)
+  outlineExpanded.value = next
+}
+
+watch(insertPoints, (pts) => {
+  if (!selectedStep.value) return
+  if (!pts.some((p) => p.step === selectedStep.value)) {
+    selectedStep.value = pts[0]?.step ?? null
+    insertAfterId.value = pointIdOfStep(selectedStep.value)
+  }
+})
+
 function walkSteps(
   list: any,
   container: (string | number)[],
@@ -2261,7 +2794,15 @@ function walkSteps(
   if (!Array.isArray(list) || depth > 6) return
   list.forEach((st: any, i: number) => {
     const no = noOf(i)
-    out.push({ step: st, no, branch, depth, container, index: i })
+    out.push({
+      id: [container.join('/'), i, branch, no, st?._key || ''].join('#'),
+      step: st,
+      no,
+      branch,
+      depth,
+      container,
+      index: i
+    })
     const prm = st?.params || {}
     if (st?.keywordCode === 'IF_ELEMENT_EXISTS') {
       walkSteps(prm.thenSteps, [...container, i, 'params', 'thenSteps'],
@@ -2290,15 +2831,13 @@ function resolveContainer(path: (string | number)[]): any[] | null {
   return Array.isArray(cur) ? cur : null
 }
 
-/** el-select 用下标绑定；getter 每次现算，锚点步骤被移动后下拉跟着显示新位置 */
-const insertSelIdx = computed<number | null>({
+/** el-select 用稳定 id；空字符串＝追加到末尾。不要用摊平下标，第 4 步的下标不是 4。 */
+const insertSelId = computed<string>({
   get() {
-    if (!insertAfterStep.value) return null
-    const i = insertPoints.value.findIndex((p) => p.step === insertAfterStep.value)
-    return i >= 0 ? i : null
+    return insertAfterId.value
   },
-  set(i) {
-    insertAfterStep.value = i == null ? null : insertPoints.value[i]?.step || null
+  set(v) {
+    insertAfterId.value = v == null ? '' : String(v)
   }
 })
 
@@ -2306,16 +2845,62 @@ function insertPointLabel(p: InsertPoint) {
   return p.branch ? p.no + '（' + p.branch + '）' : p.no
 }
 
-const insertButtonText = computed(() => {
-  const i = insertSelIdx.value
-  if (i == null) return '添加步骤'
-  const p = insertPoints.value[i]
-  return p ? '插到 ' + insertPointLabel(p) + ' 之后' : '添加步骤'
+const insertQuery = ref('')
+
+function onInsertVisible(open: boolean) {
+  if (!open) insertQuery.value = ''
+}
+
+const filteredInsertPoints = computed(() => {
+  const q = insertQuery.value.trim().toLowerCase()
+  if (!q) return insertPoints.value
+  return insertPoints.value.filter((p) => {
+    const name = keywordName(p.step.keywordCode)
+    const desc = String(p.step.description || '')
+    return [p.no, name, desc, p.branch, p.step.keywordCode].some((s) =>
+      String(s).toLowerCase().includes(q)
+    )
+  })
 })
 
+const insertAppendVisible = computed(() => {
+  const q = insertQuery.value.trim().toLowerCase()
+  if (!q) return true
+  return '追加到末尾默认'.includes(q)
+})
+
+function insertAfterClosedLabel(p: InsertPoint) {
+  return `插到「${p.no} ${keywordName(p.step.keywordCode)}」之后`
+}
+
+function insertBadgeStyle(code: string) {
+  if (code === 'IF_ELEMENT_EXISTS' || code === 'WAIT_ANY') {
+    return { background: '#fff7ed', color: '#d97706', border: '1px solid #fbbf24' }
+  }
+  const t = stepTone(code)
+  return { background: t.color, color: '#fff', border: '1px solid ' + t.color }
+}
+
+function insertMetaTag(code: string) {
+  if (code === 'IF_ELEMENT_EXISTS' || code === 'WAIT_ANY') return { text: 'IF', tone: 'if' }
+  if (code === 'FINISH_SUCCESS' || code === 'FINISH_FAILED' || code === 'FINISH_SKIPPED' || code === 'RETURN_MESSAGE') {
+    return { text: 'END', tone: 'end' }
+  }
+  const t = stepTone(code)
+  return { text: t.categoryLabel, tone: t.category.toLowerCase() }
+}
+
+function branchRailClass(branch: string) {
+  if (branch === '存在时') return 'rail-then'
+  if (branch === '不存在时') return 'rail-else'
+  if (String(branch).startsWith('候选')) return 'rail-cand'
+  if (branch === '都没出现') return 'rail-none'
+  return ''
+}
+
 function setInsertAfter(step: any) {
-  insertAfterStep.value = step
-  const p = insertPoints.value.find((x) => x.step === step)
+  insertAfterId.value = pointIdOfStep(step)
+  const p = insertPoints.value.find((x) => x.id === insertAfterId.value)
   ElMessage.info(p ? '下一个新步骤会插到 ' + insertPointLabel(p) + ' 之后' : '已设为插入位置')
 }
 
@@ -2333,30 +2918,63 @@ function stepBriefLabel(st: any) {
   return full.length > 6 ? full.slice(0, 6) + '…' : full
 }
 
+function insertedStepNo(step: any) {
+  return insertPoints.value.find((p) => p.step === step)?.no || ''
+}
+
+function resolveInsertPoint() {
+  const id = insertAfterId.value
+  if (!id) return null
+  const pts = insertPoints.value
+  const exact = pts.find((p) => p.id === id)
+  if (exact) return exact
+  const parts = id.split('#')
+  const no = parts[3]
+  const branch = parts[2] || ''
+  if (no) {
+    return pts.find((p) => p.no === no && p.branch === branch) || pts.find((p) => p.no === no && !p.depth) || null
+  }
+  return null
+}
+
 function insertStep(step: any) {
-  const anchor = insertAfterStep.value
-  if (!anchor) {
+  const point = resolveInsertPoint()
+  if (!point) {
+    if (insertAfterId.value) {
+      ElMessage.error('插入位置已失效，请重新选择「插到第几步之后」')
+      return
+    }
     steps.value.push(step)
+    selectStep(step)
+    const no = insertedStepNo(step)
+    ElMessage.success(no ? `已追加为第 ${no} 步` : '已追加到末尾')
     return
   }
-  const point = insertPoints.value.find((p) => p.step === anchor)
-  const arr = point ? resolveContainer(point.container) : null
-  if (!point || !arr) {
-    // 锚点那一步被删了（可能是在分支编辑器里删的，这边收不到通知）
-    steps.value.push(step)
-    insertAfterStep.value = null
-    ElMessage.warning('原来的插入位置已不存在，本步已追加到末尾')
+  const arr = resolveContainer(point.container)
+  if (!arr) {
+    ElMessage.error('插入位置已失效，请重新选择「插到第几步之后」')
     return
   }
   arr.splice(point.index + 1, 0, step)
-  // 连着插几步时顺次往后排，而不是每次都插在同一个位置倒着堆
-  insertAfterStep.value = step
+  selectStep(step)
+  const no = insertedStepNo(step)
+  ElMessage.success(
+    point.branch
+      ? `已插到 ${point.no} 之后，当前是 ${no}（${point.branch}）`
+      : `已插到第 ${point.no} 步后面，现在是第 ${no} 步`
+  )
 }
 
 function removeStep(idx: number) {
   const removed = steps.value[idx]
   steps.value.splice(idx, 1)
-  if (insertAfterStep.value === removed) insertAfterStep.value = null
+  if (insertAfterId.value && !insertPoints.value.some((x) => x.id === insertAfterId.value)) {
+    insertAfterId.value = ''
+  }
+  if (selectedStep.value === removed) {
+    selectedStep.value = steps.value[Math.min(idx, steps.value.length - 1)] || null
+    insertAfterId.value = pointIdOfStep(selectedStep.value)
+  }
 }
 
 function addStep() {
@@ -2365,11 +2983,6 @@ function addStep() {
     ElMessage.warning('请先选择关键字')
     return
   }
-  insertStep(createStep(code))
-}
-
-function quickAdd(code: string) {
-  addKeywordCode.value = code
   insertStep(createStep(code))
 }
 
@@ -2425,10 +3038,19 @@ async function submit() {
       }
       ElMessage.success('已更新')
     } else {
-      await apiClient.createUiFlow(body)
-      ElMessage.success('已创建')
+      const created = await apiClient.createUiFlow(body)
+      editingId.value = created?.id || ''
+      if (created?.id) highlightFlowId.value = created.id
+      ElMessage.success('已创建，可继续改')
+      if (linksCases.value && editingId.value) {
+        try {
+          await apiClient.setFlowCases(editingId.value, caseIds || [])
+        } catch (e: any) {
+          ElMessage.warning('流程已保存，但用例关联失败：' + (e?.message || ''))
+        }
+        loadLinkableCases()
+      }
     }
-    drawerVisible.value = false
     await loadList()
   } catch (e: any) {
     ElMessage.error(e?.message || '保存失败')
@@ -2551,6 +3173,7 @@ async function openExecute(row: any) {
   execFlow.value = row
   execForm.deviceId = ''
   execForm.runNow = true
+  execForm.countInStats = false
   // 跟着流程自己的环境走：流程标了测试环境，执行时默认就该是测试环境，
   // 否则会出现「流程写着 TEST、执行记录写着 PROD」这种自相矛盾的报告
   execForm.environment = row?.environment === 'TEST' ? 'TEST' : 'PROD'
@@ -2563,6 +3186,9 @@ async function openExecute(row: any) {
   execInstallSummary.apkPath = ''
   execInstallSummary.apkArtifactId = ''
   execInstallSummary.hint = ''
+  execDevices.value = []
+  execMeta.lastRunStatus = ''
+  execMeta.caseCount = null
 
   // 先把弹窗打开，再去加载。
   // 原来是等 4 个串行请求全跑完才 execVisible=true——其中枚举设备要走 adb / idevice_id，
@@ -2598,12 +3224,12 @@ async function openExecute(row: any) {
             .getUiApps({ enabledOnly: true })
             .then((v) => (appOptions.value = v))
             .catch(() => undefined),
-      loadConnectedDevices()
+      loadExecDevices(),
+      loadExecMeta(row.id)
     ])
 
     // 这两步依赖设备结果，只能放在后面
-    if (deviceOptions.value.length === 1) {
-      execForm.deviceId = deviceOptions.value[0].id
+    if (execForm.deviceId) {
       await refreshExecForDevice()
     } else if (flowUsesPgyerInstall(row) && appId) {
       // 尚未选设备时，先按流程平台预拉（选设备后会再按设备平台刷新）
@@ -2620,7 +3246,9 @@ async function onExecDeviceChange() {
 }
 
 async function refreshExecForDevice() {
-  const device = deviceOptions.value.find((d) => d.id === execForm.deviceId)
+  const device =
+    execDevices.value.find((d) => d.id === execForm.deviceId) ||
+    deviceOptions.value.find((d) => d.id === execForm.deviceId)
   if (!device) return
   const devicePlatform = String(device.platform || '').toUpperCase().includes('IOS') ? 'IOS' : 'ANDROID'
   const appId = execLaunchSummary.appId
@@ -2658,6 +3286,175 @@ async function loadPgyerBuildsForExec(appId: string, platform: string) {
   }
 }
 
+function execPlatformLabel(platform?: string) {
+  const p = String(platform || '').toUpperCase()
+  if (p.includes('IOS')) return 'iOS'
+  if (p.includes('HARMONY')) return 'HarmonyOS'
+  if (p.includes('ANDROID')) return 'Android'
+  return platform || ''
+}
+
+function execDeviceTitle(d: any) {
+  return String(d?.id || d?.name || '—')
+}
+
+function execDeviceSub(d: any) {
+  const plat = execPlatformLabel(d?.platform)
+  const ver = String(d?.version || '').replace(/^(android|ios|harmonyos)\s*/i, '').trim()
+  const model = d?.name && d.name !== d.id ? String(d.name) : ''
+  const os = plat + (ver ? ' ' + ver : '')
+  return [model, os].filter(Boolean).join(' • ') || '—'
+}
+
+function execDeviceKind(d: any): 'idle' | 'busy' | 'offline' {
+  if (String(d?.status || '').toUpperCase() !== 'CONNECTED') return 'offline'
+  if (d?.locked) return 'busy'
+  return 'idle'
+}
+
+function execDeviceStatusText(d: any) {
+  const k = execDeviceKind(d)
+  if (k === 'idle') return '空闲'
+  if (k === 'busy') return '执行中'
+  return '离线'
+}
+
+function selectExecDevice(d: any) {
+  if (execDeviceKind(d) === 'offline') return
+  execForm.deviceId = d.id
+  void onExecDeviceChange()
+}
+
+const selectedExecDevice = computed(() =>
+  execDevices.value.find((d) => d.id === execForm.deviceId) || null
+)
+
+const execStepCount = computed(() => stepCount(execFlow.value?.steps))
+
+const execPlatformKey = computed(() => {
+  const p = String(execFlow.value?.platform || execLaunchSummary.platform || '').toUpperCase()
+  if (p.includes('IOS')) return 'ios'
+  if (p.includes('HARMONY')) return 'harmony'
+  return 'android'
+})
+
+const execPlatformText = computed(() => {
+  const k = execPlatformKey.value
+  if (k === 'ios') return 'IOS'
+  if (k === 'harmony') return 'HARMONYOS'
+  return 'ANDROID'
+})
+
+const execEnvAppText = computed(() => {
+  const env = execForm.environment === 'TEST' ? '测试环境' : '生产环境'
+  const app = execLaunchSummary.appLabel && execLaunchSummary.appLabel !== '—'
+    ? execLaunchSummary.appLabel
+    : appLabel(execFlow.value?.appId || '')
+  return `${env} • ${app || '未指定应用'}`
+})
+
+const execLastRunLabel = computed(() => {
+  const u = String(execMeta.lastRunStatus || '').toUpperCase()
+  if (!u) return '未跑'
+  if (u === 'COMPLETED' || u === 'SUCCESS') return '通过'
+  if (u === 'FAILED') return '失败'
+  if (u === 'RUNNING') return '执行中'
+  if (u === 'STOPPED') return '已停止'
+  if (u === 'PENDING') return '排队'
+  return execMeta.lastRunStatus
+})
+
+const execLastRunTone = computed(() => {
+  const u = String(execMeta.lastRunStatus || '').toUpperCase()
+  if (u === 'COMPLETED' || u === 'SUCCESS') return 'pass'
+  if (u === 'FAILED') return 'fail'
+  if (u === 'RUNNING' || u === 'PENDING') return 'warn'
+  return 'idle'
+})
+
+const execCaseCountText = computed(() =>
+  execMeta.caseCount == null ? '—' : `${execMeta.caseCount} 条`
+)
+
+async function loadExecMeta(flowId: string) {
+  try {
+    const lastRuns = await apiClient.getUiFlowLastRuns([flowId])
+    execMeta.lastRunStatus = String(lastRuns?.[flowId]?.lastRunStatus || '')
+  } catch {
+    execMeta.lastRunStatus = ''
+  }
+  try {
+    const cases = await apiClient.getFlowCases(flowId)
+    execMeta.caseCount = Array.isArray(cases) ? cases.length : 0
+  } catch {
+    execMeta.caseCount = 0
+  }
+}
+
+async function refreshExecDevices() {
+  execRefreshing.value = true
+  try {
+    await apiClient.scanDevices()
+  } catch {
+    /* 扫描失败仍拉现有列表 */
+  }
+  try {
+    await loadExecDevices()
+    if (!execDevices.value.some((d) => execDeviceKind(d) === 'idle')) {
+      ElMessage.warning(`当前没有空闲的 ${platformUiLabel(execWantedPlatform()) || '匹配'} 设备`)
+    }
+  } finally {
+    execRefreshing.value = false
+  }
+}
+
+function execWantedPlatform() {
+  return String(execFlow.value?.platform || execLaunchSummary.platform || '').trim()
+}
+
+function execDeviceMatchesFlow(d: any) {
+  const wanted = execWantedPlatform()
+  if (!wanted) return true
+  return deviceRowMatchesTaskPlatform(d?.platform, wanted)
+}
+
+async function loadExecDevices() {
+  try {
+    const all = await apiClient.getDevices()
+    const rows = Array.isArray(all) ? all : []
+    const seen = new Set<string>()
+    const list = rows.filter((d: any) => {
+      const id = d?.id
+      if (!id || seen.has(id)) return false
+      if (String(d.status || '').toUpperCase() !== 'CONNECTED') return false
+      if (!execDeviceMatchesFlow(d)) return false
+      seen.add(id)
+      return true
+    })
+    const lockPairs = await Promise.all(
+      list
+        .filter((d: any) => String(d.status || '').toUpperCase() === 'CONNECTED')
+        .map((d: any) =>
+          apiClient
+            .getDeviceLock(d.id)
+            .then((r) => [d.id, !!r?.locked] as const)
+            .catch(() => [d.id, false] as const)
+        )
+    )
+    const lockedIds = new Set(lockPairs.filter(([, locked]) => locked).map(([id]) => id))
+    execDevices.value = list.map((d: any) => ({ ...d, locked: lockedIds.has(d.id) }))
+    const stillOk = execDevices.value.some(
+      (d) => d.id === execForm.deviceId && execDeviceKind(d) !== 'offline'
+    )
+    if (!stillOk) {
+      const idle = execDevices.value.find((d) => execDeviceKind(d) === 'idle')
+      execForm.deviceId = idle?.id || ''
+    }
+  } catch {
+    execDevices.value = []
+  }
+}
+
 /** 只列已连接设备：列出离线设备只会让人选中之后再报一次错 */
 async function loadConnectedDevices() {
   try {
@@ -2685,6 +3482,15 @@ async function submitExecute() {
     ElMessage.warning('请选择设备')
     return
   }
+  const picked = selectedExecDevice.value
+  if (picked && execDeviceKind(picked) === 'busy') {
+    ElMessage.warning('这台设备正在执行中，请换一台空闲设备')
+    return
+  }
+  if (picked && execDeviceKind(picked) === 'offline') {
+    ElMessage.warning('这台设备已离线，请换一台或先刷新设备')
+    return
+  }
   if (!execLaunchSummary.packageName && !execLaunchSummary.appId) {
     ElMessage.warning('流程未配置启动包名，请先编辑流程并在「启动应用程序」中选择要跑的包')
     return
@@ -2695,21 +3501,11 @@ async function submitExecute() {
     return
   }
   if (execForm.environment === 'PROD') {
-    try {
-      await ElMessageBox.confirm(
-        '当前您选择的是<span style="color:#ff4d4f;font-weight:700">生产环境</span>',
-        '生产环境提醒',
-        {
-          type: 'error',
-          dangerouslyUseHTMLString: true,
-          confirmButtonText: '仍要执行',
-          cancelButtonText: '取消',
-          confirmButtonClass: 'el-button--danger'
-        }
-      )
-    } catch {
-      return
-    }
+    const ok = await askProdConfirm({
+      flowName: execFlow.value.name,
+      deviceName: execDeviceModel(picked)
+    })
+    if (!ok) return
   }
   executing.value = true
   try {
@@ -2721,10 +3517,26 @@ async function submitExecute() {
       activity: execLaunchSummary.activity || undefined,
       environment: execForm.environment,
       params: buildExecParams(),
-      runNow: execForm.runNow
+      runNow: execForm.runNow,
+      // 不勾「记入统计」就是试跑：后端据此把这次执行从通过率、最近结果和告警里摘出去
+      track: execForm.countInStats ? undefined : 'DEBUG'
     })
-    ElMessage.success(res.message || '已开始执行')
     execVisible.value = false
+    const taskId = String((res as any)?.taskId || '').trim()
+    if (taskId) {
+      const flow = execFlow.value
+      if (flow && !execForm.countInStats) {
+        flow.lastDebugStatus = 'RUNNING'
+        flow.lastDebugTaskId = taskId
+      }
+      watchTaskId.value = taskId
+      watchFlowName.value = String(execFlow.value?.name || '')
+      watchIsDebug.value = !execForm.countInStats
+      watchVisible.value = true
+    } else {
+      // 理论上不会走到：接口一直返回 taskId。真没有的话至少别静默
+      ElMessage.success(res.message || '已开始执行')
+    }
   } catch (e: any) {
     ElMessage.error(e?.message || '执行失败')
   } finally {
@@ -2929,7 +3741,10 @@ async function openEditFromQuery() {
       caseIds: []
     })
     steps.value = parseSteps(row.steps)
-    insertAfterStep.value = null
+    insertAfterId.value = ''
+    selectedStep.value = steps.value[0] || null
+    if (selectedStep.value) insertAfterId.value = pointIdOfStep(selectedStep.value)
+    resetOutlineExpand()
     if (!form.appId) {
       const launch = steps.value.find((s) => isAnyLaunchStep(s.keywordCode))
       form.appId =
@@ -2945,8 +3760,7 @@ async function openEditFromQuery() {
     try {
       await loadMeta()
       loadLinkableCases()
-      if (row.appId) filterAppId.value = row.appId
-      if (row.platform) filterPlatform.value = row.platform
+      if (row.appId) applyProductSelection(productFromAppId(row.appId), row.platform)
       if (row.environment === 'TEST' || row.environment === 'PROD') {
         filterEnvironment.value = row.environment
       }
@@ -2995,6 +3809,143 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.ui-flows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.toolbar,
+.filter-panel,
+.list-panel {
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 10px;
+}
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+}
+.toolbar-tools,
+.toolbar-create {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.filter-panel {
+  padding: 14px 16px 12px;
+}
+.chip-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 32px;
+  margin-bottom: 10px;
+}
+.chip-label {
+  width: 36px;
+  flex-shrink: 0;
+  font-size: 13px;
+  color: #909399;
+}
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.app-chip,
+.plat-chip,
+.env-chip {
+  border: none;
+  background: transparent;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #606266;
+  cursor: pointer;
+}
+.app-chip.active {
+  color: #409eff;
+  font-weight: 600;
+  background: #ecf5ff;
+}
+.plat-chip {
+  border: 1px solid #e4e7ed;
+  background: #f5f7fa;
+}
+.plat-chip.active {
+  border-color: #67c23a;
+  background: #67c23a;
+  color: #fff;
+  font-weight: 600;
+}
+.env-chip {
+  border: 1px solid #e4e7ed;
+  background: #f5f7fa;
+}
+.env-chip.active {
+  border-color: #409eff;
+  background: #ecf5ff;
+  color: #409eff;
+  font-weight: 600;
+}
+.env-chip.test.active {
+  border-color: #e6a23c;
+  background: #fdf6ec;
+  color: #e6a23c;
+}
+.env-chip.prod.active {
+  border-color: #f56c6c;
+  background: #fef0f0;
+  color: #f56c6c;
+}
+.search-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.search-input {
+  width: 280px;
+  flex: 1 1 200px;
+  max-width: 360px;
+}
+.comp-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #606266;
+}
+.search-count {
+  margin-left: auto;
+  font-size: 13px;
+  color: #909399;
+  white-space: nowrap;
+}
+.list-panel {
+  padding: 8px 0 12px;
+  overflow: hidden;
+}
+.pagination-wrap {
+  margin-top: 16px;
+  padding: 0 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+.result-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.result-idle {
+  color: #c0c4cc;
+}
+
 .env-scan-list {
   margin-top: 12px;
   max-height: 420px;
@@ -3143,32 +4094,57 @@ onMounted(async () => {
 .filter-bar {
   margin-bottom: 12px;
 }
+.flow-config-section {
+  flex-shrink: 0;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  background: #fff;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.flow-config-head {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 12px;
+  background: #f5f7fa;
+  color: #303133;
+  font-size: 13px;
+  font-weight: 600;
+}
+.flow-config-section .flow-meta-form {
+  padding: 12px 16px 4px;
+}
+.steps-hdr {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding-left: 10px;
+  border-left: 3px solid #3b82f6;
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+  line-height: 1.2;
+}
+.steps-add-bar {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 10px 14px 12px;
+  border: 1px solid #e4e7ed;
+  border-bottom: none;
+  border-radius: 10px 10px 0 0;
+  background: #fafafa;
+}
 .steps-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
 }
 .template-dropdown-trigger {
   display: inline-flex;
-}
-.keyword-quick {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 12px;
-}
-.keyword-quick-label {
-  font-size: 12px;
-  color: var(--el-text-color-placeholder);
-  margin-right: 2px;
-}
-.keyword-more-btn {
-  color: var(--el-color-primary) !important;
-  border-color: var(--el-color-primary-light-5) !important;
-  background: #ecf5ff !important;
 }
 .steps-section-hint {
   margin: -8px 0 12px;
@@ -3176,14 +4152,229 @@ onMounted(async () => {
   color: var(--el-text-color-placeholder);
   line-height: 1.4;
 }
+.steps-split {
+  flex: 1 0 auto;
+  min-height: calc(100vh - 230px);
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  overflow: hidden;
+  border: 1px solid #e4e7ed;
+  border-radius: 0 0 10px 10px;
+  background: #fff;
+}
+.steps-outline {
+  min-height: 0;
+  overflow-y: auto;
+  border-right: 1px solid #e8e8e8;
+  background: #f7f8fa;
+}
+.outline-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #606266;
+  background: #f7f8fa;
+  border-bottom: 1px solid #ebeef5;
+}
+.outline-empty {
+  padding: 20px 12px;
+  font-size: 12px;
+  color: #c0c4cc;
+}
+.outline-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 7px 10px 7px 6px;
+  border: none;
+  border-left: 3px solid var(--step-color, #dcdfe6);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: #303133;
+}
+.outline-caret,
+.outline-caret-spacer {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 16px;
+  margin-top: 1px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #909399;
+}
+.outline-caret {
+  border-radius: 3px;
+}
+.outline-caret:hover {
+  background: #e4e7ed;
+  color: #303133;
+}
+.outline-caret .el-icon {
+  font-size: 11px;
+  transition: transform 0.15s ease;
+}
+.outline-caret.open .el-icon {
+  transform: rotate(90deg);
+}
+.outline-kids {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  color: #909399;
+  background: #ebeef5;
+  border-radius: 8px;
+  padding: 0 6px;
+}
+.outline-item:hover {
+  background: #eef2f7;
+}
+.outline-item.active {
+  background: var(--step-soft-bg, #ecf5ff);
+}
+.outline-no {
+  flex: 0 0 auto;
+  min-width: 22px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--step-color, #909399);
+  font-variant-numeric: tabular-nums;
+}
+.outline-main {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 6px;
+}
+.outline-name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.outline-branch {
+  font-size: 11px;
+  color: #d48806;
+  background: #fff7e6;
+  border: 1px solid #ffe7ba;
+  border-radius: 4px;
+  padding: 0 5px;
+  line-height: 18px;
+}
+.outline-desc {
+  flex: 1 1 100%;
+  font-size: 11px;
+  color: #909399;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.steps-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 16px 20px;
+}
 .flow-meta-form :deep(.el-form-item) {
-  margin-bottom: 14px;
+  margin-bottom: 18px;
 }
 .flow-meta-form :deep(.el-form-item__label) {
-  margin-bottom: 6px;
-  line-height: 1.3;
+  margin-bottom: 0;
+  line-height: 32px;
   color: #606266;
-  font-weight: 500;
+  font-weight: 400;
+  justify-content: flex-start;
+}
+.flow-section {
+  margin-bottom: 8px;
+}
+.flow-section + .flow-section {
+  margin-top: 20px;
+}
+.flow-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding-left: 10px;
+  border-left: 3px solid #3b82f6;
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+  line-height: 1.2;
+}
+.flow-config-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.stage-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.stage-chip {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  background: #fff;
+  color: #606266;
+  font-size: 13px;
+  cursor: pointer;
+  line-height: 26px;
+}
+.stage-chip.active {
+  border-color: #3b82f6;
+  background: #eff6ff;
+  color: #2563eb;
+}
+.stage-chip.stage-online.active {
+  border-color: #f97316;
+  background: #f97316;
+  color: #fff;
+}
+.switch-with-hint {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 32px;
+}
+.switch-hint {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.4;
+}
+.appear-box {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #eff6ff;
+}
+.appear-text {
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.4;
+}
+.seg-env :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
+  background: #22c55e;
+  border-color: #22c55e;
+  color: #fff;
+  box-shadow: -1px 0 0 0 #22c55e;
 }
 .form-field-stack {
   display: flex;
@@ -3267,14 +4458,27 @@ onMounted(async () => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.drawer-header-row {
+.drawer-header-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: space-between;
+  gap: 16px;
   width: 100%;
-  padding-right: 28px;
+  padding-right: 8px;
   -webkit-app-region: no-drag;
   app-region: no-drag;
+}
+.drawer-header-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.drawer-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 .drawer-title {
   font-size: 16px;
@@ -3299,31 +4503,203 @@ onMounted(async () => {
   flex-direction: column;
   gap: 16px;
 }
-.exec-info-card {
+.exec-flow-card {
+  padding: 14px 16px 12px;
   border-radius: 10px;
   background: #f5f7fa;
+}
+.exec-flow-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.exec-flow-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1f2329;
+  line-height: 1.35;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.exec-info-row {
-  display: grid;
-  grid-template-columns: 88px 1fr;
-  gap: 12px;
-  padding: 12px 14px;
+.exec-plat-pill {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
+  background: #e8f8ee;
+  color: #237804;
 }
-.exec-info-row + .exec-info-row {
-  border-top: 1px solid #ebeef5;
+.exec-plat-pill.plat-ios {
+  background: #fff7e6;
+  color: #d48806;
 }
-.exec-info-label {
+.exec-plat-pill.plat-harmony {
+  background: #ecf5ff;
+  color: #1677ff;
+}
+.exec-flow-meta {
+  margin-top: 4px;
+  font-size: 12px;
   color: #909399;
-  font-size: 13px;
-  line-height: 1.5;
-  padding-top: 1px;
+  line-height: 1.4;
 }
-.exec-info-value {
-  color: #303133;
+.exec-flow-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 18px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: #606266;
+}
+.exec-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.exec-stat .el-icon {
   font-size: 14px;
-  line-height: 1.5;
-  word-break: break-word;
+  color: #909399;
+}
+.exec-stat b {
+  font-weight: 600;
+  color: #303133;
+}
+.exec-stat b.run-pass {
+  color: #52c41a;
+}
+.exec-stat b.run-fail {
+  color: #f5222d;
+}
+.exec-stat b.run-warn {
+  color: #fa8c16;
+}
+.exec-stat b.run-idle {
+  color: #909399;
+  font-weight: 500;
+}
+.exec-dev-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.exec-refresh-btn {
+  padding: 0;
+  height: auto;
+  font-size: 13px;
+}
+.exec-dev-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.exec-dev-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #e4e7ed;
+  border-radius: 10px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  color: #303133;
+}
+.exec-dev-card:hover:not(:disabled) {
+  border-color: #b3d8ff;
+}
+.exec-dev-card.selected {
+  border-color: #409eff;
+  background: #ecf5ff;
+}
+.exec-dev-card.offline {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: #fafafa;
+}
+.exec-dev-card.busy:not(.selected) {
+  background: #fff;
+}
+.exec-dev-radio {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid #c0c4cc;
+  border-radius: 50%;
+  background: #fff;
+  box-sizing: border-box;
+}
+.exec-dev-radio.on {
+  border-color: #409eff;
+  box-shadow: inset 0 0 0 4px #409eff;
+}
+.exec-dev-icon {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f0f9eb;
+  color: #67c23a;
+  font-size: 16px;
+}
+.exec-dev-card.offline .exec-dev-icon {
+  background: #f5f7fa;
+  color: #c0c4cc;
+}
+.exec-dev-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.exec-dev-name {
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+.exec-dev-sub {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.exec-dev-status {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.exec-dev-status i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.exec-dev-status.idle {
+  color: #52c41a;
+}
+.exec-dev-status.busy {
+  color: #fa8c16;
+}
+.exec-dev-status.offline {
+  color: #c0c4cc;
 }
 .exec-field {
   display: flex;
@@ -3382,22 +4758,25 @@ onMounted(async () => {
   font-size: 12px;
   color: var(--el-text-color-regular);
 }
-.exec-runnow-card {
+.exec-opt-card {
+  border: 1px solid #ebeef5;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+.exec-opt-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 16px;
-  border-radius: 10px;
-  background: #f5f7fa;
+  padding: 12px 14px;
 }
-.exec-runnow-title {
+.exec-opt-title {
   font-size: 14px;
   font-weight: 600;
   color: #303133;
-  line-height: 1.4;
 }
-.exec-runnow-sub {
+.exec-opt-sub {
   margin-top: 4px;
   font-size: 12px;
   color: #909399;
@@ -3405,8 +4784,18 @@ onMounted(async () => {
 }
 .exec-dlg-footer {
   display: flex;
-  justify-content: flex-end;
-  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.exec-picked {
+  font-size: 13px;
+  font-weight: 600;
+  color: #409eff;
+}
+.exec-dlg-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .install-note {
@@ -3425,9 +4814,37 @@ onMounted(async () => {
 .ui-flow-drawer.el-drawer,
 .ui-flow-drawer .el-drawer__header,
 .ui-flow-drawer .el-drawer__close-btn,
-.ui-flow-drawer .flow-chart-btn {
+.ui-flow-drawer .flow-chart-btn,
+.ui-flow-drawer .drawer-header-actions {
   -webkit-app-region: no-drag !important;
   app-region: no-drag !important;
+}
+.ui-flow-drawer.el-drawer {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+.ui-flow-drawer .el-drawer__header {
+  flex-shrink: 0;
+  margin-bottom: 0;
+  padding: 10px 16px;
+  min-height: 50px;
+}
+.ui-flow-drawer .el-drawer__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 10px 16px 12px;
+}
+.ui-flow-drawer .el-drawer__footer {
+  flex-shrink: 0;
+}
+.ui-flow-drawer .flow-meta-form textarea {
+  resize: none;
 }
 
 /* 执行流程弹窗（teleport 到 body，需非 scoped） */
@@ -3443,6 +4860,8 @@ onMounted(async () => {
 }
 .exec-flow-dialog .el-dialog__body {
   padding: 18px 20px;
+  max-height: min(70vh, 640px);
+  overflow-y: auto;
 }
 .exec-flow-dialog .el-dialog__footer {
   padding: 14px 20px 18px;
@@ -3503,26 +4922,186 @@ onMounted(async () => {
 .exec-flow-dialog .el-select .el-input__wrapper {
   border-radius: 8px;
 }
-.insert-pos-popper .insert-opt {
+.insert-pos-popper.el-select-dropdown {
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  padding: 8px 0 6px;
+  min-width: 380px !important;
+}
+.insert-pos-popper .el-select-dropdown__item {
+  height: auto;
+  padding: 8px 12px;
+  line-height: 1.35;
+}
+.insert-pos-popper .el-select-dropdown__item.ins-search-opt {
+  padding: 6px 12px 10px;
+  height: auto;
+  cursor: default;
+  background: #fff !important;
+  color: inherit;
+}
+.insert-pos-popper .el-select-dropdown__item.ins-search-opt.is-disabled {
+  cursor: default;
+  color: inherit;
+}
+.insert-pos-popper .el-select-group__title {
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #909399;
+  background: #f5f7fa;
+}
+.insert-pos-popper .ins-append {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  width: 100%;
+}
+.insert-pos-popper .ins-plus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  background: #eef2f6;
+  color: #606266;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1;
+}
+.insert-pos-popper .ins-append-name {
+  flex: 1;
+  font-size: 13px;
+  color: #303133;
+}
+.insert-pos-popper .ins-default {
+  font-size: 12px;
+  color: #c0c4cc;
+}
+.insert-pos-popper .ins-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   min-width: 0;
 }
-.insert-pos-popper .insert-opt-left {
-  flex: 0 0 9em;
-  white-space: nowrap;
+.insert-pos-popper .ins-row.child {
+  padding-left: 18px;
 }
-.insert-pos-popper .insert-opt-right {
-  flex: 1 1 auto;
+.insert-pos-popper .el-select-dropdown__item.is-child {
+  position: relative;
+}
+.insert-pos-popper .el-select-dropdown__item.is-child::before {
+  content: '';
+  position: absolute;
+  left: 22px;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 2px;
+  background: #dcdfe6;
+}
+.insert-pos-popper .el-select-dropdown__item.rail-then::before {
+  background: #22c55e;
+}
+.insert-pos-popper .el-select-dropdown__item.rail-else::before {
+  background: #f43f5e;
+}
+.insert-pos-popper .el-select-dropdown__item.rail-cand::before {
+  background: #f59e0b;
+}
+.insert-pos-popper .el-select-dropdown__item.rail-none::before {
+  background: #94a3b8;
+}
+.insert-pos-popper .ins-no {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+.insert-pos-popper .ins-body {
   min-width: 0;
-  color: var(--el-text-color-placeholder);
-  font-size: 12px;
+  flex: 1;
+}
+.insert-pos-popper .ins-hint {
+  font-size: 11px;
+  color: #909399;
+  line-height: 1.2;
+}
+.insert-pos-popper .el-select-dropdown__item.selected .ins-hint {
+  color: #409eff;
+}
+.insert-pos-popper .ins-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-align: left;
+}
+.insert-pos-popper .ins-branch {
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 18px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: #fff7e6;
+  color: #d48806;
+}
+.insert-pos-popper .ins-branch.rail-then {
+  background: #ecfdf5;
+  color: #059669;
+}
+.insert-pos-popper .ins-branch.rail-else {
+  background: #fff1f2;
+  color: #e11d48;
+}
+.insert-pos-popper .ins-branch.rail-none {
+  background: #f1f5f9;
+  color: #64748b;
+}
+.insert-pos-popper .ins-tag {
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 18px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: #f1f5f9;
+  color: #64748b;
+}
+.insert-pos-popper .ins-tag.tone-device {
+  background: #eff6ff;
+  color: #2563eb;
+}
+.insert-pos-popper .ins-tag.tone-action {
+  background: #ecfdf5;
+  color: #059669;
+}
+.insert-pos-popper .ins-tag.tone-if,
+.insert-pos-popper .ins-tag.tone-wait {
+  background: #fff7ed;
+  color: #d97706;
+}
+.insert-pos-popper .ins-tag.tone-end,
+.insert-pos-popper .ins-tag.tone-assert {
+  background: #fff1f2;
+  color: #e11d48;
+}
+.insert-pos-popper .ins-check {
+  flex-shrink: 0;
+  color: #409eff;
+  font-size: 14px;
+}
+.insert-pos-popper .el-select-dropdown__item.selected {
+  background: #eff6ff;
+  font-weight: inherit;
+  color: inherit;
 }
 </style>
 

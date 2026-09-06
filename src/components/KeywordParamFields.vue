@@ -1,13 +1,61 @@
 <template>
   <template v-for="def in renderableDefs" :key="def.name">
     <el-form-item
-      :label="def.type === 'boolean' ? '' : displayLabel(def)"
       :required="def.required"
       :label-width="def.type === 'boolean' ? '0px' : undefined"
       :class="{ 'param-bool-item': def.type === 'boolean' }"
     >
+      <template v-if="def.type !== 'boolean'" #label>
+        <span class="param-label">
+          {{ displayLabel(def) }}
+          <el-popover v-if="fieldHelp(def)" placement="top" :width="320" trigger="hover">
+            <template #reference>
+              <el-icon class="param-help-icon"><QuestionFilled /></el-icon>
+            </template>
+            <div class="param-help-pop">{{ fieldHelp(def) }}</div>
+          </el-popover>
+        </span>
+      </template>
+      <div v-if="def.type === 'string' && isInputText(def)" class="input-with-env">
+        <el-input
+          v-model="params[def.name]"
+          :placeholder="def.help || '可填固定文案，或从右侧选环境变量'"
+        />
+        <el-select
+          :model-value="envSelectValue(params[def.name])"
+          filterable
+          clearable
+          placeholder="环境变量"
+          class="env-var-select"
+          @change="(v: string) => applyEnvVar(def.name, v)"
+        >
+          <el-option-group v-if="testVars.length" label="测试环境 TEST">
+            <el-option
+              v-for="v in testVars"
+              :key="'TEST-' + v.name"
+              :label="envOptionLabel(v)"
+              :value="'TEST::' + v.name"
+            />
+          </el-option-group>
+          <el-option-group v-if="prodVars.length" label="线上环境 PROD">
+            <el-option
+              v-for="v in prodVars"
+              :key="'PROD-' + v.name"
+              :label="envOptionLabel(v)"
+              :value="'PROD::' + v.name"
+            />
+          </el-option-group>
+          <el-option
+            v-if="!testVars.length && !prodVars.length"
+            disabled
+            label="还没有环境变量，去「环境变量」页新增"
+            value=""
+          />
+        </el-select>
+      </div>
+
       <el-input
-        v-if="def.type === 'string'"
+        v-else-if="def.type === 'string'"
         v-model="params[def.name]"
         :placeholder="def.help || ''"
       />
@@ -31,14 +79,20 @@
           />
           <span v-if="numberUnit(def)" class="param-unit">{{ numberUnit(def) }}</span>
         </div>
-        <div v-if="def.help" class="param-help">{{ def.help }}</div>
       </div>
 
       <template v-else-if="def.type === 'boolean'">
         <div class="param-bool-block">
-          <span class="param-bool-title">{{ def.label || def.name }}</span>
+          <span class="param-bool-title">
+            {{ def.label || def.name }}
+            <el-popover v-if="def.help" placement="top" :width="320" trigger="hover">
+              <template #reference>
+                <el-icon class="param-help-icon"><QuestionFilled /></el-icon>
+              </template>
+              <div class="param-help-pop">{{ def.help }}</div>
+            </el-popover>
+          </span>
           <el-switch v-model="params[def.name]" />
-          <span v-if="def.help" class="param-help inline">{{ def.help }}</span>
         </div>
       </template>
 
@@ -51,28 +105,43 @@
         />
       </el-select>
 
-      <!-- 次级元素（如「不符时点哪个元素」）：主元素由外层步骤表单渲染，这里只管额外的 -->
+      <!--
+        次级元素（「不符时点哪个元素」「滑到它出现为止」等）：主元素由外层步骤表单渲染，这里只管额外的。
+        留空的含义各关键字不同（点自己 / 不等待 / 只扫一遍），写死在这里必然对一半错一半，
+        所以交给各自 ParamDef 的 help 去说。
+      -->
       <ElementKeySelect
         v-else-if="def.type === 'element'"
         v-model="params[def.name]"
         :elements="elementOptions || []"
         :pages="pageOptions || []"
-        placeholder="先选页面，再选元素（留空则点自己）"
+        placeholder="先选页面，再选元素"
+      />
+
+      <!-- 一批元素（如「要判定的元素」）：已选清单常驻在上方，加删都是一步 -->
+      <ElementKeyMultiSelect
+        v-else-if="def.type === 'elements'"
+        v-model="params[def.name]"
+        :elements="elementOptions || []"
+        :pages="pageOptions || []"
       />
 
       <el-input v-else v-model="params[def.name]" />
 
-      <div
-        v-if="def.help && def.type !== 'number' && def.type !== 'boolean'"
-        class="param-help"
-      >{{ def.help }}</div>
+      <el-button v-if="isInputText(def)" link type="primary" class="env-page-link" @click="goEnvPage">
+        去环境变量
+      </el-button>
     </el-form-item>
   </template>
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { QuestionFilled } from '@element-plus/icons-vue'
 import ElementKeySelect from './ElementKeySelect.vue'
+import ElementKeyMultiSelect from './ElementKeyMultiSelect.vue'
+import { apiClient } from '../api'
 
 /**
  * 按后端 ui_keywords.param_schema 渲染步骤参数表单。
@@ -84,13 +153,21 @@ import ElementKeySelect from './ElementKeySelect.vue'
 export interface ParamDefDto {
   name: string
   label: string
-  type: 'string' | 'textarea' | 'number' | 'boolean' | 'enum' | 'element' | 'steps'
+  type: 'string' | 'textarea' | 'number' | 'boolean' | 'enum' | 'element' | 'elements' | 'steps'
   required?: boolean
   default?: string | number | boolean
   options?: string[]
   help?: string
   /** 显示条件：同步骤里 param 取到 values 之一时才渲染 */
   showWhen?: { param: string; values: string[] }
+}
+
+type EnvVar = {
+  name: string
+  value?: string
+  secret?: boolean
+  enabled?: boolean
+  description?: string
 }
 
 const props = defineProps<{
@@ -102,7 +179,94 @@ const props = defineProps<{
   elementOptions?: Array<{ nameEn: string; nameZh?: string; pageId?: string | null }>
   /** 页面字典：级联「页面 → 元素」展示中文页名 */
   pageOptions?: Array<{ pageId?: string; nameZh?: string }>
+  /** 当前步骤关键字。INPUT 的「输入内容」要能选环境变量 */
+  keywordCode?: string
+  /** 流程登记的环境：同名变量只点亮这一边，避免测试/生产同时高亮 */
+  environment?: string
 }>()
+
+const router = useRouter()
+const testVars = ref<EnvVar[]>([])
+const prodVars = ref<EnvVar[]>([])
+
+function isInputText(def: ParamDefDto) {
+  return props.keywordCode === 'INPUT' && def.name === 'text'
+}
+
+function fieldHelp(def: ParamDefDto) {
+  if (isInputText(def)) {
+    return '选环境变量会写入 ${变量名}，执行时按当前环境（测试 / 线上）取值——同一条流程两边都能跑。也可直接填固定文案。'
+  }
+  return def.help || ''
+}
+
+function envVarNameOf(raw: unknown) {
+  const s = String(raw || '').trim()
+  const m = s.match(/^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/) || s.match(/^\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}$/)
+  return m ? m[1] : ''
+}
+
+const pickedEnvKey = ref('')
+
+function flowEnv() {
+  return props.environment === 'TEST' ? 'TEST' : 'PROD'
+}
+
+function envSelectValue(raw: unknown) {
+  const name = envVarNameOf(raw)
+  if (!name) return ''
+  const picked = pickedEnvKey.value
+  if (picked === `TEST::${name}` || picked === `PROD::${name}`) return picked
+  const env = flowEnv()
+  const side = env === 'TEST' ? testVars.value : prodVars.value
+  if (side.some((v) => v.name === name)) return `${env}::${name}`
+  if (prodVars.value.some((v) => v.name === name)) return `PROD::${name}`
+  if (testVars.value.some((v) => v.name === name)) return `TEST::${name}`
+  return ''
+}
+
+function applyEnvVar(paramName: string, key: string) {
+  if (!key) {
+    pickedEnvKey.value = ''
+    props.params[paramName] = ''
+    return
+  }
+  const name = key.includes('::') ? key.slice(key.indexOf('::') + 2) : key
+  pickedEnvKey.value = key.includes('::') ? key : `${flowEnv()}::${name}`
+  props.params[paramName] = `\${${name}}`
+}
+
+function envOptionLabel(v: EnvVar) {
+  const preview = v.secret ? '••••••••••' : v.value || '（空）'
+  const desc = v.description ? ` · ${v.description}` : ''
+  return `${v.name}  ${preview}${desc}`
+}
+
+function goEnvPage() {
+  void router.push('/api-environments')
+}
+
+async function loadEnvVars() {
+  const take = (list: any[]) =>
+    (Array.isArray(list) ? list : []).filter((v) => v?.name && v.enabled !== false)
+  try {
+    const [test, prod] = await Promise.all([
+      apiClient.getApiTestVariables('TEST'),
+      apiClient.getApiTestVariables('PROD')
+    ])
+    testVars.value = take(test)
+    prodVars.value = take(prod)
+  } catch {
+    testVars.value = []
+    prodVars.value = []
+  }
+}
+
+onMounted(() => {
+  if (props.keywordCode === 'INPUT') {
+    void loadEnvVars()
+  }
+})
 
 /**
  * 主元素（elementKey）绑在步骤自身、由外层表单渲染；嵌套步骤有专用编辑器。
@@ -240,25 +404,50 @@ watch(
 }
 .param-bool-title {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 13px;
   font-weight: 600;
   color: var(--app-text);
   line-height: 1.4;
-  letter-spacing: 0.02em;
 }
-.param-help {
-  margin-top: 8px;
-  font-size: 12px;
-  color: var(--el-text-color-placeholder);
-  line-height: 1.55;
-  max-width: 100%;
+.input-with-env {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
 }
-.param-help.inline {
-  margin-top: 0;
+.input-with-env .el-input {
   flex: 1;
-  min-width: 160px;
-  color: var(--el-text-color-placeholder);
+  min-width: 0;
+}
+.env-var-select {
+  width: 240px;
+  flex: none;
+}
+.env-page-link {
+  margin-top: 4px;
+  padding: 0;
+  height: auto;
+}
+.param-label,
+.param-bool-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.param-help-icon {
+  color: #c0c4cc;
+  cursor: pointer;
+  font-size: 14px;
+}
+.param-help-icon:hover {
+  color: var(--el-color-primary);
+}
+.param-help-pop {
   font-size: 12px;
-  line-height: 1.45;
+  line-height: 1.65;
+  color: #606266;
 }
 </style>

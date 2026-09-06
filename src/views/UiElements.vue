@@ -1,286 +1,282 @@
 <template>
   <div class="ui-elements">
-    <el-card class="main-card" shadow="hover">
-      <template #header>
-        <div class="card-header">
-          <div>
-            <span class="card-title">元素库</span>
-          </div>
-          <div class="header-actions">
-            <el-button @click="router.push('/ui-inspector-import')">Inspector 导入</el-button>
-            <el-button @click="shotVisible = true">Inspector 截图识别</el-button>
-            <el-button @click="inspectorVisible = true">真机点选</el-button>
-            <el-button type="primary" @click="openNewPage">
-              <el-icon><Plus /></el-icon>
-              新增页面
-            </el-button>
-            <el-button type="primary" @click="openAdd">
-              <el-icon><Plus /></el-icon>
-              新增元素
-            </el-button>
-          </div>
+    <div class="toolbar">
+      <div class="toolbar-tools">
+        <el-button @click="router.push('/ui-inspector-import')">
+          <el-icon class="el-icon--left"><Upload /></el-icon>
+          Inspector 导入
+        </el-button>
+        <el-button @click="shotVisible = true">
+          <el-icon class="el-icon--left"><Camera /></el-icon>
+          Inspector 截图识别
+        </el-button>
+        <el-button @click="inspectorVisible = true">
+          <el-icon class="el-icon--left"><Iphone /></el-icon>
+          真机点选
+        </el-button>
+      </div>
+      <div class="toolbar-create">
+        <el-button type="primary" @click="openNewPage">
+          <el-icon class="el-icon--left"><Plus /></el-icon>
+          新增页面
+        </el-button>
+        <el-button type="primary" @click="openAdd">
+          <el-icon class="el-icon--left"><Plus /></el-icon>
+          新增元素
+        </el-button>
+      </div>
+    </div>
+
+    <div class="filter-panel">
+      <div class="chip-row">
+        <span class="chip-label">产品</span>
+        <div class="chip-list">
+          <button
+            v-for="p in PRODUCTS"
+            :key="p.id"
+            type="button"
+            class="app-chip"
+            :class="{ active: filterProduct === p.id }"
+            @click="selectProduct(p.id)"
+          >{{ p.label }}</button>
         </div>
-      </template>
+      </div>
+      <div class="chip-row">
+        <span class="chip-label">平台</span>
+        <div class="chip-list">
+          <button
+            v-for="p in visiblePlatforms"
+            :key="p.value"
+            type="button"
+            class="plat-chip"
+            :class="{ active: filterPlatform === p.value }"
+            @click="selectPlatform(p.value)"
+          >{{ p.label }}</button>
+        </div>
+      </div>
+      <div class="search-row">
+        <el-input
+          v-model="filterKeyword"
+          clearable
+          class="search-input"
+          placeholder="搜索页面名/元素名/pageId/定位值..."
+          @keyup.enter="onFilterChange"
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+        <el-select v-model="filterSource" clearable placeholder="来源" style="width: 130px">
+          <el-option v-for="s in sourceOptions" :key="s.value" :label="s.label" :value="s.value" />
+        </el-select>
+        <el-select v-model="filterStatus" clearable placeholder="状态" style="width: 110px">
+          <el-option v-for="s in statusOptions" :key="s.value" :label="s.label" :value="s.value" />
+        </el-select>
+        <el-input
+          v-model="filterModule"
+          clearable
+          placeholder="模块，如 设置"
+          style="width: 140px"
+          @keyup.enter="onFilterChange"
+        />
+        <el-button type="primary" @click="onFilterChange">查询</el-button>
+        <el-button @click="resetFilters">重置</el-button>
+        <span class="search-count">{{ pageCountText }}</span>
+      </div>
+    </div>
 
-      <el-tabs v-model="filterScene" class="catalog-tabs" @tab-change="onFilterChange">
-        <el-tab-pane v-for="c in sceneTabs" :key="c.value" :label="c.label" :name="c.value" />
-      </el-tabs>
-      <p v-if="catalogHint" class="catalog-hint">{{ catalogHint }}</p>
-
-      <div class="filter-bar">
-        <el-form :inline="true">
-          <el-form-item label="应用">
-            <el-select v-model="filterAppId" clearable filterable placeholder="选择应用" style="width: 220px" @change="onFilterChange">
-              <el-option
-                v-for="a in appOptions"
-                :key="a.id"
-                :label="`${a.nameZh} (${a.id})`"
-                :value="a.id" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="平台">
-            <el-select v-model="filterPlatform" clearable placeholder="平台" style="width: 130px" @change="onFilterChange">
-              <el-option v-for="p in platforms" :key="p.value" :label="p.label" :value="p.value" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="页面">
-            <el-select
-              v-model="filterPageId"
-              clearable
-              filterable
-              placeholder="全部页面/弹窗"
-              style="width: 220px"
-              @change="onFilterChange"
-            >
-              <el-option
-                v-for="p in pageOptions"
-                :key="p.pageId"
-                :label="`${p.nameZh} (${p.pageId})`"
-                :value="p.pageId"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="展示">
-            <el-radio-group v-model="viewMode" @change="onFilterChange">
-              <el-radio-button value="byPage">按页折叠</el-radio-button>
-              <el-radio-button value="flat">平铺</el-radio-button>
-            </el-radio-group>
-          </el-form-item>
-          <el-form-item label="来源">
-            <el-select v-model="filterSource" clearable placeholder="全部" style="width: 130px" @change="onFilterChange">
-              <el-option v-for="s in sourceOptions" :key="s.value" :label="s.label" :value="s.value" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="状态">
-            <el-select v-model="filterStatus" clearable placeholder="全部" style="width: 110px" @change="onFilterChange">
-              <el-option v-for="s in statusOptions" :key="s.value" :label="s.label" :value="s.value" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="模块">
-            <el-input v-model="filterModule" clearable placeholder="如 设置" style="width: 120px" @keyup.enter="onFilterChange" />
-          </el-form-item>
-          <el-form-item label="搜索">
-            <el-input
-              v-model="filterKeyword"
-              clearable
-              placeholder="页面名 / 元素名 / pageId / 定位"
-              style="width: 280px"
-              @keyup.enter="onFilterChange"
-            />
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" @click="onFilterChange">查询</el-button>
-            <el-button @click="resetFilters">重置</el-button>
-          </el-form-item>
-        </el-form>
+    <div class="list-panel">
+      <div class="list-context">
+        <span>{{ listContextText }}</span>
+        <div class="view-switch">
+          展示：
+          <b>{{ viewMode === 'byPage' ? '按页折叠' : '平铺' }}</b>
+          <el-button type="primary" link @click="toggleViewMode">
+            {{ viewMode === 'byPage' ? '切换平铺' : '切换折叠' }}
+          </el-button>
+        </div>
       </div>
 
-      <el-collapse v-if="viewMode === 'byPage'" v-model="expandedPages" class="page-collapse" v-loading="loading">
-        <el-collapse-item v-for="g in pageGroups" :key="g.key" :name="g.key">
-          <template #title>
-            <div class="page-group-title">
-              <span class="page-name">{{ g.title }}</span>
-              <el-tag size="small" type="info">{{ g.pageId || '未归属' }}</el-tag>
-              <!--
-                页面是按应用建的、不分平台，元素才分平台。
-                所以「Android 下 0 个」和「这个页面共 24 个」可以同时成立——
-                只说「被筛选挡住」会让人清空筛选后还是找不到，必须说清楚在哪一端。
-              -->
-              <el-tag size="small">{{ g.items.length }} 个元素</el-tag>
-              <el-tag
-                v-if="elsewhereHint(g)"
-                size="small"
-                type="warning"
-                effect="plain"
-                title="页面按应用建、不分平台；元素才分平台。删除按钮只在三端都为空时出现"
-              >{{ elsewhereHint(g) }}</el-tag>
+      <div v-if="viewMode === 'byPage'" v-loading="loading" class="page-list">
+        <div v-for="g in pagedPageGroups" :key="g.key" class="page-block">
+          <div class="page-row" @click="togglePage(g.key)">
+            <el-icon class="page-caret" :class="{ open: isPageOpen(g.key) }"><ArrowRight /></el-icon>
+            <span class="page-name">{{ g.title }}</span>
+            <span class="page-id">{{ g.pageId || '未归属' }}</span>
+            <span class="count-tag" :title="elsewhereHint(g) || undefined">{{ g.items.length }}个元素</span>
+            <span
+              v-if="crossPlatformTag(g)"
+              class="other-tag"
+              title="页面按应用建、不分平台；元素才分平台。删除按钮只在三端都为空时出现"
+            >{{ crossPlatformTag(g) }}</span>
+            <span class="page-actions" @click.stop>
               <el-button
                 v-if="g.pageId"
                 type="primary"
                 link
                 size="small"
-                @click.stop="openEditPage(g)"
+                @click="openEditPage(g)"
               >改名</el-button>
-              <!--
-                删除只在「三端都没有元素」时出现——页面按应用建、不分平台，
-                只要任一平台下还挂着元素就删不掉（后端会拒），按钮摆在那只会让人白点一次。
-                g.total 是后端给的跨平台总数；拿不到时（后端未重启）退回按当前视图判断。
-              -->
-              <el-button v-perm:delete
+              <el-button
+                v-perm:delete
                 v-if="g.pageId && (g.total === 0 || (g.total === null && !g.items.length))"
                 type="danger"
                 link
                 size="small"
-                @click.stop="removePage(g)"
+                @click="removePage(g)"
               >删除</el-button>
-            </div>
-          </template>
-          <el-table
-            v-if="g.items.length"
-            :data="g.items"
-            stripe
-            size="small"
-            :header-cell-style="{ background: '#f5f7fa' }"
-          >
-            <el-table-column prop="nameZh" label="中文名称" min-width="100" />
-            <el-table-column prop="nameEn" label="英文名" min-width="110" show-overflow-tooltip />
-            <el-table-column prop="platform" label="平台" width="90" />
-            <el-table-column label="定位" width="110">
-              <template #default="{ row }">
-                <el-tag size="small" type="info">{{ row.locatorType }}</el-tag>
-                <div v-if="fallbackCount(row)" class="fb-count">另有 {{ fallbackCount(row) }} 备用</div>
-              </template>
-            </el-table-column>
-            <el-table-column prop="locatorValue" label="定位值" min-width="160" show-overflow-tooltip />
-            <el-table-column label="状态" width="80" align="center">
-              <template #default="{ row }">
-                <el-tag size="small" :type="statusTagType(row.status)">{{ statusLabel(row.status) }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="180" fixed="right">
-              <template #default="{ row }">
-                <el-button type="primary" link size="small" @click="openEdit(row)">编辑</el-button>
-                <el-button
-                  v-if="row.status !== 'ACTIVE'"
-                  type="success"
-                  link
-                  size="small"
-                  @click="promoteActive(row)"
-                >选用</el-button>
-                <el-button v-perm:delete type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-          <div v-else class="page-empty">
-            该页暂无元素，可
-            <el-button type="primary" link @click="openAddForPage(g.pageId)">新增元素</el-button>
-            挂到此页
+            </span>
           </div>
-        </el-collapse-item>
-      </el-collapse>
-      <el-empty
-        v-if="viewMode === 'byPage' && !loading && pageGroups.length === 0"
-        description="暂无页面。可点「新增页面」创建，再「新增元素」挂上去"
-      />
+          <div v-if="isPageOpen(g.key)" class="page-body">
+            <el-table
+              v-if="g.items.length"
+              :data="g.items"
+              stripe
+              size="small"
+              :header-cell-style="{ background: '#f5f7fa' }"
+            >
+              <el-table-column prop="nameZh" label="中文名称" min-width="100" />
+              <el-table-column prop="nameEn" label="英文名" min-width="110" show-overflow-tooltip />
+              <el-table-column prop="platform" label="平台" width="90" />
+              <el-table-column label="定位" width="110">
+                <template #default="{ row }">
+                  <el-tag size="small" type="info">{{ row.locatorType }}</el-tag>
+                  <div v-if="fallbackCount(row)" class="fb-count">另有 {{ fallbackCount(row) }} 备用</div>
+                </template>
+              </el-table-column>
+              <el-table-column prop="locatorValue" label="定位值" min-width="160" show-overflow-tooltip />
+              <el-table-column label="状态" width="80" align="center">
+                <template #default="{ row }">
+                  <el-tag size="small" :type="statusTagType(row.status)">{{ statusLabel(row.status) }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="180" fixed="right">
+                <template #default="{ row }">
+                  <el-button type="primary" link size="small" @click="openEdit(row)">编辑</el-button>
+                  <el-button
+                    v-if="row.status !== 'ACTIVE'"
+                    type="success"
+                    link
+                    size="small"
+                    @click="promoteActive(row)"
+                  >选用</el-button>
+                  <el-button v-perm:delete type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <div v-else class="page-empty">
+              该页暂无元素，可
+              <el-button type="primary" link @click="openAddForPage(g.pageId)">新增元素</el-button>
+              挂到此页
+            </div>
+          </div>
+        </div>
+        <el-empty
+          v-if="!loading && pageGroups.length === 0"
+          description="暂无页面。可点「新增页面」创建，再「新增元素」挂上去"
+        />
+        <div v-if="pageGroups.length" class="pagination-wrap">
+          <el-pagination
+            v-model:current-page="groupPage"
+            v-model:page-size="groupPageSize"
+            :page-sizes="[10, 20, 50]"
+            :total="pageGroups.length"
+            layout="total, sizes, prev, pager, next"
+            @current-change="onGroupPageChange"
+            @size-change="onGroupSizeChange"
+          />
+        </div>
+      </div>
 
       <template v-if="viewMode === 'flat'">
-      <el-table v-loading="loading" :data="list" stripe style="width: 100%" :header-cell-style="{ background: '#f5f7fa' }">
-        <el-table-column label="预览" width="72" align="center">
-          <template #default="{ row }">
-            <el-image
-              v-if="row.previewImage"
-              :src="previewSrc(row.previewImage)"
-              :preview-src-list="[previewSrc(row.previewImage)]"
-              :preview-teleported="true"
-              :z-index="4000"
-              fit="cover"
-              class="preview-thumb" />
-            <span v-else class="preview-empty">—</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="应用" min-width="120" show-overflow-tooltip>
-          <template #default="{ row }">{{ appLabel(row.appId) }}</template>
-        </el-table-column>
-        <el-table-column prop="platform" label="平台" width="100" />
-        <el-table-column prop="nameZh" label="中文名称" min-width="110" />
-        <el-table-column prop="nameEn" label="英文名" min-width="120" show-overflow-tooltip />
-        <el-table-column prop="visualHint" label="视觉说明" min-width="140" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.visualHint || '—' }}</template>
-        </el-table-column>
-        <el-table-column prop="pageId" label="页面ID" min-width="140" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.pageId || '—' }}</template>
-        </el-table-column>
-        <el-table-column prop="moduleTag" label="模块" width="90" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.moduleTag || '—' }}</template>
-        </el-table-column>
-        <el-table-column label="来源" width="100" align="center">
-          <template #default="{ row }">
-            <el-tag size="small" :type="sourceTagType(row.source)">{{ sourceLabel(row.source) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="90" align="center">
-          <template #default="{ row }">
-            <el-tag size="small" :type="statusTagType(row.status)">{{ statusLabel(row.status) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="定位方式" width="130">
-          <template #default="{ row }">
-            <el-tag size="small" type="info">{{ row.locatorType }}</el-tag>
-            <div v-if="fallbackCount(row)" class="fb-count">另有 {{ fallbackCount(row) }} 备用</div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="locatorValue" label="定位值" min-width="180" show-overflow-tooltip />
-        <el-table-column label="用途" width="100" align="center">
-          <template #default="{ row }">
-            <el-tag size="small" :type="catalogTagType(row.catalog)">{{ catalogLabel(row.catalog) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="启用" width="70" align="center">
-          <template #default="{ row }">
-            <el-tag :type="row.enabled === false ? 'info' : 'success'" size="small">
-              {{ row.enabled === false ? '否' : '是' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
-          <template #default="{ row }">
-            <el-button type="primary" link size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button
-              v-if="row.status !== 'ACTIVE'"
-              type="success"
-              link
-              size="small"
-              @click="promoteActive(row)"
-            >选用</el-button>
-            <el-button v-perm:delete type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <div class="pagination-wrap">
-        <el-pagination
-          v-model:current-page="currentPage"
-          v-model:page-size="pageSize"
-          :page-sizes="[10, 20, 50, 100]"
-          :total="totalElements"
-          layout="total, sizes, prev, pager, next, jumper"
-          @current-change="loadList"
-          @size-change="onSizeChange" />
-      </div>
-      <el-empty v-if="!loading && list.length === 0" description="该应用/平台下暂无元素" />
+        <el-table v-loading="loading" :data="list" stripe style="width: 100%" :header-cell-style="{ background: '#f5f7fa' }">
+          <el-table-column label="预览" width="72" align="center">
+            <template #default="{ row }">
+              <el-image
+                v-if="row.previewImage"
+                :src="previewSrc(row.previewImage)"
+                :preview-src-list="[previewSrc(row.previewImage)]"
+                :preview-teleported="true"
+                :z-index="4000"
+                fit="cover"
+                class="preview-thumb" />
+              <span v-else class="preview-empty">—</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="应用" min-width="120" show-overflow-tooltip>
+            <template #default="{ row }">{{ appLabel(row.appId) }}</template>
+          </el-table-column>
+          <el-table-column prop="platform" label="平台" width="100" />
+          <el-table-column prop="nameZh" label="中文名称" min-width="110" />
+          <el-table-column prop="nameEn" label="英文名" min-width="120" show-overflow-tooltip />
+          <el-table-column prop="visualHint" label="视觉说明" min-width="140" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.visualHint || '—' }}</template>
+          </el-table-column>
+          <el-table-column prop="pageId" label="页面ID" min-width="140" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.pageId || '—' }}</template>
+          </el-table-column>
+          <el-table-column prop="moduleTag" label="模块" width="90" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.moduleTag || '—' }}</template>
+          </el-table-column>
+          <el-table-column label="来源" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" :type="sourceTagType(row.source)">{{ sourceLabel(row.source) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="90" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" :type="statusTagType(row.status)">{{ statusLabel(row.status) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="定位方式" width="130">
+            <template #default="{ row }">
+              <el-tag size="small" type="info">{{ row.locatorType }}</el-tag>
+              <div v-if="fallbackCount(row)" class="fb-count">另有 {{ fallbackCount(row) }} 备用</div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="locatorValue" label="定位值" min-width="180" show-overflow-tooltip />
+          <el-table-column label="用途" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" :type="catalogTagType(row.catalog)">{{ catalogLabel(row.catalog) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="启用" width="70" align="center">
+            <template #default="{ row }">
+              <el-tag :type="row.enabled === false ? 'info' : 'success'" size="small">
+                {{ row.enabled === false ? '否' : '是' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="200" fixed="right">
+            <template #default="{ row }">
+              <el-button type="primary" link size="small" @click="openEdit(row)">编辑</el-button>
+              <el-button
+                v-if="row.status !== 'ACTIVE'"
+                type="success"
+                link
+                size="small"
+                @click="promoteActive(row)"
+              >选用</el-button>
+              <el-button v-perm:delete type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <div class="pagination-wrap">
+          <el-pagination
+            v-model:current-page="currentPage"
+            v-model:page-size="pageSize"
+            :page-sizes="[10, 20, 50, 100]"
+            :total="totalElements"
+            layout="total, sizes, prev, pager, next, jumper"
+            @current-change="loadList"
+            @size-change="onSizeChange" />
+        </div>
+        <el-empty v-if="!loading && list.length === 0" description="该应用/平台下暂无元素" />
       </template>
-    </el-card>
+    </div>
 
     <el-dialog v-model="dialogVisible" :title="editingId ? '编辑元素' : '新增元素'" width="760px" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="110px">
-        <el-form-item label="用途" prop="catalog">
-          <el-select v-model="form.catalog" style="width: 100%">
-            <el-option
-              v-for="c in scopeOptions"
-              :key="c.value"
-              :label="c.label"
-              :value="c.value" />
-          </el-select>
-        </el-form-item>
         <el-form-item label="应用" prop="appId">
           <el-select v-model="form.appId" :disabled="!!editingId" filterable placeholder="请选择应用" style="width: 100%">
             <el-option
@@ -454,7 +450,7 @@
     <el-dialog v-model="newPageVisible" title="新增页面" width="440px" destroy-on-close>
       <el-form label-width="90px">
         <el-form-item label="归属应用">
-          <span>{{ appLabel(filterAppId) || '请先在上方筛选选择应用' }}</span>
+          <span>{{ listContextProduct }} · {{ platformChipLabel(filterPlatform) }}</span>
         </el-form-item>
         <el-form-item label="中文名" required>
           <!-- 失焦时问一次 AI，不做输入即时触发：每敲一个字调一次模型是浪费 -->
@@ -581,7 +577,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type UploadRequestOptions } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { ArrowRight, Camera, Iphone, Plus, Search, Upload } from '@element-plus/icons-vue'
 import { apiClient } from '@/api'
 import DeviceInspectDrawer from '@/components/DeviceInspectDrawer.vue'
 import { normalizePageId, suggestPageId } from '@/utils/uiPage'
@@ -590,19 +586,16 @@ const route = useRoute()
 const router = useRouter()
 const inspectorVisible = ref(false)
 
-const sceneTabs = [
-  { value: 'AUTOMATION', label: '自动化' },
-  { value: 'TEST', label: '测试' }
-]
-const scopeOptions = [
-  { value: 'SHARED', label: '两边共用（推荐，定位相同只改一处）' },
-  { value: 'AUTOMATION', label: '仅自动化' },
-  { value: 'ONLINE', label: '仅测试' }
-]
 const platforms = [
   { value: 'ANDROID', label: 'Android' },
   { value: 'IOS', label: 'iOS' },
   { value: 'HARMONYOS', label: 'HarmonyOS' }
+]
+/** 产品线 ≠ 应用字典。鸿蒙是完美电竞下的一个平台，库里却单独一条 DOMESTIC_ESPORTS_HARMONY。 */
+type ProductId = 'ESPORTS' | 'POGPOG'
+const PRODUCTS: { id: ProductId; label: string; platforms: string[] }[] = [
+  { id: 'ESPORTS', label: '完美电竞', platforms: ['ANDROID', 'IOS', 'HARMONYOS'] },
+  { id: 'POGPOG', label: 'POGPOG', platforms: ['ANDROID', 'IOS'] }
 ]
 const sourceOptions = [
   { value: 'MANUAL', label: '人工添加' },
@@ -830,7 +823,6 @@ function fallbackCount(row: any): number {
 const DEFAULT_APP_ID = 'DOMESTIC_ESPORTS'
 const DEFAULT_PLATFORM = 'ANDROID'
 
-const filterScene = ref('AUTOMATION')
 /**
  * 筛选框的值统一这样取。
  * <p>
@@ -839,8 +831,40 @@ const filterScene = ref('AUTOMATION')
  */
 const txt = (v: unknown) => String(v ?? '').trim()
 
+const filterProduct = ref<ProductId>('ESPORTS')
 const filterAppId = ref(DEFAULT_APP_ID)
 const filterPlatform = ref(DEFAULT_PLATFORM)
+const visiblePlatforms = computed(() => {
+  const allowed = PRODUCTS.find((p) => p.id === filterProduct.value)?.platforms || []
+  return platforms.filter((p) => allowed.includes(p.value))
+})
+const listContextProduct = computed(
+  () => PRODUCTS.find((p) => p.id === filterProduct.value)?.label || '未选产品'
+)
+
+function resolveAppId(product: ProductId, platform: string) {
+  if (product === 'POGPOG') return 'OVERSEAS_POGPOG'
+  if (String(platform || '').toUpperCase() === 'HARMONYOS') return 'DOMESTIC_ESPORTS_HARMONY'
+  return 'DOMESTIC_ESPORTS'
+}
+
+function productFromAppId(appId: string): ProductId {
+  const id = String(appId || '').toUpperCase()
+  if (id.includes('POGPOG')) return 'POGPOG'
+  return 'ESPORTS'
+}
+
+function syncAppIdFromProduct() {
+  filterAppId.value = resolveAppId(filterProduct.value, filterPlatform.value)
+}
+
+function applyProductSelection(product: ProductId, platform?: string) {
+  filterProduct.value = product
+  const allowed = PRODUCTS.find((p) => p.id === product)?.platforms || []
+  const next = String(platform || filterPlatform.value || DEFAULT_PLATFORM).toUpperCase()
+  filterPlatform.value = allowed.includes(next) ? next : allowed[0] || DEFAULT_PLATFORM
+  syncAppIdFromProduct()
+}
 const filterPageId = ref('')
 const filterSource = ref('')
 const filterStatus = ref('')
@@ -850,6 +874,8 @@ const viewMode = ref<'byPage' | 'flat'>('byPage')
 const expandedPages = ref<string[]>([])
 const currentPage = ref(1)
 const pageSize = ref(20)
+const groupPage = ref(1)
+const groupPageSize = ref(10)
 const totalElements = ref(0)
 const loading = ref(false)
 const list = ref<any[]>([])
@@ -1016,12 +1042,11 @@ async function submitNewPage() {
       nameZh: newPageNameZh.value.trim()
     })
     await loadPages()
-    filterPageId.value = p.pageId
     viewMode.value = 'byPage'
-    expandedPages.value = [p.pageId]
     newPageVisible.value = false
     ElMessage.success(`已创建页面「${p.nameZh}」，可继续「新增元素」挂到此页`)
     await loadList()
+    revealPageGroup(p.pageId, true)
   } catch (e: any) {
     ElMessage.error(e?.message || '创建失败')
   } finally {
@@ -1032,6 +1057,40 @@ async function submitNewPage() {
 function appLabel(id: string) {
   const hit = appOptions.value.find((a) => a.id === id)
   return hit ? `${hit.nameZh}` : id || '—'
+}
+
+function platformChipLabel(pf: string) {
+  return platforms.find((p) => p.value === pf)?.label || pf || '未选平台'
+}
+
+function selectProduct(id: ProductId) {
+  if (filterProduct.value === id) return
+  filterPageId.value = ''
+  applyProductSelection(id)
+  onFilterChange()
+}
+
+function selectPlatform(value: string) {
+  if (filterPlatform.value === value) return
+  applyProductSelection(filterProduct.value, value)
+  onFilterChange()
+}
+
+function toggleViewMode() {
+  viewMode.value = viewMode.value === 'byPage' ? 'flat' : 'byPage'
+  onFilterChange()
+}
+
+function isPageOpen(key: string) {
+  return expandedPages.value.includes(key)
+}
+
+function togglePage(key: string) {
+  if (isPageOpen(key)) {
+    expandedPages.value = expandedPages.value.filter((k) => k !== key)
+  } else {
+    expandedPages.value = [...expandedPages.value, key]
+  }
 }
 
 /**
@@ -1049,7 +1108,7 @@ function elsewhereHint(g: any): string {
   const cur = String(filterPlatform.value || '').trim().toUpperCase()
   const others = Object.entries(map).filter(([pf, n]) => n > 0 && (!cur || pf.toUpperCase() !== cur))
   if (others.length) {
-    return '其他平台还有：' + others.map(([pf, n]) => `${platformLabel(pf)} ${n} 个`).join('、')
+    return crossPlatformTag(g)
   }
   const kw = txt(filterKeyword.value)
   if (kw) {
@@ -1062,11 +1121,19 @@ function elsewhereHint(g: any): string {
   return `共 ${total} 个，当前视图看不到（平台字段可能为空或属于别的应用）`
 }
 
+function crossPlatformTag(g: any): string {
+  const map = (g?.byPlatform || {}) as Record<string, number>
+  const cur = String(filterPlatform.value || '').trim().toUpperCase()
+  const others = Object.entries(map).filter(([pf, n]) => n > 0 && (!cur || pf.toUpperCase() !== cur))
+  if (!others.length) return ''
+  return '其他平台: ' + others.map(([pf, n]) => `${platformLabel(pf)} ${n}个`).join('、')
+}
+
 function platformLabel(pf: string) {
   const p = String(pf || '').toUpperCase()
   if (p === 'ANDROID') return 'Android'
   if (p === 'IOS') return 'iOS'
-  if (p === 'HARMONYOS' || p === 'HARMONY') return '鸿蒙'
+  if (p === 'HARMONYOS' || p === 'HARMONY') return 'HarmonyOS'
   if (!p) return '未填平台'
   return pf
 }
@@ -1277,16 +1344,54 @@ const pageGroups = computed(() => {
   })
 })
 
+const pagedPageGroups = computed(() => {
+  const all = pageGroups.value
+  const size = groupPageSize.value
+  const maxPage = Math.max(1, Math.ceil(all.length / size) || 1)
+  const page = Math.min(groupPage.value, maxPage)
+  const start = (page - 1) * size
+  return all.slice(start, start + size)
+})
+
+function revealPageGroup(pageId: string, expand = false) {
+  const idx = pageGroups.value.findIndex((g) => g.key === pageId)
+  if (idx < 0) return
+  groupPage.value = Math.floor(idx / groupPageSize.value) + 1
+  if (expand) expandedPages.value = [pageId]
+}
+
+function onGroupPageChange() {
+  expandedPages.value = []
+}
+
+function onGroupSizeChange() {
+  groupPage.value = 1
+  expandedPages.value = []
+}
+
+watch([() => pageGroups.value.length, groupPageSize], () => {
+  const maxPage = Math.max(1, Math.ceil(pageGroups.value.length / groupPageSize.value) || 1)
+  if (groupPage.value > maxPage) groupPage.value = maxPage
+})
+
+const pageCountText = computed(() => {
+  if (viewMode.value === 'byPage') return `共 ${pageGroups.value.length} 个页面`
+  return `共 ${totalElements.value} 个元素`
+})
+
+const listContextText = computed(() => {
+  const app = listContextProduct.value
+  const pf = platformChipLabel(filterPlatform.value)
+  if (viewMode.value === 'byPage') return `${app} · ${pf} ${pageGroups.value.length}个页面`
+  return `${app} · ${pf} ${totalElements.value}个元素`
+})
+
 function previewSrc(path: string) {
   return apiClient.uiElementPreviewUrl(path)
 }
 
 function applyDefaultAppFilter() {
-  const hit = appOptions.value.find((a) => a.id === DEFAULT_APP_ID)
-    || appOptions.value.find((a) => (a.nameZh || '').includes('完美世界电竞'))
-    || appOptions.value[0]
-  filterAppId.value = hit?.id || DEFAULT_APP_ID
-  filterPlatform.value = DEFAULT_PLATFORM
+  applyProductSelection('ESPORTS', DEFAULT_PLATFORM)
 }
 
 async function loadApps() {
@@ -1315,16 +1420,6 @@ async function loadPages() {
 
 watch(filterAppId, () => {
   loadPages()
-})
-
-const catalogHint = computed(() => {
-  if (viewMode.value === 'byPage') {
-    return ''
-  }
-  if (filterScene.value === 'TEST') {
-    return '测试侧可见：仅测试 + 两边共用。列表按应用+平台分页；可用「来源/状态」筛候选；点「选用」设为 ACTIVE。'
-  }
-  return '自动化侧可见：仅自动化 + 两边共用。列表按应用+平台分页；定位错了点「编辑」；确认无误点「选用」。'
 })
 
 function catalogLabel(c: string) {
@@ -1356,12 +1451,9 @@ function statusTagType(s: string) {
   return 'warning'
 }
 
-function catalogsForScene(scene: string) {
-  return scene === 'TEST' ? 'ONLINE,SHARED' : 'AUTOMATION,SHARED'
-}
-
 function onFilterChange() {
   currentPage.value = 1
+  groupPage.value = 1
   loadList()
 }
 
@@ -1393,7 +1485,6 @@ async function loadList() {
       }
     }
     const data = await apiClient.getUiElements({
-      catalogs: catalogsForScene(filterScene.value),
       appId: txt(filterAppId.value) || undefined,
       platform: filterPlatform.value || undefined,
       pageId: pageIdParam,
@@ -1431,39 +1522,36 @@ async function loadList() {
 }
 
 function syncExpandedByKeyword() {
-  const kw = txt(filterKeyword.value)
-  if (!kw || viewMode.value !== 'byPage') {
-    if (filterPageId.value) {
-      expandedPages.value = [filterPageId.value]
-    } else if (pageGroups.value.length && expandedPages.value.length === 0) {
-      expandedPages.value = [pageGroups.value[0].key]
-    }
+  if (viewMode.value !== 'byPage') return
+  if (filterPageId.value) {
+    revealPageGroup(filterPageId.value)
     return
   }
+  const kw = txt(filterKeyword.value)
+  if (!kw) return
   const lower = kw.toLowerCase()
-  const keys: string[] = []
-  for (const g of pageGroups.value) {
-    const titleHit = g.title.includes(kw) || (g.pageId && g.pageId.toLowerCase().includes(lower))
-    const elHit = g.items.some(
-      (r) =>
-        (r.nameZh && r.nameZh.includes(kw)) ||
-        (r.nameEn && String(r.nameEn).toLowerCase().includes(lower)) ||
-        (r.locatorValue && String(r.locatorValue).toLowerCase().includes(lower))
-    )
-    if (titleHit || elHit) keys.push(g.key)
-  }
-  expandedPages.value = keys.length ? keys : pageGroups.value.map((g) => g.key).slice(0, 1)
+  const hit = pageGroups.value.find(
+    (g) =>
+      g.title.includes(kw) ||
+      (g.pageId && g.pageId.toLowerCase().includes(lower)) ||
+      g.items.some(
+        (r) =>
+          (r.nameZh && r.nameZh.includes(kw)) ||
+          (r.nameEn && String(r.nameEn).toLowerCase().includes(lower)) ||
+          (r.locatorValue && String(r.locatorValue).toLowerCase().includes(lower))
+      )
+  )
+  if (hit) revealPageGroup(hit.key)
 }
 
 function resetFilters() {
-  filterAppId.value = ''
-  filterPlatform.value = ''
   filterPageId.value = ''
   filterSource.value = ''
   filterStatus.value = ''
   filterModule.value = ''
   filterKeyword.value = ''
   currentPage.value = 1
+  groupPage.value = 1
   loadList()
 }
 
@@ -1491,7 +1579,6 @@ const form = reactive({
   enabled: true
 })
 const rules: FormRules = {
-  catalog: [{ required: true, message: '必选', trigger: 'change' }],
   appId: [{ required: true, message: '请选择应用', trigger: 'change' }],
   platform: [{ required: true, message: '必选', trigger: 'change' }],
   source: [{ required: true, message: '必选', trigger: 'change' }],
@@ -1663,10 +1750,16 @@ onMounted(async () => {
   await loadPages()
   const q = route.query
   if (typeof q.appId === 'string' && q.appId.trim()) {
-    filterAppId.value = q.appId.trim()
-  }
-  if (typeof q.platform === 'string' && q.platform.trim()) {
-    filterPlatform.value = q.platform.trim()
+    const appId = q.appId.trim()
+    const platform =
+      appId === 'DOMESTIC_ESPORTS_HARMONY'
+        ? 'HARMONYOS'
+        : typeof q.platform === 'string'
+          ? q.platform.trim()
+          : filterPlatform.value
+    applyProductSelection(productFromAppId(appId), platform)
+  } else if (typeof q.platform === 'string' && q.platform.trim()) {
+    applyProductSelection(filterProduct.value, q.platform.trim())
   }
   if (typeof q.pageId === 'string' && q.pageId.trim()) {
     filterPageId.value = q.pageId.trim()
@@ -1682,24 +1775,183 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.page-collapse {
-  margin-top: 8px;
+.ui-elements {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.toolbar,
+.filter-panel,
+.list-panel {
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 10px;
+}
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+}
+.toolbar-tools,
+.toolbar-create {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.filter-panel {
+  padding: 14px 16px 12px;
+}
+.chip-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 32px;
+  margin-bottom: 10px;
+}
+.chip-label {
+  width: 36px;
+  flex-shrink: 0;
+  font-size: 13px;
+  color: #909399;
+}
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.app-chip,
+.plat-chip {
+  border: none;
+  background: transparent;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #606266;
+  cursor: pointer;
+}
+.app-chip.active {
+  color: #409eff;
+  font-weight: 600;
+  background: #ecf5ff;
+}
+.plat-chip {
+  border: 1px solid #e4e7ed;
+  background: #f5f7fa;
+}
+.plat-chip.active {
+  border-color: #67c23a;
+  background: #67c23a;
+  color: #fff;
+  font-weight: 600;
+}
+.search-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.search-input {
+  width: 320px;
+  flex: 1 1 240px;
+  max-width: 420px;
+}
+.search-count {
+  margin-left: auto;
+  font-size: 13px;
+  color: #909399;
+  white-space: nowrap;
+}
+.list-panel {
+  padding: 0 0 8px;
+  overflow: hidden;
+}
+.list-context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  font-size: 13px;
+  color: #606266;
+  border-bottom: 1px solid #ebeef5;
+}
+.view-switch {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #909399;
+}
+.view-switch b {
+  color: #303133;
+  font-weight: 600;
+}
+.page-list {
+  min-height: 80px;
+}
+.page-block + .page-block {
+  border-top: 1px solid #eef0f4;
+}
+.page-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+}
+.page-row:hover {
+  background: #fafbfc;
+}
+.page-caret {
+  color: #c0c4cc;
+  font-size: 12px;
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+.page-caret.open {
+  transform: rotate(90deg);
+}
+.page-name {
+  font-weight: 650;
+  color: #1f2329;
+  font-size: 14px;
+}
+.page-id {
+  font-size: 12px;
+  color: #909399;
+  letter-spacing: 0.02em;
+}
+.count-tag,
+.other-tag {
+  font-size: 12px;
+  line-height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.count-tag {
+  background: #ecf5ff;
+  color: #409eff;
+}
+.other-tag {
+  background: #fdf6ec;
+  color: #e6a23c;
+}
+.page-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.page-body {
+  padding: 0 16px 14px 38px;
 }
 .page-empty {
   padding: 16px 8px;
   font-size: 13px;
   color: var(--el-text-color-placeholder);
-}
-.page-group-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  width: 100%;
-  cursor: pointer;
-}
-.page-name {
-  font-weight: 600;
 }
 .shot-tip {
   margin-bottom: 14px;
@@ -1749,33 +2001,9 @@ onMounted(async () => {
   color: var(--el-text-color-placeholder);
   line-height: 1.4;
 }
-.card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-.header-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-.card-title {
-  font-size: 16px;
-  font-weight: 600;
-}
-.catalog-hint {
-  margin: 0 0 12px;
-  font-size: 12px;
-  color: var(--el-text-color-placeholder);
-}
-.filter-bar {
-  margin-bottom: 12px;
-}
 .pagination-wrap {
   margin-top: 16px;
+  padding: 0 16px 8px;
   display: flex;
   justify-content: flex-end;
 }

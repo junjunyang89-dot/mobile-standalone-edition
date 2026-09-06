@@ -64,9 +64,11 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '设置' }
       },
       {
+        // 「自动化用例」已下线，重定向到流程编排：它渲染的本来就是同一批 ui_flows。
+        // 保留这条重定向是为了老书签和外部链接不至于 404——直接删路由的话，
+        // 用的人只会看到白屏，然后来问你「页面怎么没了」
         path: 'app-automation',
-        name: 'AppAutomationCases',
-        component: () => import('../views/AppAutomationCases.vue'),
+        redirect: { name: 'UiFlows' },
         meta: { title: '自动化用例' }
       },
       {

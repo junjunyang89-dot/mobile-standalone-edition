@@ -93,7 +93,10 @@
             <el-icon><VideoPlay /></el-icon>
             <span>APP 自动化</span>
           </template>
-          <el-menu-item v-if="canVisit('/app-automation')" index="/app-automation">自动化用例</el-menu-item>
+          <!-- 「自动化用例」已下线：它渲染的就是 ui_flows，和「流程编排」是同一张表的同一批行，
+               执行入口也调同一个接口，而且是功能更弱的那份（不能选包、不能传执行参数）。
+               筛选器流程编排页本来就有（还多了用途和名称），「最近结果」列已搬过去，
+               批量执行归「APP回归」。 -->
           <el-menu-item index="/tasks">APP测试任务</el-menu-item>
           <el-menu-item v-if="canVisit('/ui-flows')" index="/ui-flows">流程编排</el-menu-item>
           <el-menu-item v-if="canVisit('/ui-elements')" index="/ui-elements">元素管理</el-menu-item>
@@ -173,7 +176,7 @@
       </el-menu>
     </el-aside>
     <el-container>
-      <el-header v-if="!isApiReportsPage && !isTestCasesPage && !isBugManagementPage && !isIssueTrackingPage && !isAppAutomationPage" class="header">
+      <el-header v-if="!isApiReportsPage && !isTestCasesPage && !isBugManagementPage && !isIssueTrackingPage" class="header">
         <div class="header-content">
           <h3>{{ currentTitle }}</h3>
         </div>
@@ -203,7 +206,7 @@
       </el-header>
       <el-main
         class="main-content"
-        :class="{ 'is-agent': isAgentPage, 'is-test-cases': isTestCasesPage, 'is-bug-management': isBugManagementPage, 'is-issue-tracking': isIssueTrackingPage, 'is-app-automation': isAppAutomationPage, 'is-api-collections': isApiCollectionsPage, 'is-api-reports': isApiReportsPage }"
+        :class="{ 'is-agent': isAgentPage, 'is-test-cases': isTestCasesPage, 'is-bug-management': isBugManagementPage, 'is-issue-tracking': isIssueTrackingPage, 'is-api-collections': isApiCollectionsPage, 'is-api-reports': isApiReportsPage }"
       >
         <router-view :key="route.fullPath" />
       </el-main>
@@ -266,7 +269,6 @@ const roleTagType = computed(() => {
 
 const showAppAutoMenu = computed(
   () =>
-    canVisit('/app-automation') ||
     canVisit('/tasks') ||
     canVisit('/ui-flows') ||
     canVisit('/ui-elements') ||
@@ -358,7 +360,6 @@ const defaultOpeneds = computed(() => {
     return ['web-test-menu']
   }
   if (
-    p.startsWith('/app-automation') ||
     p.startsWith('/tasks') ||
     p.startsWith('/ui-flows') ||
     p.startsWith('/ui-keywords') ||
@@ -423,7 +424,6 @@ const titleMap: Record<string, string> = {
   '/change-review': '本周改动 / 漏测看板',
   '/bug-management': 'Bug 管理',
   '/issue-tracking': '线上问题跟踪',
-  '/app-automation': '自动化用例',
   '/web-test': 'Web 端测试',
   '/api-testing': '概览',
   '/api-collections': '用例集合',
@@ -448,10 +448,7 @@ const currentTitle = computed(() => {
   return (route.meta?.title as string) || '移动自动化测试'
 })
 
-const windowPageTitle = computed(() => {
-  if (route.path.startsWith('/app-automation')) return 'APP 自动化用例'
-  return currentTitle.value
-})
+const windowPageTitle = computed(() => currentTitle.value)
 
 watch(
   windowPageTitle,
@@ -466,7 +463,6 @@ const isTestCasesPage = computed(
 )
 const isBugManagementPage = computed(() => route.path.startsWith('/bug-management'))
 const isIssueTrackingPage = computed(() => route.path.startsWith('/issue-tracking'))
-const isAppAutomationPage = computed(() => route.path.startsWith('/app-automation'))
 const isApiCollectionsPage = computed(() => route.path.startsWith('/api-collections'))
 const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
 </script>
@@ -737,7 +733,6 @@ const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
 .main-content.is-test-cases,
 .main-content.is-bug-management,
 .main-content.is-issue-tracking,
-.main-content.is-app-automation,
 .main-content.is-api-collections,
 .main-content.is-api-reports {
   padding: 0;
@@ -791,8 +786,7 @@ const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
 
 .main-content.is-test-cases,
 .main-content.is-bug-management,
-.main-content.is-issue-tracking,
-.main-content.is-app-automation {
+.main-content.is-issue-tracking {
   height: 100%;
 }
 
@@ -824,14 +818,4 @@ const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
   height: 100%;
 }
 
-.main-content.is-app-automation {
-  padding: 0;
-  overflow: hidden;
-}
-
-.main-content.is-app-automation :deep(.app-auto-cases) {
-  flex: 1;
-  min-height: 0;
-  height: 100%;
-}
 </style>
