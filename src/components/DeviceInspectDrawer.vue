@@ -1,7 +1,7 @@
 <template>
   <el-drawer
     :model-value="modelValue"
-    title="真机点选采集"
+    :title="pickTapOffset ? '真机点选点击位置' : '真机点选采集'"
     size="92%"
     destroy-on-close
     append-to-body
@@ -33,17 +33,20 @@
       <el-button type="primary" :loading="loadingShot" :disabled="!deviceId" @click="refreshShot">
         刷新截图
       </el-button>
+      <el-button :disabled="!shotUrl" @click="previewFit = !previewFit">
+        {{ previewFit ? '放大查看' : '整屏显示' }}
+      </el-button>
       <el-button @click="close">关闭</el-button>
       <span class="inspector-hint">
         已连接 {{ devices.length }} 台
         <template v-if="props.platform">（优先 {{ props.platform }}）</template>
-        ；点选后列出 id / text / xpath / className / 坐标 等全部方案，点选切换即可。手机滑动后请再点「刷新截图」。
+        。左边点图、中间选树，和 Appium Inspector 一样：先认节点再选定位。坐标兜底默认收起。
       </span>
     </div>
     <div class="inspector-body">
-      <div class="inspector-shot-wrap">
+      <div ref="wrapRef" class="inspector-shot-wrap" :class="{ 'is-zoom': !previewFit }">
         <div v-if="!shotUrl" class="inspector-shot-empty">请选择设备并刷新截图</div>
-        <div v-else class="inspector-shot-inner">
+        <div v-else class="inspector-shot-inner" @click="onShotClick">
           <img
             ref="imgRef"
             :src="shotUrl"
@@ -51,7 +54,26 @@
             alt="设备截图"
             draggable="false"
             @error="onShotLoadError"
-            @click="onShotClick"
+            @load="shotLayoutTick++"
+          />
+          <div
+            v-if="filterBarBox"
+            class="inspector-offset-bar"
+            :style="filterBarBox"
+          />
+          <button
+            v-for="chip in filterChips"
+            :key="chip.label"
+            type="button"
+            class="filter-chip"
+            :class="{ active: pickedChip === chip.label }"
+            :style="chipStyle(chip)"
+            @click.stop="pickFilterChip(chip)"
+          >{{ chip.label }}</button>
+          <div
+            v-if="offsetBarBox && !filterBarBox"
+            class="inspector-offset-bar"
+            :style="offsetBarBox"
           />
           <div
             v-if="boundsBox"
@@ -65,9 +87,55 @@
           />
         </div>
       </div>
+      <div class="inspector-tree">
+        <div class="inspector-side-title">控件树 {{ hierarchyCount ? `· ${hierarchyCount}` : '' }}</div>
+        <div v-if="selectedNode" class="tree-actions">
+          <el-button size="small" :disabled="!parentNode" @click="pickParentNode">往上一级</el-button>
+          <span class="tree-picked">{{ selectedNodeTitle }}</span>
+        </div>
+        <InspectHierarchyTree
+          :root="hierarchyRoot"
+          :selected-path="selectedNode?.nodePath"
+          @pick="onTreePick"
+        />
+      </div>
       <div class="inspector-side">
         <div v-loading="hitting" class="inspector-candidates">
-          <div class="inspector-side-title">定位方案（点选切换）</div>
+          <div v-if="filterChips.length" class="filter-chip-panel">
+            <div class="inspector-side-title">筛选栏芯片（点截图上的词即可）</div>
+            <p class="tap-offset-hint">识别到「{{ filterChips.map((c) => c.label).join(' / ') }}」。点芯片回填相对整条栏的百分比，不存屏幕坐标。</p>
+            <div class="filter-chip-btns">
+              <el-button
+                v-for="chip in filterChips"
+                :key="'side-' + chip.label"
+                size="small"
+                :type="pickedChip === chip.label ? 'primary' : 'default'"
+                @click="pickFilterChip(chip)"
+              >{{ chip.label }} · {{ chip.offsetXPercent }}%</el-button>
+            </div>
+          </div>
+          <p v-if="lastHit && lastHit.x != null && !pickedChip" class="shot-pixel-hint">
+            点在截图 {{ lastHit.x }}, {{ lastHit.y }}
+          </p>
+          <div v-if="tapOffset" class="tap-offset-card">
+            <div class="inspector-side-title">相对该控件的点击位置</div>
+            <p class="tap-offset-nums">横向 {{ tapOffset.x }}% · 纵向 {{ tapOffset.y }}%</p>
+            <p class="tap-offset-hint">
+              {{ lastHit?.tapOffsetHint || '相对整条筛选栏，不是屏幕坐标。' }}
+            </p>
+            <el-button type="primary" size="small" @click="applyTapOffset">回填到步骤</el-button>
+          </div>
+          <div class="inspector-side-title">
+            定位方案
+            <el-switch
+              v-model="showCoords"
+              size="small"
+              inline-prompt
+              active-text="坐标"
+              inactive-text="元素"
+              style="margin-left: 8px"
+            />
+          </div>
           <el-alert
             v-if="h5ShellHint"
             class="cand-h5-alert"
@@ -92,13 +160,13 @@
             <div class="cand-warn-text">{{ w }}</div>
           </el-alert>
 
-          <el-empty v-if="!candidates.length && !hitting" description="点击截图上的控件" :image-size="64" />
+          <el-empty v-if="!visibleCandidates.length && !hitting" description="点截图或点中间的树" :image-size="64" />
           <div
-            v-for="(c, idx) in candidates"
+            v-for="(c, idx) in visibleCandidates"
             :key="idx"
             class="inspector-cand"
-            :class="{ active: selectedIdx === idx }"
-            @click="selectCandidate(idx)"
+            :class="{ active: selectedVisibleIdx === idx }"
+            @click="selectVisibleCandidate(idx)"
           >
             <div class="cand-title">
               <el-tag size="small" :type="locatorTagType(c.locatorType)" effect="plain">{{ c.locatorType }}</el-tag>
@@ -119,7 +187,7 @@
             </div>
           </div>
         </div>
-        <div v-if="selected" class="inspector-form">
+        <div v-if="selected && !pickTapOffset" class="inspector-form">
           <div class="inspector-side-title">写入元素库</div>
           <el-alert
             v-if="formNotice"
@@ -236,17 +304,30 @@ import { normalizePlatform } from '@/utils/platform'
 import { ElMessage } from 'element-plus'
 import { apiClient } from '@/api'
 import { normalizePageId, pageOptionLabel, suggestPageId } from '@/utils/uiPage'
+import { mapInspectShotClick } from '@/utils/inspectShotClick'
+import InspectHierarchyTree from '@/components/InspectHierarchyTree.vue'
+import {
+  ancestorPaths,
+  findSmallestNodeAt,
+  nodeTitle,
+  type InspectNode
+} from '@/utils/inspectHierarchy'
 
 const props = defineProps<{
   modelValue: boolean
   appId: string
   platform: string
   pageId?: string
+  /** 从点击步骤「真机点选算出位置」进来：点完回填百分比 */
+  pickTapOffset?: boolean
+  /** 步骤已绑元素，百分比相对它算 */
+  elementKey?: string
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   saved: [payload: { nameEn: string; nameZh: string; promoted: boolean }]
+  'tap-offset': [payload: { offsetXPercent: number; offsetYPercent: number }]
 }>()
 
 const devices = ref<any[]>([])
@@ -257,10 +338,21 @@ const hitting = ref(false)
 const saving = ref(false)
 const shotUrl = ref('')
 const imgRef = ref<HTMLImageElement | null>(null)
+const wrapRef = ref<HTMLElement | null>(null)
+/** 默认整张图缩进窗口，避免拖平台滚动条把点选搞混 */
+const previewFit = ref(true)
+const filterBar = ref<any | null>(null)
+const pickedChip = ref('')
+const shotLayoutTick = ref(0)
+const hierarchyRoot = ref<InspectNode | null>(null)
+const hierarchyCount = ref(0)
+const selectedNode = ref<InspectNode | null>(null)
+const showCoords = ref(false)
 const mark = ref<{ left: number; top: number } | null>(null)
 const candidates = ref<any[]>([])
 const warnings = ref<string[]>([])
 const selectedIdx = ref(-1)
+const lastHit = ref<any | null>(null)
 /** 抽屉内提示条：Message/MessageBox 会被本抽屉盖住，故不用全局弹窗 */
 const formNotice = ref<{
   type: 'success' | 'warning' | 'error' | 'info'
@@ -289,6 +381,89 @@ function showFormNotice(
 const selected = computed(() =>
   selectedIdx.value >= 0 ? candidates.value[selectedIdx.value] : null
 )
+
+const visibleCandidates = computed(() =>
+  (candidates.value || []).filter((c) => {
+    if (showCoords.value) return true
+    return String(c?.locatorType || '').toLowerCase() !== 'coordinate'
+  })
+)
+
+const selectedVisibleIdx = computed(() => {
+  const cur = selected.value
+  if (!cur) return -1
+  return visibleCandidates.value.findIndex(
+    (c) => c.locatorType === cur.locatorType && c.locatorValue === cur.locatorValue
+  )
+})
+
+const selectedNodeTitle = computed(() => (selectedNode.value ? nodeTitle(selectedNode.value) : ''))
+
+const parentNode = computed(() => {
+  const chain = ancestorPaths(hierarchyRoot.value, selectedNode.value?.nodePath)
+  return chain.length > 1 ? chain[chain.length - 2] : null
+})
+
+function selectVisibleCandidate(idx: number) {
+  const c = visibleCandidates.value[idx]
+  if (!c) return
+  const raw = candidates.value.findIndex(
+    (x) => x.locatorType === c.locatorType && x.locatorValue === c.locatorValue
+  )
+  if (raw >= 0) selectCandidate(raw)
+}
+
+function boxToPercent(box: any, px: number, py: number) {
+  if (!box) return null
+  const left = Number(box.left)
+  const top = Number(box.top)
+  const right = Number(box.right)
+  const bottom = Number(box.bottom)
+  if (![left, top, right, bottom].every((n) => Number.isFinite(n))) return null
+  const w = Math.max(1, right - left)
+  const h = Math.max(1, bottom - top)
+  return {
+    x: Math.max(0, Math.min(100, Math.round(((px - left) * 100) / w))),
+    y: Math.max(0, Math.min(100, Math.round(((py - top) * 100) / h)))
+  }
+}
+
+const tapOffset = computed(() => {
+  const hit = lastHit.value
+  if (!hit) return null
+  const px = Number(hit.x)
+  const py = Number(hit.y)
+  if (![px, py].every((n) => Number.isFinite(n))) return null
+  const fromBar = boxToPercent(hit.tapOffsetBounds, px, py)
+  if (fromBar) return fromBar
+  if (typeof hit.tapOffsetXPercent === 'number' && typeof hit.tapOffsetYPercent === 'number') {
+    return { x: hit.tapOffsetXPercent, y: hit.tapOffsetYPercent }
+  }
+  const list = candidates.value || []
+  for (const c of [selected.value, ...list]) {
+    if (!c || String(c.locatorType || '').toLowerCase() === 'coordinate') continue
+    const box = c.containerBounds || c.bounds
+    if (!box) continue
+    if (px < Number(box.left) || px >= Number(box.right) || py < Number(box.top) || py >= Number(box.bottom)) {
+      continue
+    }
+    const p = boxToPercent(box, px, py)
+    if (p) return p
+  }
+  return null
+})
+
+function applyTapOffset() {
+  if (!tapOffset.value) {
+    ElMessage.warning('请先在截图上点一下要点的位置')
+    return
+  }
+  emit('tap-offset', {
+    offsetXPercent: tapOffset.value.x,
+    offsetYPercent: tapOffset.value.y
+  })
+  close()
+}
 
 const locatorOptions = computed(() =>
   (candidates.value || [])
@@ -337,12 +512,9 @@ function onLocatorTypePicked(key: string) {
   }
 }
 
-/** 把候选 bounds（截图像素）映射到当前展示尺寸，画红框便于发现「穿透」到背后列表 */
-const boundsBox = computed(() => {
-  const c = selected.value
+function mapDumpBox(b: any) {
   const img = imgRef.value
-  const b = c?.bounds
-  if (!c || !img || !b) return null
+  if (!img || !b) return null
   const natW = img.naturalWidth || 0
   const natH = img.naturalHeight || 0
   const dispW = img.clientWidth || 0
@@ -361,7 +533,59 @@ const boundsBox = computed(() => {
     width: Math.max(1, (r - l) * sx) + 'px',
     height: Math.max(1, (bottom - t) * sy) + 'px'
   }
+}
+
+/** 红框优先用树上选中节点的 screenBounds，和 Inspector 一样跟节点走 */
+const boundsBox = computed(() => {
+  void shotLayoutTick.value
+  const nodeBox = selectedNode.value?.screenBounds || selectedNode.value?.bounds
+  if (nodeBox) return mapDumpBox(nodeBox)
+  return selected.value ? mapDumpBox(selected.value.bounds) : null
 })
+
+/** 蓝框：算百分比用的整条栏 / 已绑元素 */
+const offsetBarBox = computed(() => mapDumpBox(lastHit.value?.tapOffsetBounds))
+
+const filterChips = computed(() => {
+  void shotLayoutTick.value
+  return Array.isArray(filterBar.value?.chips) ? filterBar.value.chips : []
+})
+
+const filterBarBox = computed(() => {
+  void shotLayoutTick.value
+  return mapDumpBox(filterBar.value?.barBounds)
+})
+
+function chipStyle(chip: any) {
+  void shotLayoutTick.value
+  return mapDumpBox(chip?.bounds) || {}
+}
+
+function pickFilterChip(chip: any) {
+  if (!chip) return
+  pickedChip.value = String(chip.label || '')
+  lastHit.value = {
+    tapOffsetXPercent: chip.offsetXPercent,
+    tapOffsetYPercent: chip.offsetYPercent,
+    tapOffsetBounds: filterBar.value?.barBounds,
+    tapOffsetHint: `「${chip.label}」相对整条筛选栏`
+  }
+  const img = imgRef.value
+  const b = chip.bounds
+  if (img && b && img.naturalWidth > 0 && img.naturalHeight > 0) {
+    const sx = img.clientWidth / img.naturalWidth
+    const sy = img.clientHeight / img.naturalHeight
+    mark.value = {
+      left: ((Number(b.left) + Number(b.right)) / 2) * sx - 6,
+      top: ((Number(b.top) + Number(b.bottom)) / 2) * sy - 6
+    }
+  }
+  if (props.pickTapOffset) {
+    applyTapOffset()
+  } else {
+    ElMessage.success(`已选「${chip.label}」：横向 ${chip.offsetXPercent}%`)
+  }
+}
 
 function close() {
   emit('update:modelValue', false)
@@ -381,6 +605,12 @@ function resetPanel() {
   candidates.value = []
   selectedIdx.value = -1
   mark.value = null
+  lastHit.value = null
+  filterBar.value = null
+  pickedChip.value = ''
+  hierarchyRoot.value = null
+  hierarchyCount.value = 0
+  selectedNode.value = null
 }
 
 function deviceOptionLabel(d: any) {
@@ -539,13 +769,30 @@ async function refreshShot() {
   warnings.value = []
   selectedIdx.value = -1
   mark.value = null
+  lastHit.value = null
+  pickedChip.value = ''
+  filterBar.value = null
   try {
     const snap = await apiClient.getDeviceInspectSnapshot(deviceId.value)
     const t = String(snap.screenshotUrl || '').split('t=')[1] || String(Date.now())
     const next = await apiClient.fetchDeviceInspectScreenshotObjectUrl(deviceId.value, t)
     revokeShotUrl()
     shotUrl.value = next
-    ElMessage.success('截图已刷新，请点击控件')
+    filterBar.value = snap.filterBar || null
+    selectedNode.value = null
+    try {
+      const hier = await apiClient.getDeviceInspectHierarchy(deviceId.value, false)
+      hierarchyRoot.value = hier.root || null
+      hierarchyCount.value = Number(hier.nodeCount) || 0
+    } catch {
+      hierarchyRoot.value = null
+      hierarchyCount.value = 0
+    }
+    if (snap.filterBar?.chips?.length) {
+      ElMessage.success('截图和控件树已对齐，点图或点树选节点')
+    } else {
+      ElMessage.success('截图已刷新，点图或点中间的树')
+    }
   } catch (e: any) {
     const msg = e?.message || '截图失败'
     ElMessage({
@@ -563,29 +810,43 @@ async function refreshShot() {
 async function onShotClick(ev: MouseEvent) {
   const img = imgRef.value
   if (!img || !deviceId.value) return
-  // 用相对 img 的 offset，避免外层 overflow 滚动条导致 getBoundingClientRect 点选错位
-  const dispW = img.clientWidth || img.getBoundingClientRect().width
-  const dispH = img.clientHeight || img.getBoundingClientRect().height
-  if (dispW <= 0 || dispH <= 0) return
-  let ox = ev.offsetX
-  let oy = ev.offsetY
-  // 部分浏览器点到子层时 offset 相对错误目标；回退到相对 img 的坐标
-  if (ev.target !== img) {
-    const rect = img.getBoundingClientRect()
-    ox = ev.clientX - rect.left
-    oy = ev.clientY - rect.top
-  }
-  ox = Math.min(Math.max(ox, 0), dispW)
-  oy = Math.min(Math.max(oy, 0), dispH)
-  const xRatio = Math.min(1, Math.max(0, ox / dispW))
-  const yRatio = Math.min(1, Math.max(0, oy / dispH))
-  const natW = img.naturalWidth || 0
-  const natH = img.naturalHeight || 0
-  const px = natW > 0 ? Math.round(xRatio * (natW - 1)) : undefined
-  const py = natH > 0 ? Math.round(yRatio * (natH - 1)) : undefined
+  const wrap = wrapRef.value
+  const imgRect = img.getBoundingClientRect()
+  const wrapRect = wrap?.getBoundingClientRect()
+  const mapped = mapInspectShotClick({
+    clientX: ev.clientX,
+    clientY: ev.clientY,
+    imgRect,
+    layoutWidth: img.offsetWidth || imgRect.width,
+    layoutHeight: img.offsetHeight || imgRect.height,
+    naturalWidth: img.naturalWidth || 0,
+    naturalHeight: img.naturalHeight || 0,
+    wrap: wrap && wrapRect
+      ? {
+          left: wrapRect.left,
+          top: wrapRect.top,
+          clientWidth: wrap.clientWidth,
+          clientHeight: wrap.clientHeight,
+          scrollLeft: wrap.scrollLeft,
+          scrollTop: wrap.scrollTop
+        }
+      : undefined,
+    imgOffsetLeft: img.offsetLeft,
+    imgOffsetTop: img.offsetTop
+  })
+  if (!mapped) return
+  const { xRatio, yRatio, pixelX: px, pixelY: py } = mapped
   mark.value = {
-    left: ox - 6,
-    top: oy - 6
+    left: mapped.cssX - 6,
+    top: mapped.cssY - 6
+  }
+  lastHit.value = { x: px, y: py, xRatio, yRatio }
+  const treeHit = px != null && py != null
+    ? findSmallestNodeAt(hierarchyRoot.value, px, py)
+    : null
+  if (treeHit?.nodePath) {
+    await applyTreeNode(treeHit)
+    return
   }
   hitting.value = true
   try {
@@ -594,23 +855,69 @@ async function onShotClick(ev: MouseEvent) {
       yRatio,
       x: px,
       y: py,
-      appId: props.appId || undefined
+      appId: props.appId || undefined,
+      elementKey: props.elementKey || undefined
     })
+    lastHit.value = res
     candidates.value = res.candidates || []
     warnings.value = res.warnings || []
     if (!candidates.value.length) {
-      ElMessage.warning('未命中控件：可换个位置再点；若刚在手机上滑动过，请先「刷新截图」')
+      ElMessage.warning('树上没框到节点：可点中间控件树，或先「刷新截图」')
       selectedIdx.value = -1
     } else {
-      selectCandidate(0)
+      const idx = candidates.value.findIndex(
+        (c) => String(c?.locatorType || '').toLowerCase() !== 'coordinate'
+      )
+      selectCandidate(idx >= 0 ? idx : 0)
     }
   } catch (e: any) {
     ElMessage.error(e?.message || '命中失败')
+    lastHit.value = null
     candidates.value = []
     warnings.value = []
   } finally {
     hitting.value = false
   }
+}
+
+async function applyTreeNode(node: InspectNode) {
+  selectedNode.value = node
+  if (!deviceId.value || !node.nodePath) {
+    candidates.value = []
+    selectedIdx.value = -1
+    return
+  }
+  hitting.value = true
+  try {
+    const res = await apiClient.postDeviceInspectNodeLocators(deviceId.value, {
+      nodePath: node.nodePath,
+      appId: props.appId || undefined
+    })
+    candidates.value = res.candidates || []
+    warnings.value = []
+    if (!candidates.value.length) {
+      selectedIdx.value = -1
+    } else {
+      const idx = candidates.value.findIndex(
+        (c) => String(c?.locatorType || '').toLowerCase() !== 'coordinate'
+      )
+      selectCandidate(idx >= 0 ? idx : 0)
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '取节点定位失败')
+    candidates.value = []
+    selectedIdx.value = -1
+  } finally {
+    hitting.value = false
+  }
+}
+
+function onTreePick(node: InspectNode) {
+  void applyTreeNode(node)
+}
+
+function pickParentNode() {
+  if (parentNode.value) void applyTreeNode(parentNode.value)
 }
 
 /**
@@ -801,34 +1108,70 @@ async function createElement(promote: boolean) {
 }
 .inspector-body {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
-  gap: 16px;
+  grid-template-columns: minmax(280px, 1fr) minmax(260px, 0.7fr) minmax(300px, 0.85fr);
+  gap: 12px;
   min-height: 70vh;
+}
+.inspector-tree {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 78vh;
+  gap: 8px;
+}
+.inspector-tree :deep(.tree-wrap) {
+  flex: 1;
+  min-height: 0;
+}
+.tree-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tree-picked {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 .inspector-shot-wrap {
   position: relative;
   background: var(--app-surface);
   border: 1px solid var(--app-border);
   border-radius: 8px;
-  overflow: auto;
+  overflow: hidden;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
+  height: 78vh;
   max-height: 78vh;
+}
+.inspector-shot-wrap.is-zoom {
+  overflow: auto;
+  align-items: flex-start;
 }
 .inspector-shot-inner {
   position: relative;
   display: inline-block;
   max-width: 100%;
+  max-height: 100%;
   line-height: 0;
 }
 .inspector-shot {
   max-width: 100%;
+  max-height: 78vh;
+  width: auto;
   height: auto;
+  object-fit: contain;
   cursor: crosshair;
   display: block;
   user-select: none;
   -webkit-user-drag: none;
+}
+.inspector-shot-wrap.is-zoom .inspector-shot {
+  max-height: none;
 }
 .inspector-shot-empty {
   padding: 48px;
@@ -853,11 +1196,74 @@ async function createElement(promote: boolean) {
   box-sizing: border-box;
   z-index: 1;
 }
+.inspector-offset-bar {
+  position: absolute;
+  border: 2px dashed #2f6fed;
+  background: rgba(47, 111, 237, 0.08);
+  pointer-events: none;
+  box-sizing: border-box;
+  z-index: 1;
+}
+.filter-chip {
+  position: absolute;
+  z-index: 4;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(47, 111, 237, 0.55);
+  border-radius: 999px;
+  background: rgba(47, 111, 237, 0.82);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(16, 42, 96, 0.25);
+}
+.filter-chip.active {
+  background: #1d4ed8;
+  border-color: #fff;
+}
+.filter-chip-panel {
+  margin-bottom: 12px;
+}
+.filter-chip-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
 .inspector-side {
   display: flex;
   flex-direction: column;
   gap: 12px;
   min-height: 0;
+}
+.shot-pixel-hint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.tap-offset-card {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--el-color-primary-light-5);
+  border-radius: 8px;
+  background: var(--el-color-primary-light-9);
+}
+.tap-offset-nums {
+  margin: 6px 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--app-text);
+}
+.tap-offset-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--el-text-color-secondary);
 }
 .inspector-side-title {
   font-weight: 600;

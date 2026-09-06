@@ -75,10 +75,19 @@
           <el-input-number
             v-model="params[def.name]"
             :min="0"
+            :max="numberMax(def)"
             :step="numberStep(def)"
+            :precision="numberPrecision(def)"
           />
           <span v-if="numberUnit(def)" class="param-unit">{{ numberUnit(def) }}</span>
         </div>
+        <el-button
+          v-if="def.name === 'offsetXPercent'"
+          link
+          type="primary"
+          class="offset-pick-link"
+          @click="emit('pick-tap-offset')"
+        >真机点选算出位置</el-button>
       </div>
 
       <template v-else-if="def.type === 'boolean'">
@@ -185,6 +194,10 @@ const props = defineProps<{
   environment?: string
 }>()
 
+const emit = defineEmits<{
+  'pick-tap-offset': []
+}>()
+
 const router = useRouter()
 const testVars = ref<EnvVar[]>([])
 const prodVars = ref<EnvVar[]>([])
@@ -289,7 +302,12 @@ function isVisible(def: ParamDefDto) {
 
 /** 毫秒类参数步进大一些，免得点半天 */
 function numberStep(def: ParamDefDto) {
+  if (def.name === 'distancePercent') return 0.5
   return /ms$/i.test(def.name) || /毫秒/.test(def.label || '') ? 100 : 1
+}
+
+function numberPrecision(def: ParamDefDto) {
+  return def.name === 'distancePercent' ? 1 : undefined
 }
 
 /** 标签去掉单位词，单位放到输入框后；顺带把「失败重试次数」收成「失败重试」避免 label 列挤换行 */
@@ -315,7 +333,14 @@ function numberUnit(def: ParamDefDto): string {
   if (/rounds$/i.test(def.name) || /轮数$/.test(def.label || '')) {
     return '轮'
   }
+  if (/Percent$/i.test(def.name) || /百分比/.test(def.label || '') || /点击位置/.test(def.label || '')) {
+    return '%'
+  }
   return ''
+}
+
+function numberMax(def: ParamDefDto) {
+  return /Percent$/i.test(def.name) ? 100 : undefined
 }
 
 /** 少数枚举给中文说明，其余直接显示原值 */
@@ -329,7 +354,7 @@ const OPTION_LABELS: Record<string, Record<string, string>> = {
   clickMethod: {
     AUTO: '自动（勾选单次；登录等按钮 iOS 可补点）',
     ELEMENT: '仅元素 click（适合抽屉/开关/勾选，只点一次）',
-    COORDINATE: '仅中心坐标 W3C',
+    COORDINATE: '仅坐标 W3C（可配合横向/纵向点击位置）',
     ADB: '仅 ADB input tap（小米等机型）',
     ELEMENT_THEN_COORD: '元素 click + 坐标补点（易连点两次，开关/勾选勿用）'
   },
@@ -426,7 +451,8 @@ watch(
   width: 240px;
   flex: none;
 }
-.env-page-link {
+.env-page-link,
+.offset-pick-link {
   margin-top: 4px;
   padding: 0;
   height: auto;

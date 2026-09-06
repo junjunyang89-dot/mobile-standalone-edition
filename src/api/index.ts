@@ -679,13 +679,71 @@ class ApiClient {
       screenshotPath?: string
       width?: number
       height?: number
+      filterBar?: {
+        barBounds?: { left: number; top: number; right: number; bottom: number }
+        chips?: Array<{
+          label: string
+          offsetXPercent: number
+          offsetYPercent: number
+          bounds?: { left: number; top: number; right: number; bottom: number }
+        }>
+      }
     }>(`/devices/${deviceId}/inspect/snapshot`)
+  }
+
+  async getDeviceInspectHierarchy(deviceId: string, refresh = false) {
+    const q = refresh ? '?refresh=true' : '?refresh=false'
+    return this.request<{
+      deviceId: string
+      width?: number
+      height?: number
+      nodeCount?: number
+      root: any
+    }>(`/devices/${encodeURIComponent(deviceId)}/inspect/hierarchy${q}`)
+  }
+
+  async postDeviceInspectNodeLocators(deviceId: string, body: { nodePath: string; appId?: string }) {
+    return this.request<{
+      nodePath?: string
+      xpath?: string
+      className?: string
+      resourceId?: string
+      text?: string
+      contentDesc?: string
+      bounds?: { left: number; top: number; right: number; bottom: number }
+      screenBounds?: { left: number; top: number; right: number; bottom: number }
+      ancestors?: Array<{ nodePath?: string; text?: string; className?: string; bounds?: any }>
+      candidates: Array<{
+        rank: number
+        className?: string
+        resourceId?: string
+        text?: string
+        contentDesc?: string
+        clickable?: boolean
+        enabled?: boolean
+        bounds?: { left: number; top: number; right: number; bottom: number }
+        locatorType: string
+        locatorValue: string
+        suggestedNameEn?: string
+        suggestedNameZh?: string
+        visualHint?: string
+        matchedElementId?: string
+        matchedNameEn?: string
+        matchedNameZh?: string
+        matchedStatus?: string
+        matchCount?: number
+        unique?: boolean | null
+      }>
+    }>(`/devices/${encodeURIComponent(deviceId)}/inspect/node-locators`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
   }
 
   /** 真机点选：按相对坐标命中控件，返回推荐 locator 与已匹配元素 */
   async postDeviceInspectHitTest(
     deviceId: string,
-    body: { xRatio?: number; yRatio?: number; x?: number; y?: number; appId?: string }
+    body: { xRatio?: number; yRatio?: number; x?: number; y?: number; appId?: string; elementKey?: string }
   ) {
     return this.request<{
       deviceId: string
@@ -694,6 +752,10 @@ class ApiClient {
       y: number
       width: number
       height: number
+      tapOffsetXPercent?: number | null
+      tapOffsetYPercent?: number | null
+      tapOffsetBounds?: { left: number; top: number; right: number; bottom: number }
+      tapOffsetHint?: string
       candidates: Array<{
         rank: number
         className?: string

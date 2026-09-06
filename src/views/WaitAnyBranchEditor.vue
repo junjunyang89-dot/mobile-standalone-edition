@@ -117,6 +117,7 @@
           :platform="platform"
           :nest-level="nestLevel + 1"
           @inspect="emit('inspect', $event)"
+          @inspect-tap-offset="emit('inspect-tap-offset', $event)"
           @refresh-elements="emit('refresh-elements')"
         />
       </div>
@@ -179,6 +180,7 @@
           :platform="platform"
           :nest-level="nestLevel + 1"
           @inspect="emit('inspect', $event)"
+          @inspect-tap-offset="emit('inspect-tap-offset', $event)"
           @refresh-elements="emit('refresh-elements')"
         />
       </div>
@@ -248,6 +250,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   inspect: [step: FlowStep]
+  'inspect-tap-offset': [step: FlowStep]
   'refresh-elements': []
   added: [step: FlowStep]
 }>()

@@ -40,6 +40,7 @@
       :keyword-code="step.keywordCode"
       :element-options="elementOptions"
       :page-options="pageOptions"
+      @pick-tap-offset="emit('inspect-tap-offset', step)"
     />
 
     <DismissPopupsEditor
@@ -66,6 +67,7 @@
       :platform="platform"
       :nest-level="nestLevel"
       @inspect="emit('inspect', $event)"
+      @inspect-tap-offset="emit('inspect-tap-offset', $event)"
       @refresh-elements="emit('refresh-elements')"
     />
 
@@ -85,6 +87,7 @@
       :platform="platform"
       :nest-level="nestLevel"
       @inspect="emit('inspect', $event)"
+      @inspect-tap-offset="emit('inspect-tap-offset', $event)"
       @refresh-elements="emit('refresh-elements')"
     />
     <p v-else-if="step.keywordCode === 'IF_ELEMENT_EXISTS' && !canNest" class="nest-limit">
@@ -146,6 +149,7 @@ function isLaunchLikeStep(code: string) {
 
 const emit = defineEmits<{
   inspect: [step: FlowStep]
+  'inspect-tap-offset': [step: FlowStep]
   'refresh-elements': []
 }>()
 

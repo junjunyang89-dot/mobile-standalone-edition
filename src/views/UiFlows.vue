@@ -934,6 +934,17 @@
               />
             </el-option>
             <el-option
+              v-if="insertHeadVisible"
+              :value="INSERT_HEAD"
+              label="插到首位"
+              class="ins-opt-append"
+            >
+              <div class="ins-append">
+                <span class="ins-plus">↑</span>
+                <span class="ins-append-name">插到首位</span>
+              </div>
+            </el-option>
+            <el-option
               v-if="insertAppendVisible"
               value=""
               label="追加到末尾"
@@ -945,32 +956,32 @@
                 <span class="ins-default">默认</span>
               </div>
             </el-option>
-            <el-option-group v-if="filteredInsertPoints.length" label="步骤">
+            <el-option-group v-if="insertChoices.length" label="步骤">
               <el-option
-                v-for="p in filteredInsertPoints"
-                :key="p.id"
-                :value="p.id"
-                :label="insertAfterClosedLabel(p)"
-                :class="['ins-opt', p.depth ? 'is-child' : 'is-root', branchRailClass(p.branch)]"
+                v-for="c in insertChoices"
+                :key="c.key"
+                :value="c.key"
+                :label="insertClosedLabel(c.point, c.where)"
+                :class="['ins-opt', c.point.depth ? 'is-child' : 'is-root', branchRailClass(c.point.branch)]"
               >
-                <div class="ins-row" :class="{ child: p.depth }">
+                <div class="ins-row" :class="{ child: c.point.depth }">
                   <span
-                    v-if="!p.depth"
+                    v-if="!c.point.depth"
                     class="ins-no"
-                    :style="insertBadgeStyle(p.step.keywordCode)"
-                  >{{ p.no }}</span>
+                    :style="insertBadgeStyle(c.point.step.keywordCode)"
+                  >{{ c.point.no }}</span>
                   <div class="ins-body">
-                    <div v-if="!p.depth" class="ins-hint">插到之后</div>
+                    <div v-if="!c.point.depth" class="ins-hint">{{ c.where === 'before' ? '插到之前' : '插到之后' }}</div>
                     <div class="ins-name">
-                      <template v-if="p.depth">{{ p.no }} {{ keywordName(p.step.keywordCode) }}</template>
-                      <template v-else>{{ keywordName(p.step.keywordCode) }}</template>
+                      <template v-if="c.point.depth">{{ c.point.no }} {{ keywordName(c.point.step.keywordCode) }}（{{ c.where === 'before' ? '之前' : '之后' }}）</template>
+                      <template v-else>{{ keywordName(c.point.step.keywordCode) }}</template>
                     </div>
                   </div>
-                  <span v-if="p.branch" class="ins-branch" :class="branchRailClass(p.branch)">{{ p.branch }}</span>
-                  <span class="ins-tag" :class="'tone-' + insertMetaTag(p.step.keywordCode).tone">
-                    {{ insertMetaTag(p.step.keywordCode).text }}
+                  <span v-if="c.point.branch" class="ins-branch" :class="branchRailClass(c.point.branch)">{{ c.point.branch }}</span>
+                  <span class="ins-tag" :class="'tone-' + insertMetaTag(c.point.step.keywordCode).tone">
+                    {{ insertMetaTag(c.point.step.keywordCode).text }}
                   </span>
-                  <el-icon v-if="insertSelId === p.id" class="ins-check"><Check /></el-icon>
+                  <el-icon v-if="insertSelId === c.key" class="ins-check"><Check /></el-icon>
                 </div>
               </el-option>
             </el-option-group>
@@ -1053,6 +1064,13 @@
             <span class="step-spacer" />
             <el-button link size="small" class="step-action-btn" :disabled="!canMoveSelected(-1)" @click="moveSelected(-1)">上移</el-button>
             <el-button link size="small" class="step-action-btn" :disabled="!canMoveSelected(1)" @click="moveSelected(1)">下移</el-button>
+            <el-button
+              v-if="canPromoteSelected()"
+              link
+              size="small"
+              class="step-action-btn"
+              @click="promoteSelected"
+            >移出分支</el-button>
             <el-button link size="small" class="step-delete-btn" @click="removeSelected">删除</el-button>
           </div>
 
@@ -1195,6 +1213,7 @@
               :environment="form.environment"
               :element-options="elementOptions"
               :page-options="flowPageOptions"
+              @pick-tap-offset="goPickTapOffset(selectedStep)"
             />
           </el-form>
 
@@ -1226,6 +1245,7 @@
             hide-child-cards
             @added="selectStep"
             @inspect="goDeviceInspect"
+            @inspect-tap-offset="goPickTapOffset"
             @refresh-elements="loadElementsForFlow"
           />
 
@@ -1248,6 +1268,7 @@
             hide-child-cards
             @added="selectStep"
             @inspect="goDeviceInspect"
+            @inspect-tap-offset="goPickTapOffset"
             @refresh-elements="loadElementsForFlow"
           />
         </div>
@@ -1261,7 +1282,10 @@
       v-model="inspectVisible"
       :app-id="form.appId"
       :platform="form.platform || 'ANDROID'"
+      :pick-tap-offset="inspectPickTapOffset"
+      :element-key="inspectTargetStep?.elementKey"
       @saved="onInspectSaved"
+      @tap-offset="onTapOffsetPicked"
     />
   </div>
 </template>
@@ -1317,16 +1341,58 @@ function isLaunchLikeStep(code: string) {
   return c.startsWith('LAUNCH_APP') || c.startsWith('COLD_START') || c.startsWith('HOT_START')
 }
 
+/** 点击落点：后端未重启、关键字库还没同步时，前端也要能配、能点选回填 */
+const CLICK_OFFSET_DEFS = [
+  {
+    name: 'offsetXPercent',
+    label: '横向点击位置',
+    type: 'number',
+    default: 50,
+    help: '相对本元素宽度，不是整屏。50=中心。点「真机点选算出位置」，在截图上点你要点的字，会自动回填。'
+  },
+  {
+    name: 'offsetYPercent',
+    label: '纵向点击位置',
+    type: 'number',
+    default: 50,
+    help: '相对本元素高度。一般保持 50。'
+  }
+]
+
 /** 关键字的参数定义，来自后端 param_schema */
 function keywordSchema(code: string) {
   const k = keywords.value.find((x) => x.code === code)
-  if (!k?.paramSchema) return []
-  try {
-    const parsed = JSON.parse(k.paramSchema)
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
+  let parsed: any[] = []
+  if (k?.paramSchema) {
+    try {
+      const raw = JSON.parse(k.paramSchema)
+      parsed = Array.isArray(raw) ? raw : []
+    } catch {
+      parsed = []
+    }
   }
+  const c = String(code || '').toUpperCase()
+  if (c === 'CLICK' || c === 'CLICK_WHEN_ENABLED') {
+    return withClickOffsetDefs(parsed)
+  }
+  return parsed
+}
+
+function withClickOffsetDefs(schema: any[]) {
+  const names = new Set(schema.map((d) => d?.name))
+  if (names.has('offsetXPercent') && names.has('offsetYPercent')) {
+    return schema
+  }
+  const extra = CLICK_OFFSET_DEFS.filter((d) => !names.has(d.name))
+  const waitAt = schema.findIndex((d) => d?.name === 'waitAfterMs')
+  if (waitAt >= 0) {
+    return [...schema.slice(0, waitAt), ...extra, ...schema.slice(waitAt)]
+  }
+  const methodAt = schema.findIndex((d) => d?.name === 'clickMethod')
+  if (methodAt >= 0) {
+    return [...schema.slice(0, methodAt + 1), ...extra, ...schema.slice(methodAt + 1)]
+  }
+  return [...schema, ...extra]
 }
 
 /** 嵌套分支、多方式安装、启动应用等交互由专用编辑器渲染，其余走通用参数表 */
@@ -1877,6 +1943,7 @@ async function loadElementsForFlow() {
 const inspectVisible = ref(false)
 /** 从哪个步骤点开的真机点选，保存后回填 elementKey */
 const inspectTargetStep = ref<FlowStep | null>(null)
+const inspectPickTapOffset = ref(false)
 
 /** 从流程头或启动类步骤推断应用/平台，并回填到表单 */
 function ensureFlowAppContext(): boolean {
@@ -1899,9 +1966,31 @@ function ensureFlowAppContext(): boolean {
 
 function goDeviceInspect(step?: FlowStep) {
   if (!ensureFlowAppContext()) return
+  inspectPickTapOffset.value = false
   inspectTargetStep.value = step || null
   loadElementsForFlow()
   inspectVisible.value = true
+}
+
+function goPickTapOffset(step?: FlowStep) {
+  if (!ensureFlowAppContext()) return
+  inspectPickTapOffset.value = true
+  inspectTargetStep.value = step || selectedStep.value || null
+  loadElementsForFlow()
+  inspectVisible.value = true
+}
+
+function onTapOffsetPicked(payload: { offsetXPercent: number; offsetYPercent: number }) {
+  const target = inspectTargetStep.value
+  inspectPickTapOffset.value = false
+  if (!target) {
+    ElMessage.warning('没有对应的步骤，请先选中点击步骤再点选')
+    return
+  }
+  if (!target.params) target.params = {}
+  target.params.offsetXPercent = payload.offsetXPercent
+  target.params.offsetYPercent = payload.offsetYPercent
+  ElMessage.success(`已回填横向 ${payload.offsetXPercent}%、纵向 ${payload.offsetYPercent}%`)
 }
 
 async function onInspectSaved(payload: { nameEn: string; nameZh?: string; promoted: boolean }) {
@@ -2653,6 +2742,37 @@ function moveSelected(delta: number) {
   arr.splice(p.index + delta, 0, item)
 }
 
+/** 子步骤所在数组 → 父判断在上一层数组里的位置。只抬一层。 */
+function parentSlot(container: (string | number)[]): { parentContainer: (string | number)[]; parentIndex: number } | null {
+  const paramsAt = [...container].lastIndexOf('params')
+  if (paramsAt < 1) return null
+  const parentIndex = container[paramsAt - 1]
+  if (typeof parentIndex !== 'number') return null
+  return { parentContainer: container.slice(0, paramsAt - 1), parentIndex }
+}
+
+function canPromoteSelected() {
+  const p = selectedPoint.value
+  if (!p || p.depth < 1) return false
+  const slot = parentSlot(p.container)
+  if (!slot) return false
+  return !!resolveContainer(slot.parentContainer)
+}
+
+function promoteSelected() {
+  const p = selectedPoint.value
+  if (!p || !canPromoteSelected()) return
+  const childArr = resolveContainer(p.container)
+  const slot = parentSlot(p.container)
+  if (!childArr || !slot) return
+  const parentArr = resolveContainer(slot.parentContainer)
+  if (!parentArr) return
+  const [item] = childArr.splice(p.index, 1)
+  parentArr.splice(slot.parentIndex + 1, 0, item)
+  selectStep(item)
+  ElMessage.success('已移出分支，接在上一层判断后面')
+}
+
 function removeSelected() {
   const p = selectedPoint.value
   if (!p) return
@@ -2831,6 +2951,10 @@ function resolveContainer(path: (string | number)[]): any[] | null {
   return Array.isArray(cur) ? cur : null
 }
 
+/** 插到整条流程最前面（顶层第 1 步） */
+const INSERT_HEAD = '__head'
+const INSERT_BEFORE_PREFIX = 'before:'
+
 /** el-select 用稳定 id；空字符串＝追加到末尾。不要用摊平下标，第 4 步的下标不是 4。 */
 const insertSelId = computed<string>({
   get() {
@@ -2869,8 +2993,29 @@ const insertAppendVisible = computed(() => {
   return '追加到末尾默认'.includes(q)
 })
 
+const insertHeadVisible = computed(() => {
+  if (!insertPoints.value.some((p) => !p.depth)) return false
+  const q = insertQuery.value.trim().toLowerCase()
+  if (!q) return true
+  return '插到首位开头最前前面'.includes(q)
+})
+
+const insertChoices = computed(() => {
+  const rows: { key: string; point: InsertPoint; where: 'before' | 'after' }[] = []
+  for (const p of filteredInsertPoints.value) {
+    rows.push({ key: INSERT_BEFORE_PREFIX + p.id, point: p, where: 'before' })
+    rows.push({ key: p.id, point: p, where: 'after' })
+  }
+  return rows
+})
+
+function insertClosedLabel(p: InsertPoint, where: 'before' | 'after') {
+  const name = `${p.no} ${keywordName(p.step.keywordCode)}`
+  return where === 'before' ? `插到「${name}」之前` : `插到「${name}」之后`
+}
+
 function insertAfterClosedLabel(p: InsertPoint) {
-  return `插到「${p.no} ${keywordName(p.step.keywordCode)}」之后`
+  return insertClosedLabel(p, 'after')
 }
 
 function insertBadgeStyle(code: string) {
@@ -2922,8 +3067,7 @@ function insertedStepNo(step: any) {
   return insertPoints.value.find((p) => p.step === step)?.no || ''
 }
 
-function resolveInsertPoint() {
-  const id = insertAfterId.value
+function findInsertPointById(id: string) {
   if (!id) return null
   const pts = insertPoints.value
   const exact = pts.find((p) => p.id === id)
@@ -2937,11 +3081,23 @@ function resolveInsertPoint() {
   return null
 }
 
+function resolveInsertPoint() {
+  return findInsertPointById(insertAfterId.value)
+}
+
 function insertStep(step: any) {
-  const point = resolveInsertPoint()
+  const raw = insertAfterId.value
+  if (raw === INSERT_HEAD) {
+    steps.value.unshift(step)
+    selectStep(step)
+    ElMessage.success('已插到首位，现在是第 1 步')
+    return
+  }
+  const before = raw.startsWith(INSERT_BEFORE_PREFIX)
+  const point = before ? findInsertPointById(raw.slice(INSERT_BEFORE_PREFIX.length)) : resolveInsertPoint()
   if (!point) {
-    if (insertAfterId.value) {
-      ElMessage.error('插入位置已失效，请重新选择「插到第几步之后」')
+    if (raw) {
+      ElMessage.error('插入位置已失效，请重新选择插入位置')
       return
     }
     steps.value.push(step)
@@ -2952,16 +3108,17 @@ function insertStep(step: any) {
   }
   const arr = resolveContainer(point.container)
   if (!arr) {
-    ElMessage.error('插入位置已失效，请重新选择「插到第几步之后」')
+    ElMessage.error('插入位置已失效，请重新选择插入位置')
     return
   }
-  arr.splice(point.index + 1, 0, step)
+  arr.splice(before ? point.index : point.index + 1, 0, step)
   selectStep(step)
   const no = insertedStepNo(step)
+  const side = before ? '之前' : '之后'
   ElMessage.success(
     point.branch
-      ? `已插到 ${point.no} 之后，当前是 ${no}（${point.branch}）`
-      : `已插到第 ${point.no} 步后面，现在是第 ${no} 步`
+      ? `已插到 ${point.no} ${side}，当前是 ${no}（${point.branch}）`
+      : `已插到第 ${point.no} 步${side}，现在是第 ${no} 步`
   )
 }
 

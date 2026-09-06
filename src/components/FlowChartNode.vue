@@ -323,6 +323,15 @@ const waitHint = computed(() => {
   if (props.step.keywordCode === 'CLICK' && p.waitAfterMs != null && Number(p.waitAfterMs) >= 0) {
     parts.push(`点击后等 ${p.waitAfterMs}ms`)
   }
+  if (
+    (props.step.keywordCode === 'CLICK' || props.step.keywordCode === 'CLICK_WHEN_ENABLED')
+    && (Number(p.offsetXPercent) !== 50 || Number(p.offsetYPercent) !== 50)
+    && (p.offsetXPercent != null || p.offsetYPercent != null)
+  ) {
+    const x = p.offsetXPercent != null ? p.offsetXPercent : 50
+    const y = p.offsetYPercent != null ? p.offsetYPercent : 50
+    parts.push(`点位置 ${x}%,${y}%`)
+  }
   if (props.step.keywordCode === 'CLICK_WHEN_ENABLED' && p.timeoutSec != null) {
     parts.push(`等可点 ${p.timeoutSec}s`)
   }

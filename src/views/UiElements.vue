@@ -275,71 +275,114 @@
       </template>
     </div>
 
-    <el-dialog v-model="dialogVisible" :title="editingId ? '编辑元素' : '新增元素'" width="760px" destroy-on-close>
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="110px">
-        <el-form-item label="应用" prop="appId">
-          <el-select v-model="form.appId" :disabled="!!editingId" filterable placeholder="请选择应用" style="width: 100%">
-            <el-option
-              v-for="a in appOptions"
-              :key="a.id"
-              :label="`${a.nameZh} (${a.id})`"
-              :value="a.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="平台" prop="platform">
-          <el-select v-model="form.platform" :disabled="!!editingId" style="width: 100%">
-            <el-option v-for="p in platforms" :key="p.value" :label="p.label" :value="p.value" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="来源" prop="source">
-          <el-select v-model="form.source" :disabled="!!editingId" style="width: 100%">
-            <el-option v-for="s in sourceOptions" :key="s.value" :label="s.label" :value="s.value" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="状态" prop="status">
-          <el-select v-model="form.status" style="width: 100%">
-            <el-option v-for="s in statusOptions" :key="s.value" :label="s.label" :value="s.value" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="中文名称" prop="nameZh">
-          <el-input v-model="form.nameZh" placeholder="如 登录按钮" />
-        </el-form-item>
-        <el-form-item label="英文名称" prop="nameEn">
-          <el-input v-model="form.nameEn" placeholder="流程引用 key，如 login_btn" />
-        </el-form-item>
-        <el-form-item label="归属页面">
-          <el-select
-            v-model="form.pageId"
-            clearable
-            filterable
-            allow-create
-            default-first-option
-            placeholder="选页面/弹窗，或输入 pageId"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="p in pageOptions"
-              :key="p.pageId"
-              :label="`${p.nameZh} (${p.pageId})`"
-              :value="p.pageId"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="模块标签">
-          <el-input v-model="form.moduleTag" placeholder="如 设置（仅分组展示）" />
-        </el-form-item>
-        <el-form-item label="视觉说明">
-          <el-input v-model="form.visualHint" maxlength="120" show-word-limit placeholder="如 左上角三横线汉堡" />
-        </el-form-item>
-        <el-form-item label="描述">
-          <el-input v-model="form.description" type="textarea" :rows="2" />
-        </el-form-item>
-        <el-form-item label="怎么找控件" prop="locatorValue" required>
-          <div class="locator-panel">
-            <p class="locator-guide">
-              <b>怎么用：</b>左侧圆点选「主定位」（执行时优先用）；下面每个框都能填备用方案。
-              主定位找不到时，会自动按顺序再试有填值的备用。想用 XPath？点 XPath 那一行的圆点即可。
-            </p>
+    <el-dialog
+      v-model="dialogVisible"
+      class="element-dialog"
+      :title="editingId ? '编辑元素' : '新增元素'"
+      width="720px"
+      destroy-on-close
+      @closed="elementFormTab = 'basic'"
+    >
+      <el-tabs v-model="elementFormTab" class="element-tabs">
+        <el-tab-pane label="基本信息" name="basic" />
+        <el-tab-pane name="locator">
+          <template #label>
+            <span>控件定位</span>
+            <sup v-if="locatorFilledCount" class="tab-badge">{{ locatorFilledCount }}</sup>
+          </template>
+        </el-tab-pane>
+        <el-tab-pane label="高级配置" name="advanced" />
+      </el-tabs>
+
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="88px" class="element-form">
+        <div v-show="elementFormTab === 'basic'" class="tab-pane-body">
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item label="应用" prop="appId">
+                <el-select v-model="form.appId" :disabled="!!editingId" filterable placeholder="请选择应用" style="width: 100%">
+                  <el-option
+                    v-for="a in appOptions"
+                    :key="a.id"
+                    :label="`${a.nameZh} (${a.id})`"
+                    :value="a.id" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="平台" prop="platform">
+                <el-select v-model="form.platform" :disabled="!!editingId" style="width: 100%">
+                  <el-option v-for="p in platforms" :key="p.value" :label="p.label" :value="p.value" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="来源" prop="source">
+                <el-select v-model="form.source" :disabled="!!editingId" style="width: 100%">
+                  <el-option v-for="s in sourceOptions" :key="s.value" :label="s.label" :value="s.value" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="状态" prop="status">
+                <el-select v-model="form.status" style="width: 100%">
+                  <el-option v-for="s in statusOptions" :key="s.value" :label="s.label" :value="s.value" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="中文名称" prop="nameZh">
+                <el-input v-model="form.nameZh" placeholder="如 登录按钮" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="英文名称" prop="nameEn">
+                <el-input v-model="form.nameEn" placeholder="流程引用 key，如 login_btn" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="24">
+              <el-form-item label="归属页面">
+                <el-select
+                  v-model="form.pageId"
+                  clearable
+                  filterable
+                  allow-create
+                  default-first-option
+                  placeholder="选页面/弹窗，或输入 pageId"
+                  style="width: 100%"
+                >
+                  <el-option
+                    v-for="p in pageOptions"
+                    :key="p.pageId"
+                    :label="`${p.nameZh} (${p.pageId})`"
+                    :value="p.pageId"
+                  />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="模块标签">
+                <el-input v-model="form.moduleTag" placeholder="如 设置（仅分组展示）" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="视觉说明">
+                <el-input v-model="form.visualHint" maxlength="120" show-word-limit placeholder="如 左上角三横线汉堡" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="24">
+              <el-form-item label="描述">
+                <el-input v-model="form.description" type="textarea" :rows="3" placeholder="补充说明这个元素的用途、上下文…" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </div>
+
+        <div v-show="elementFormTab === 'locator'" class="tab-pane-body">
+          <p class="locator-guide">
+            点左侧圆点设为「主定位」，执行时优先用。多个框都能填备用，主定位找不到时按顺序再试。
+            要用 XPath 当主定位，点 XPath 那一行的圆点即可。
+          </p>
+          <el-form-item label-width="0" prop="locatorValue" class="locator-form-item">
             <el-radio-group
               v-model="form.locatorType"
               class="locator-radio-group"
@@ -349,80 +392,107 @@
                 v-for="slot in locatorSlots"
                 :key="slot.type"
                 class="locator-slot"
-                :class="{ 'is-primary': form.locatorType === slot.type }"
+                :class="{ 'is-primary': form.locatorType === slot.type, 'is-open': expandedLocatorTypes.has(slot.type) }"
                 @click="selectPrimarySlot(slot.type)"
               >
-                <el-radio :value="slot.type" class="locator-radio" @click.stop>
-                  主定位
-                </el-radio>
+                <el-radio :value="slot.type" class="locator-radio" @click.stop />
                 <div class="locator-slot-body" @click.stop>
-                  <div class="locator-slot-head">
-                    <span class="locator-zh">{{ slot.labelZh }}</span>
-                    <el-tag size="small" type="info" effect="plain">{{ slot.type }}</el-tag>
-                    <el-tag v-if="form.locatorType === slot.type" size="small" type="warning">当前主定位</el-tag>
-                    <el-tag v-else-if="slot.value.trim()" size="small" type="success" effect="plain">备用</el-tag>
+                  <div class="locator-row">
+                    <span class="locator-type">{{ slot.type }}</span>
+                    <el-tag v-if="slot.type === 'accessibilityId'" size="small" type="success" effect="plain">推荐</el-tag>
+                    <el-tag v-if="form.locatorType === slot.type" size="small" type="warning">主定位</el-tag>
+                    <el-input
+                      v-model="slot.value"
+                      class="locator-input"
+                      :placeholder="slot.placeholder"
+                      @input="onSlotValueChange(slot)"
+                    />
+                    <el-button
+                      link
+                      class="locator-chevron"
+                      :class="{ open: expandedLocatorTypes.has(slot.type) }"
+                      @click.stop="toggleLocatorTip(slot.type)"
+                    >
+                      <el-icon><ArrowRight /></el-icon>
+                    </el-button>
                   </div>
-                  <p class="locator-tip">{{ slot.tip }}</p>
-                  <el-input
-                    v-model="slot.value"
-                    type="textarea"
-                    :autosize="{ minRows: slot.type === 'xpath' || slot.type === 'iosClassChain' ? 2 : 1, maxRows: 4 }"
-                    :placeholder="slot.placeholder"
-                    @input="onSlotValueChange(slot)"
-                  />
+                  <p v-if="expandedLocatorTypes.has(slot.type) || form.locatorType === slot.type" class="locator-tip">
+                    {{ slot.tip }}
+                  </p>
                 </div>
               </div>
             </el-radio-group>
-            <div class="locator-extra">
-              <el-select
-                v-model="extraLocatorToAdd"
-                placeholder="还要加其他定位方式？"
-                clearable
-                filterable
-                style="width: 260px"
-                @change="addExtraLocatorSlot"
-              >
-                <el-option
-                  v-for="t in addableLocatorTypes"
-                  :key="t"
-                  :label="locatorMeta(t).labelZh + '（' + t + '）'"
-                  :value="t"
-                />
-              </el-select>
-            </div>
-            <div class="form-hint">
-              列表随机点一项：把下标写成 <code>[X]</code>（默认随机 1～3），或 <code>[X:1-5]</code>。
-              例：<code>.../XCUIElementTypeOther[X]</code>
-            </div>
+          </el-form-item>
+          <el-dropdown
+            v-if="addableLocatorTypes.length"
+            trigger="click"
+            placement="top-start"
+            popper-class="locator-add-popper"
+            @command="addExtraLocatorSlot"
+          >
+            <button type="button" class="locator-add">+ 还要加其他定位方式</button>
+            <template #dropdown>
+              <el-dropdown-menu class="locator-add-menu">
+                <el-dropdown-item v-for="t in addableLocatorTypes" :key="t" :command="t" class="locator-add-item">
+                  <div class="locator-add-item-row">
+                    <span class="locator-add-item-zh">{{ locatorMeta(t).labelZh }}</span>
+                    <code class="locator-add-item-en">{{ t }}</code>
+                  </div>
+                  <p class="locator-add-item-tip">{{ locatorMeta(t).tip }}</p>
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+          <div class="form-hint locator-rand-hint">
+            列表随机点一项：把下标写成 <code>[X]</code>（默认随机 1～3），或 <code>[X:1-5]</code>。
+            例：<code>.../XCUIElementTypeOther[X]</code>
           </div>
-        </el-form-item>
-        <el-form-item label="预览图">
-          <div class="preview-upload">
+        </div>
+
+        <div v-show="elementFormTab === 'advanced'" class="tab-pane-body">
+          <el-form-item label="预览图">
             <el-upload
+              class="preview-drop"
+              drag
               :show-file-list="false"
               accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
               :http-request="onUploadPreview"
             >
-              <el-button :loading="uploadingPreview">上传图片</el-button>
+              <el-icon v-if="!form.previewImage" class="preview-drop-icon"><Upload /></el-icon>
+              <div v-if="!form.previewImage" class="el-upload__text">
+                <em>点击上传图片</em>
+                <div class="preview-hint">选填，方便辨认元素 · 支持 PNG / JPG</div>
+              </div>
+              <el-image
+                v-else
+                :src="previewSrc(form.previewImage)"
+                :preview-src-list="[previewSrc(form.previewImage)]"
+                :preview-teleported="true"
+                :z-index="4000"
+                fit="contain"
+                class="preview-preview"
+                @click.stop
+              />
             </el-upload>
-            <el-button v-perm:delete v-if="form.previewImage" link type="danger" @click="clearPreview">清除</el-button>
-            <span class="preview-hint">选填，方便辨认元素</span>
-          </div>
-          <el-image
-            v-if="form.previewImage"
-            :src="previewSrc(form.previewImage)"
-            :preview-src-list="[previewSrc(form.previewImage)]"
-            :preview-teleported="true"
-            :z-index="4000"
-            fit="contain"
-            class="preview-preview" />
-        </el-form-item>
-        <el-form-item label="默认超时(秒)">
-          <el-input-number v-model="form.defaultTimeoutSec" :min="1" :max="120" />
-        </el-form-item>
-        <el-form-item label="启用">
-          <el-switch v-model="form.enabled" />
-        </el-form-item>
+            <el-button v-perm:delete v-if="form.previewImage" link type="danger" @click="clearPreview">清除预览图</el-button>
+          </el-form-item>
+          <el-form-item label="默认超时">
+            <div class="timeout-row">
+              <el-input-number v-model="form.defaultTimeoutSec" :min="1" :max="120" />
+              <span class="timeout-unit">秒</span>
+            </div>
+            <div class="preview-hint">定位控件最长等待时间（1～120 秒）</div>
+          </el-form-item>
+          <el-form-item label="启用">
+            <div class="enable-box">
+              <div>
+                <div class="enable-title">{{ form.enabled ? '元素已启用' : '元素已停用' }}</div>
+                <div class="preview-hint">关闭后该元素不参与用例执行</div>
+              </div>
+              <el-switch v-model="form.enabled" />
+            </div>
+          </el-form-item>
+        </div>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -702,6 +772,12 @@ function defaultLocatorTypesForPlatform(platform: string): string[] {
 
 const locatorSlots = ref<LocatorSlot[]>([])
 const extraLocatorToAdd = ref('')
+const elementFormTab = ref<'basic' | 'locator' | 'advanced'>('basic')
+const expandedLocatorTypes = ref<Set<string>>(new Set())
+
+const locatorFilledCount = computed(
+  () => locatorSlots.value.filter((s) => s.value.trim()).length
+)
 
 const addableLocatorTypes = computed(() => {
   const used = new Set(locatorSlots.value.map((s) => s.type))
@@ -796,6 +872,13 @@ function addExtraLocatorSlot(type: string) {
   }
   locatorSlots.value.push(makeSlot(type, ''))
   extraLocatorToAdd.value = ''
+}
+
+function toggleLocatorTip(type: string) {
+  const next = new Set(expandedLocatorTypes.value)
+  if (next.has(type)) next.delete(type)
+  else next.add(type)
+  expandedLocatorTypes.value = next
 }
 
 function buildLocatorPayload(): { locatorType: string; locatorValue: string; locatorFallbacks: string } {
@@ -1611,6 +1694,8 @@ watch(
 )
 
 function resetForm() {
+  elementFormTab.value = 'basic'
+  expandedLocatorTypes.value = new Set()
   editingId.value = ''
   Object.assign(form, {
     catalog: 'SHARED',
@@ -1692,13 +1777,21 @@ function openEdit(row: any) {
     enabled: row.enabled !== false
   })
   hydrateLocatorSlots(form.platform, form.locatorType, form.locatorValue, row.locatorFallbacks)
+  elementFormTab.value = 'basic'
+  expandedLocatorTypes.value = new Set()
   dialogVisible.value = true
 }
 
 async function submit() {
   syncPrimaryValueFromSlots()
-  await formRef.value?.validate().catch(() => Promise.reject())
+  try {
+    await formRef.value?.validate()
+  } catch {
+    elementFormTab.value = 'basic'
+    return
+  }
   if (!form.locatorValue.trim()) {
+    elementFormTab.value = 'locator'
     ElMessage.warning('请给「当前主定位」填上定位值，或换一个已有值的方式当主定位')
     return
   }
@@ -2015,15 +2108,10 @@ onMounted(async () => {
 .preview-empty {
   color: #c0c4cc;
 }
-.preview-upload {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
 .preview-hint {
   font-size: 12px;
   color: var(--el-text-color-placeholder);
+  line-height: 1.45;
 }
 .form-hint {
   margin-top: 6px;
@@ -2039,20 +2127,51 @@ onMounted(async () => {
   font-size: 11px;
 }
 
-.locator-panel {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.element-dialog :deep(.el-dialog__body) {
+  padding-top: 8px;
+}
+.element-tabs {
+  margin: 0 0 8px;
+}
+.element-tabs :deep(.el-tabs__header) {
+  margin: 0 0 4px;
+}
+.element-tabs :deep(.el-tabs__content) {
+  display: none;
+}
+.tab-badge {
+  margin-left: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #409eff;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  vertical-align: super;
+}
+.tab-pane-body {
+  padding-top: 8px;
+}
+.element-form :deep(.el-form-item) {
+  margin-bottom: 16px;
+}
+
+.locator-form-item {
+  margin-bottom: 12px;
 }
 .locator-radio-group {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
 }
 .locator-guide {
-  margin: 0;
+  margin: 0 0 12px;
   padding: 10px 12px;
   border-radius: 8px;
   background: #f0f7ff;
@@ -2063,12 +2182,12 @@ onMounted(async () => {
 }
 .locator-slot {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: flex-start;
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1px solid #e5e7eb;
-  background: #fafafa;
+  background: #fff;
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
   cursor: pointer;
   width: 100%;
@@ -2076,51 +2195,125 @@ onMounted(async () => {
   height: auto;
 }
 .locator-slot.is-primary {
-  background: linear-gradient(145deg, #fffbeb 0%, #fef3c7 100%);
+  background: #fffbeb;
   border-color: #f59e0b;
   box-shadow: inset 0 0 0 1px #fcd34d;
 }
 .locator-radio {
-  margin-top: 4px;
+  margin-top: 8px;
   flex-shrink: 0;
-  width: 72px;
+  height: auto;
+}
+.locator-radio :deep(.el-radio__label) {
+  display: none;
 }
 .locator-slot-body {
   flex: 1;
   min-width: 0;
 }
-.locator-slot-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 2px;
-}
-.locator-zh {
-  font-weight: 600;
-  color: #0f172a;
-  font-size: 13px;
-}
-.locator-tip {
-  margin: 0 0 6px;
-  font-size: 12px;
-  color: #64748b;
-  line-height: 1.4;
-}
-.locator-extra {
+.locator-row {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.fb-count {
-  margin-top: 2px;
-  font-size: 11px;
-  color: #b45309;
-  line-height: 1.2;
+.locator-type {
+  flex-shrink: 0;
+  min-width: 118px;
+  font-weight: 600;
+  color: #303133;
+  font-size: 13px;
+}
+.locator-input {
+  flex: 1;
+  min-width: 0;
+}
+.locator-chevron {
+  flex-shrink: 0;
+  padding: 0 2px;
+  color: #909399;
+}
+.locator-chevron :deep(.el-icon) {
+  transition: transform 0.15s;
+}
+.locator-chevron.open :deep(.el-icon) {
+  transform: rotate(90deg);
+}
+.locator-tip {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.4;
+}
+.tab-pane-body :deep(.el-dropdown) {
+  display: block;
+  width: 100%;
+}
+.locator-add {
+  display: block;
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px dashed #d1d5db;
+  border-radius: 8px;
+  background: #fafafa;
+  color: #606266;
+  font-size: 13px;
+  cursor: pointer;
+}
+.locator-add:hover {
+  border-color: #409eff;
+  color: #409eff;
+  background: #f5f9ff;
+}
+.locator-rand-hint {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f5f7fa;
+}
+
+.preview-drop {
+  width: 100%;
+}
+.preview-drop :deep(.el-upload),
+.preview-drop :deep(.el-upload-dragger) {
+  width: 100%;
+}
+.preview-drop :deep(.el-upload-dragger) {
+  padding: 28px 16px;
+}
+.preview-drop-icon {
+  font-size: 28px;
+  color: #409eff;
+  margin-bottom: 8px;
+}
+.timeout-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.timeout-unit {
+  color: #606266;
+  font-size: 13px;
+}
+.enable-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+.enable-title {
+  font-size: 14px;
+  color: #303133;
+  font-weight: 500;
 }
 
 .preview-preview {
-  margin-top: 8px;
+  margin: 0 auto;
   width: 160px;
   height: 120px;
   border: 1px solid var(--app-border);
@@ -2133,5 +2326,58 @@ onMounted(async () => {
 
 .ui-elements :deep(.el-image-viewer__mask) {
   backdrop-filter: blur(2px);
+}
+</style>
+
+<!-- 下拉挂到 body，scoped 套不上 -->
+<style>
+.locator-add-popper.el-popper {
+  padding: 6px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
+  min-width: 360px;
+}
+.locator-add-popper .el-dropdown-menu {
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+.locator-add-popper .el-dropdown-menu__item {
+  display: block;
+  height: auto;
+  line-height: 1.4;
+  padding: 10px 12px;
+  margin: 2px 0;
+  border-radius: 8px;
+  white-space: normal;
+}
+.locator-add-popper .el-dropdown-menu__item:not(.is-disabled):hover,
+.locator-add-popper .el-dropdown-menu__item:focus {
+  background: #f5f9ff;
+  color: inherit;
+}
+.locator-add-item-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.locator-add-item-zh {
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+}
+.locator-add-item-en {
+  font-size: 11px;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.locator-add-item-tip {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.45;
 }
 </style>
