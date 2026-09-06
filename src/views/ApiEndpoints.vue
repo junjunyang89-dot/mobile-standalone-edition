@@ -23,17 +23,43 @@
               <div
                 v-for="p in pagedProjects(cat)"
                 :key="p.project"
-                class="ep-proj"
-                :class="{
-                  active: project === p.project,
-                  'is-empty': !p.total,
-                  'is-missing': p.missing
-                }"
-                @click="pickProject(p.project)"
+                class="ep-proj-block"
               >
-                <span class="ep-proj-name">{{ p.label || p.project }}</span>
-                <span class="ep-proj-num">{{ p.total }}</span>
-                <span v-if="p.pending > 0" class="ep-pending">{{ p.pending }}</span>
+                <div
+                  class="ep-proj"
+                  :class="{
+                    active: project === p.project && !railType,
+                    'is-empty': !p.total,
+                    'is-missing': p.missing
+                  }"
+                  @click="pickProject(p.project)"
+                >
+                  <span class="ep-proj-name">{{ p.label || p.project }}</span>
+                  <span class="ep-proj-num">{{ p.total }}</span>
+                  <span v-if="p.pending > 0" class="ep-pending">{{ p.pending }}</span>
+                </div>
+                <div v-if="project === p.project && p.rails?.length" class="ep-rails">
+                  <div v-for="rail in p.rails" :key="(rail.type || '') + (rail.branch || '')">
+                    <div
+                      class="ep-rail"
+                      :class="{ active: railType === rail.type && railBranch === (rail.branch || '') }"
+                      @click.stop="pickRail(p.project, rail)"
+                    >
+                      {{ rail.label }}
+                      <span class="ep-rail-num">{{ rail.total }}</span>
+                    </div>
+                    <div
+                      v-for="ctl in rail.controllers || []"
+                      :key="ctl.name"
+                      class="ep-ctl"
+                      :class="{ active: controllerFilter === ctl.name && railType === rail.type }"
+                      @click.stop="pickController(p.project, rail, ctl.name)"
+                    >
+                      {{ ctl.name }}
+                      <span class="ep-rail-num">{{ ctl.total }}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
               <div v-if="projectPages(cat) > 1" class="ep-proj-pagination">
                 <el-pagination
@@ -61,6 +87,15 @@
           </button>
 
           <div class="status-chips">
+            <button
+              type="button"
+              class="chip"
+              :class="{ active: todoOnly, actionable: true }"
+              @click="toggleTodoOnly"
+            >
+              只看待办
+              <span class="chip-num">{{ todoCount }}</span>
+            </button>
             <button
               v-for="s in statuses"
               :key="s.code"
@@ -214,7 +249,7 @@
     <el-dialog v-model="readyVisible" :title="readyTitle" width="640px">
       <div v-loading="readyLoading">
         <el-empty v-if="!readyCases.length" description="这个接口下还没有用例" />
-        <div v-for="c in readyCases" :key="c.id" class="ready-item">
+        <div v-for="c in readyCases" :key="c.id" class="ready-item" :class="{ highlight: c.id === focusCaseId }">
           <div class="ready-head">
             <el-tag size="small" :type="c.enabled ? 'success' : 'info'">{{ c.enabled ? '已启用' : '已停用' }}</el-tag>
             <span class="ready-name">{{ c.name }}</span>
@@ -238,6 +273,14 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { WarningFilled } from '@element-plus/icons-vue'
 import { apiClient, type ApiEndpointVo } from '../api'
 
+type EpRail = {
+  type: string
+  label: string
+  branch?: string | null
+  total: number
+  controllers?: Array<{ name: string; total: number }>
+}
+
 type CatNode = {
   key: string
   label: string
@@ -249,6 +292,7 @@ type CatNode = {
     total: number
     pending?: number
     missing?: boolean
+    rails?: EpRail[]
   }>
 }
 
@@ -275,6 +319,11 @@ const project = ref(
 )
 const keyword = ref('')
 const statusFilter = ref('')
+const todoOnly = ref(false)
+const railType = ref('')
+const railBranch = ref('')
+const controllerFilter = ref('')
+const focusCaseId = computed(() => String(route.query.caseId || '').trim())
 const currentPage = ref(1)
 const pageSize = ref(20)
 
@@ -282,11 +331,40 @@ const expandedCat = ref<string | null>(null)
 const projPageByCat = ref<Record<string, number>>({})
 const projPageSize = 10
 
-const visibleRows = computed(() =>
-  statusFilter.value
-    ? allRows.value.filter((r) => r.statusCode === statusFilter.value)
-    : allRows.value
+const actionableCodes = computed(() => new Set(statuses.value.filter((s) => s.actionable).map((s) => s.code)))
+
+const todoCount = computed(() =>
+  allRows.value.filter((r) => r.actionable || actionableCodes.value.has(r.statusCode)).length
 )
+
+function controllerName(handler?: string) {
+  if (!handler) return '未标注 Controller'
+  let h = handler.trim()
+  const slash = h.lastIndexOf('/')
+  if (slash >= 0) h = h.slice(slash + 1)
+  const dot = h.indexOf('.')
+  return dot > 0 ? h.slice(0, dot) : h
+}
+
+const visibleRows = computed(() => {
+  let rows = allRows.value
+  if (railType.value === 'branch') {
+    rows = rows.filter((r) => {
+      const b = String((r as any).sourceBranch || '').trim()
+      return b && (!railBranch.value || b === railBranch.value)
+    })
+  } else if (railType.value === 'master') {
+    rows = rows.filter((r) => !String((r as any).sourceBranch || '').trim())
+  }
+  if (controllerFilter.value) {
+    rows = rows.filter((r) => controllerName((r as any).handler) === controllerFilter.value)
+  }
+  if (statusFilter.value) return rows.filter((r) => r.statusCode === statusFilter.value)
+  if (todoOnly.value) {
+    return rows.filter((r) => r.actionable || actionableCodes.value.has(r.statusCode))
+  }
+  return rows
+})
 
 const tableRows = computed(() => {
   if (!requirementNo.value || reqPathKeys.value.size === 0) return visibleRows.value
@@ -347,13 +425,37 @@ function pagedProjects(cat: CatNode) {
 }
 
 function pick(code: string) {
+  todoOnly.value = false
   statusFilter.value = statusFilter.value === code ? '' : code
+  currentPage.value = 1
+}
+
+function toggleTodoOnly() {
+  todoOnly.value = !todoOnly.value
+  statusFilter.value = ''
   currentPage.value = 1
 }
 
 function pickProject(code: string) {
   project.value = code
+  railType.value = ''
+  railBranch.value = ''
+  controllerFilter.value = ''
   onProjectChange()
+}
+
+function pickRail(code: string, rail: EpRail) {
+  const needLoad = project.value !== code
+  project.value = code
+  railType.value = rail.type
+  railBranch.value = rail.branch || ''
+  controllerFilter.value = ''
+  if (needLoad) onProjectChange()
+}
+
+function pickController(code: string, rail: EpRail, name: string) {
+  pickRail(code, rail)
+  controllerFilter.value = name
 }
 
 async function loadTree() {
@@ -403,11 +505,19 @@ async function load() {
     })
     allRows.value = res.items
     counts.value = res.counts || {}
+    await openFromQuery()
   } catch (e: any) {
     ElMessage.error(e?.message || '加载失败')
   } finally {
     loading.value = false
   }
+}
+
+async function openFromQuery() {
+  const id = String(route.query.endpointId || '').trim()
+  if (!id) return
+  const row = allRows.value.find((r) => r.id === id)
+  if (row) await openReadiness(row)
 }
 
 async function assignToCollection(caseId?: string) {
@@ -571,6 +681,14 @@ watch(
   }
 )
 
+watch(
+  () => route.query.endpointId,
+  async (id) => {
+    if (!id || loading.value) return
+    await openFromQuery()
+  }
+)
+
 watch([tableRows, pageSize], () => {
   const maxPage = Math.max(1, Math.ceil(tableRows.value.length / pageSize.value) || 1)
   if (currentPage.value > maxPage) currentPage.value = maxPage
@@ -649,6 +767,46 @@ watch([tableRows, pageSize], () => {
 .ep-cat-num {
   color: #bfbfbf;
   font-size: 12px;
+}
+
+.ep-proj-block {
+  margin-bottom: 2px;
+}
+
+.ep-rails {
+  padding: 2px 0 8px 14px;
+}
+
+.ep-rail,
+.ep-ctl {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: #595959;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.ep-rail {
+  font-weight: 600;
+  color: #ad2102;
+}
+
+.ep-rail.active,
+.ep-ctl.active {
+  background: #fff1f0;
+  color: #cf1322;
+}
+
+.ep-ctl {
+  padding-left: 16px;
+  color: #8c8c8c;
+}
+
+.ep-rail-num {
+  color: #bfbfbf;
 }
 
 .ep-proj {
@@ -783,6 +941,13 @@ watch([tableRows, pageSize], () => {
   line-height: 1.7;
   color: #8c8c8c;
   margin: 0 0 12px;
+}
+
+.ready-item.highlight {
+  background: #fff7e6;
+  margin: 0 -12px;
+  padding: 10px 12px;
+  border-radius: 6px;
 }
 
 .ready-item {

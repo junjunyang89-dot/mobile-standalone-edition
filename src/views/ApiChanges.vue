@@ -25,6 +25,11 @@
       </div>
 
       <el-form v-if="mode === 'dir'" :inline="true" class="filter-bar">
+        <el-form-item label="项目">
+          <el-select v-model="project" filterable clearable style="width: 200px" placeholder="不选则不同步清单">
+            <el-option v-for="p in projects" :key="'d-' + p.code" :label="p.name || p.code" :value="p.code" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="基线目录">
           <el-select v-model="baseDir" filterable allow-create style="width: 320px"
                      placeholder="选已保存的目录，或直接粘路径">
@@ -110,25 +115,50 @@
           同步是跟着分析自动做的，但不显示出来的话「同步没同步过」只能靠猜，
           而猜错的方向是「以为同步了其实没有」——那会让人拿着上一版的清单去排测试
         -->
-        <div v-if="report.catalogSync" class="catalog-sync">
-          已同步到<a class="catalog-link" @click="goCatalog">接口清单</a>：
-          <template v-if="syncTotal > 0">
-            <b v-if="report.catalogSync.created">新增 {{ report.catalogSync.created }}</b>
-            <b v-if="report.catalogSync.updated">标记变更 {{ report.catalogSync.updated }}</b>
-            <b v-if="report.catalogSync.deprecated">标废弃 {{ report.catalogSync.deprecated }}</b>
+        <div
+          v-if="report.catalogSync"
+          class="catalog-sync"
+          :class="{ skipped: report.catalogSync.skipped }"
+        >
+          <template v-if="report.catalogSync.skipped">
+            接口没有进清单：{{ report.catalogSync.reason || '这次同步被跳过了' }}
+            <a v-if="mode === 'dir'" class="catalog-link" @click="scrollToForm">选一个项目再分析一次</a>
           </template>
-          <span v-else>本次没有接口变更，清单里上一轮的标记已清空</span>
+          <template v-else>
+            已同步到<a class="catalog-link" @click="goCatalog">接口清单</a>：
+            <template v-if="syncTotal > 0">
+              <b v-if="report.catalogSync.created">新增 {{ report.catalogSync.created }}</b>
+              <b v-if="report.catalogSync.updated">标记变更 {{ report.catalogSync.updated }}</b>
+              <b v-if="report.catalogSync.deprecated">标废弃 {{ report.catalogSync.deprecated }}</b>
+            </template>
+            <span v-else>本次没有接口变更，清单里上一轮的标记已清空</span>
+          </template>
+        </div>
+
+        <div v-if="report.requirementLink" class="req-link">
+          已挂到需求
+          <b v-for="k in reqKeys" :key="k">{{ k }}</b>
+          ，关联 {{ report.requirementLink.linked ?? 0 }} 个接口
         </div>
 
         <!-- 变更牵动哪些已有用例需复查：断言取了变更字段、或读写了改结构的表。
              它们现在可能还显示绿，其实已经不对——这是上线同步最容易漏的一环 -->
-        <div v-if="review && review.count > 0" class="case-review">
+        <div v-if="review" class="case-review" :class="{ empty: !review.count }">
           <div class="cr-head">
             <el-icon><WarningFilled /></el-icon>
-            <b>{{ review.count }} 条已有用例可能失效，需复查</b>
+            <b v-if="review.count > 0">{{ review.count }} 条已有用例可能失效，需复查</b>
+            <b v-else>没有用例直接命中这次变更</b>
           </div>
           <div class="cr-hint">{{ review.hint }}</div>
-          <el-table :data="review.cases" size="small" border style="margin-top:8px">
+          <el-table
+            v-if="review.count > 0"
+            :data="review.cases"
+            size="small"
+            border
+            style="margin-top:8px"
+            class="cr-table"
+            @row-click="goReviewCase"
+          >
             <el-table-column prop="name" label="用例" min-width="160" show-overflow-tooltip />
             <el-table-column label="接口" min-width="200">
               <template #default="{ row }"><span class="cr-ep">{{ row.method }} {{ row.path }}</span></template>
@@ -141,6 +171,44 @@
                   </el-tag>
                   {{ r.detail }}
                 </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="" width="88" align="right">
+              <template #default>
+                <el-button link type="primary" size="small">去补断言</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+        <div v-if="report.mustTest?.items?.length" id="sec-must" class="must-test">
+          <div class="cr-head">
+            <b>必测清单</b>
+            <el-tag size="small" type="danger">P0 {{ report.mustTest.p0 }}</el-tag>
+            <el-tag size="small" type="warning">P1 {{ report.mustTest.p1 }}</el-tag>
+            <el-tag size="small" type="info">P2 {{ report.mustTest.p2 }}</el-tag>
+          </div>
+          <div class="cr-hint">{{ report.mustTest.hint }}</div>
+          <el-table :data="report.mustTest.items" size="small" border style="margin-top:8px">
+            <el-table-column label="优先级" width="72" align="center">
+              <template #default="{ row }">
+                <el-tag size="small" :type="row.priority === 'P0' ? 'danger' : row.priority === 'P1' ? 'warning' : 'info'">
+                  {{ row.priority }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="接口 / 对象" min-width="220">
+              <template #default="{ row }">
+                <span v-if="row.httpMethod" class="cr-ep">{{ row.httpMethod }} {{ row.path }}</span>
+                <span v-else>{{ row.title }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="title" label="测什么" min-width="160" show-overflow-tooltip />
+            <el-table-column prop="why" label="为什么必测" min-width="180" show-overflow-tooltip />
+            <el-table-column label="接口测试要注意什么" min-width="320">
+              <template #default="{ row }">
+                <ul class="must-notes">
+                  <li v-for="(n, i) in row.notes" :key="i">{{ n }}</li>
+                </ul>
               </template>
             </el-table-column>
           </el-table>
@@ -421,6 +489,30 @@
           </el-button>
         </template>
 
+        <template v-if="report.concurrencyRisks?.length">
+          <div id="sec-concurrency" class="section-head danger">
+            <span class="section-no">5b</span>
+            <span class="section-name">并发风险（{{ report.concurrencyRisks.length }}）</span>
+          </div>
+          <p class="section-sub">依据是建表语句里的唯一索引、计数列，以及 Redis key。没录 DDL 的表扫不出来，不是没风险。</p>
+          <div
+            v-for="(c, i) in report.concurrencyRisks"
+            :key="'cc' + i"
+            class="finding-card"
+            :class="{ risk: c.level === 'RISK' }"
+          >
+            <div class="finding-head">
+              <el-tag size="small" :type="c.level === 'RISK' ? 'danger' : 'info'" effect="plain">
+                {{ c.level === 'RISK' ? '重点' : '了解' }}
+              </el-tag>
+              <span class="finding-target">{{ c.httpMethod }} {{ c.path }}</span>
+            </div>
+            <div class="finding-title">{{ c.title }}</div>
+            <div v-if="c.howToTest" class="finding-basis">怎么测：{{ c.howToTest }}</div>
+            <div v-if="c.basis" class="finding-basis">依据：{{ c.basis }}</div>
+          </div>
+        </template>
+
         <template v-if="report.tables.length">
           <div id="sec-tables" class="section-head">
             <span class="section-no">6</span>
@@ -431,7 +523,11 @@
             建表语句里本来就写着）。没录过的点一下就能补。
           </p>
           <el-table :data="report.tables" size="small" border>
-            <el-table-column prop="table" label="表名" width="240" />
+            <el-table-column label="表名" width="240">
+              <template #default="{ row }">
+                <a class="catalog-link" @click="openTableImpact(row.table)">{{ row.table }}</a>
+              </template>
+            </el-table-column>
             <el-table-column label="结构变更" width="100" align="center">
               <template #default="{ row }">
                 <el-tag v-if="row.ddl" size="small" type="warning">DDL</el-tag>
@@ -507,6 +603,26 @@
       </el-table>
     </el-dialog>
 
+    <el-drawer v-model="impactVisible" :title="impactTitle" size="520px">
+      <div v-loading="impactLoading">
+        <p v-if="impactHint" class="cr-hint">{{ impactHint }}</p>
+        <el-empty v-if="!impactLoading && !impactEndpoints.length" description="清单里还没有接口挂这张表" />
+        <el-table v-else :data="impactEndpoints" size="small" border>
+          <el-table-column label="接口" min-width="220">
+            <template #default="{ row }">
+              <span class="cr-ep">{{ row.httpMethod }} {{ row.path }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="caseCount" label="用例" width="70" align="center" />
+          <el-table-column label="" width="72">
+            <template #default="{ row }">
+              <el-button link type="primary" size="small" @click="goEndpoint(row.id)">看清单</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </el-drawer>
+
     <!-- 表结构：项目里一个 .sql 都没有，建表语句只能从数据库导出来贴 -->
     <el-dialog v-model="schemaVisible" title="录入表结构" width="820px" destroy-on-close>
       <el-form label-width="80px">
@@ -574,12 +690,13 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { apiClient } from '@/api'
 import { WarningFilled } from '@element-plus/icons-vue'
 
 const router = useRouter()
+const route = useRoute()
 
 /** branch=从 git 仓库读分支比；dir=两个本地目录直接比（拿不到内网时用） */
 const mode = ref<'branch' | 'dir'>('branch')
@@ -600,6 +717,7 @@ async function analyzeDirs() {
   report.value = null
   try {
     report.value = await apiClient.analyzeApiChangeDirs({
+      project: project.value || undefined,
       baseDir: baseDir.value.trim(),
       headDir: headDir.value.trim()
     })
@@ -620,17 +738,71 @@ const syncTotal = computed(() => {
 })
 
 function goCatalog() {
-  router.push({ path: '/api-endpoints', query: { project: report.value?.project } })
+  router.push({ path: '/api-endpoints', query: { project: report.value?.project || project.value } })
+}
+
+function goEndpoint(endpointId?: string) {
+  if (!endpointId) return
+  router.push({
+    path: '/api-endpoints',
+    query: { project: report.value?.project || project.value, endpointId }
+  })
+}
+
+function goReviewCase(row: any) {
+  router.push({
+    path: '/api-endpoints',
+    query: {
+      project: row.project || report.value?.project || project.value,
+      endpointId: row.endpointId,
+      caseId: row.id
+    }
+  })
+}
+
+function scrollToForm() {
+  document.querySelector('.filter-bar')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+const reqKeys = computed(() => {
+  const keys = report.value?.requirementLink?.requirements
+  return Array.isArray(keys) ? keys : []
+})
+
+const impactVisible = ref(false)
+const impactLoading = ref(false)
+const impactTitle = ref('')
+const impactHint = ref('')
+const impactEndpoints = ref<any[]>([])
+
+async function openTableImpact(table: string) {
+  if (!table) return
+  impactVisible.value = true
+  impactLoading.value = true
+  impactTitle.value = `表 ${table} 牵动哪些接口`
+  impactHint.value = ''
+  impactEndpoints.value = []
+  try {
+    const r = await apiClient.getTableImpact(table, report.value?.project || project.value || undefined)
+    impactHint.value = r.hint || ''
+    impactEndpoints.value = r.endpoints || []
+  } catch (e: any) {
+    impactHint.value = e?.message || '查询失败'
+  } finally {
+    impactLoading.value = false
+  }
 }
 
 const statCards = computed(() => {
   const r: any = report.value || {}
   return [
+    { key: 'sec-must', label: '必测项', value: (r.mustTest?.items || []).length, danger: true },
     { key: 'sec-breaking', label: '可能不兼容', value: breakingCount.value, danger: true },
     { key: 'sec-endpoints', label: '接口变更', value: (r.endpoints || []).length, danger: false },
     { key: 'sec-dtos', label: '返回体变更', value: (r.orphanDtos || []).length, danger: false },
     { key: 'sec-other', label: '其它影响', value: (r.otherChanges || []).length, danger: false },
     { key: 'sec-findings', label: '安全/设计', value: (r.findings || []).length, danger: true },
+    { key: 'sec-concurrency', label: '并发风险', value: (r.concurrencyRisks || []).length, danger: true },
     { key: 'sec-tables', label: '涉及的表', value: (r.tables || []).length, danger: false }
   ]
 })
@@ -780,15 +952,30 @@ const review = ref<any | null>(null)
 
 // 报告一变就重算"哪些已有用例可能失效"。从报告里提出变更字段和变更表——
 // 字段散在每个接口的 fields/bodyFields 里，表在 report.tables
+function fieldNameOf(f: any): string {
+  const raw = f?.name || f?.field || ''
+  if (raw) return String(raw)
+  const path = String(f?.path || '')
+  const segs = path.replace(/^\$/, '').split(/[.\[\]]/).map((s: string) => s.trim()).filter(Boolean)
+  return segs.filter((s: string) => !/^\d+$/.test(s)).pop() || ''
+}
+
 watch(report, async (r) => {
   review.value = null
   if (!r || !r.endpoints?.length) return
   const fields = new Set<string>()
   for (const e of r.endpoints) {
-    for (const f of [...(e.fields || []), ...(e.bodyFields || [])]) {
+    const changed = [
+      ...(e.fields || []),
+      ...(e.bodyFields || []),
+      ...(e.responseFields || []),
+      ...(e.requestFields || [])
+    ]
+    for (const f of changed) {
       // 只有删/改类型的字段才会让老用例失效；纯新增不影响已有断言
-      if ((f.changeType === 'REMOVED' || f.changeType === 'TYPE_CHANGED') && (f.name || f.field)) {
-        fields.add(f.name || f.field)
+      if (f.changeType === 'REMOVED' || f.changeType === 'TYPE_CHANGED') {
+        const name = fieldNameOf(f)
+        if (name) fields.add(name)
       }
     }
   }
@@ -986,7 +1173,12 @@ async function loadProjects() {
     const rows = await apiClient.getApiChangeProjects()
     projects.value = Array.isArray(rows) ? rows : []
     const first = projects.value.find((p) => p.ready)
-    if (first) {
+    const want = String(route.query.project || '')
+    const fromQuery = projects.value.find((p) => p.code === want)
+    if (fromQuery) {
+      project.value = fromQuery.code
+      await onProjectChange()
+    } else if (first) {
       project.value = first.code
       await onProjectChange()
     }
@@ -1056,9 +1248,24 @@ onMounted(() => {
   font-size: 13px;
 }
 
+.catalog-sync.skipped {
+  background: var(--el-color-warning-light-9);
+  border-color: var(--el-color-warning-light-5);
+}
+
 .catalog-sync b {
   margin-right: 10px;
   font-weight: 600;
+}
+
+.req-link {
+  margin: 8px 0 4px;
+  font-size: 13px;
+  color: var(--el-text-color-regular);
+}
+
+.req-link b {
+  margin: 0 4px;
 }
 
 .catalog-link {
@@ -1529,9 +1736,16 @@ onMounted(() => {
   line-height: 1.5;
 }
 
+.must-test{margin:12px 0;padding:12px 14px;background:#fff1f0;border:1px solid #ffa39e;border-radius:8px}
+.must-test .cr-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.must-notes{margin:0;padding-left:18px;font-size:12.5px;line-height:1.55;color:#595959}
+.must-notes li{margin:2px 0}
 .case-review{margin:12px 0;padding:12px 14px;background:#fff7e6;border:1px solid #ffe0a3;border-radius:8px}
+.case-review.empty{background:#f6ffed;border-color:#b7eb8f}
+.case-review.empty .cr-head{color:#389e0d}
 .case-review .cr-head{display:flex;align-items:center;gap:6px;color:#c67a13;font-size:14px}
 .case-review .cr-hint{color:#8a6d3b;font-size:12.5px;margin:4px 0 2px}
 .case-review .cr-ep{font-family:monospace;font-size:12.5px;color:#606266}
 .case-review .cr-reason{margin:2px 0;font-size:12.5px}
+.cr-table{cursor:pointer}
 </style>

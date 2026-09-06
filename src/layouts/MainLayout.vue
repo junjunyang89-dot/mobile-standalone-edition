@@ -23,6 +23,7 @@
             <span>主菜单</span>
           </template>
           <el-menu-item index="/home">工作台</el-menu-item>
+          <el-menu-item index="/app-portal">APP 门户</el-menu-item>
           <el-menu-item index="/codewords-agent">AI助手</el-menu-item>
         </el-sub-menu>
 
@@ -408,6 +409,7 @@ const defaultOpeneds = computed(() => {
 
 const titleMap: Record<string, string> = {
   '/home': '工作台',
+  '/app-portal': 'APP 门户',
   '/tasks': 'APP测试任务',
   '/codewords-agent': 'AI助手',
   '/ui-elements': '元素管理',

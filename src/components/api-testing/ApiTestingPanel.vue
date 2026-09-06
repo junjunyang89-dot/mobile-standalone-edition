@@ -76,6 +76,8 @@
       </div>
     </div>
 
+    <MustTestBoard @select="onMustTest" />
+
     <div class="at-grid">
       <div class="at-panel">
         <div class="panel-bar">
@@ -131,6 +133,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheck, CircleClose, Document, Timer, VideoPlay } from '@element-plus/icons-vue'
 import { apiClient } from '@/api'
+import MustTestBoard, { type MustTestItem } from './MustTestBoard.vue'
 
 defineProps<{
   variant?: 'embed' | 'page'
@@ -238,6 +241,16 @@ async function runAll() {
   } finally {
     running.value = false
   }
+}
+
+function onMustTest(item: MustTestItem) {
+  router.push({
+    path: '/api-collections',
+    query: {
+      path: item.path || undefined,
+      method: item.httpMethod || undefined
+    }
+  })
 }
 
 function goCases(project?: string) {

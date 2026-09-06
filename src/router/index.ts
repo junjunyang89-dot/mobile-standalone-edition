@@ -16,6 +16,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '工作台' }
       },
       {
+        path: 'app-portal',
+        name: 'AppPortal',
+        component: () => import('../views/AppPortal.vue'),
+        meta: { title: 'APP 门户' }
+      },
+      {
         path: 'devices',
         name: 'Devices',
         component: () => import('../views/Devices.vue'),

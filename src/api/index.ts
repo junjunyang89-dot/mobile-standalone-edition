@@ -75,7 +75,6 @@ export interface ApiEndpointVo {
   actionable: boolean
   hasCaptureMeta?: boolean
   hasDocMeta?: boolean
-  sourceBranch?: string
 }
 
 export interface PlatformUserVo {
@@ -2349,6 +2348,26 @@ class ApiClient {
     })
   }
 
+  async getAppPortal() {
+    return this.request<{ groups: Array<{ key: string; label: string; links: any[] }> }>('/app-portal')
+  }
+  async saveAppPortalLink(body: {
+    id?: string
+    groupKey: string
+    title: string
+    url: string
+    remark?: string
+    sortOrder?: number
+  }) {
+    return this.request<{ ok: boolean; id: string }>('/app-portal', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+  async deleteAppPortalLink(id: string) {
+    return this.request<{ ok: boolean }>(`/app-portal/${id}`, { method: 'DELETE' })
+  }
+
   /** 接口测试统计面板：KPI + Recent Runs + Collections */
   async getApiTestStats() {
     return this.request<{
@@ -2572,6 +2591,9 @@ class ApiClient {
   async getTableImpact(table: string, project?: string) {
     const q = project ? `?project=${encodeURIComponent(project)}` : ''
     return this.request<any>(`/table-impact/${encodeURIComponent(table)}${q}`)
+  }
+  async getTableImpacts(body: { tables: string[]; project?: string }) {
+    return this.request<any>('/table-impact', { method: 'POST', body: JSON.stringify(body) })
   }
   async getCaseReview(body: { project?: string; changedFields?: string[]; changedTables?: string[] }) {
     return this.request<any>('/case-review', { method: 'POST', body: JSON.stringify(body) })

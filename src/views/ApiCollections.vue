@@ -5,10 +5,10 @@
       <aside class="nav-panel">
         <div class="scope-tabs">
           <button type="button" class="scope-tab" :class="{ active: scope === 'TEST' }" @click="switchScope('TEST')">
-            测试环境
+            分支用例
           </button>
           <button type="button" class="scope-tab" :class="{ active: scope === 'LIVE' }" @click="switchScope('LIVE')">
-            生产环境
+            master 用例
           </button>
         </div>
         <div class="nav-tree-wrap">
@@ -69,8 +69,8 @@
                 {{ selectedInterface.method }}
               </span>
               <span v-if="!selectedInterface && selectedCollection.requirementNo" class="pill pill-req">需求单接口</span>
-              <span v-else-if="!selectedInterface && selectedCollection.sourceBranch" class="pill pill-req">分支对比分析</span>
-              <span class="pill pill-env">{{ scope === 'TEST' ? '测试环境' : '生产环境' }}</span>
+              <span v-else-if="!selectedInterface && selectedCollection.sourceBranch" class="pill pill-req">分支涉及的接口用例</span>
+              <span class="pill pill-env">{{ scope === 'TEST' ? '分支用例' : 'master 用例' }}</span>
               <span
                 v-if="!selectedInterface && collectionStatusTag"
                 class="pill"
@@ -221,8 +221,8 @@
         </el-form-item>
         <el-form-item label="范围">
           <el-radio-group v-model="form.scope">
-            <el-radio value="TEST">测试（本版/本单）</el-radio>
-            <el-radio value="LIVE">生产（master 回归）</el-radio>
+            <el-radio value="TEST">分支涉及的接口用例</el-radio>
+            <el-radio value="LIVE">master 接口用例</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item v-if="form.scope === 'TEST'" label="需求单">
@@ -448,6 +448,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { FolderOpened, Plus, VideoPlay } from '@element-plus/icons-vue'
 import { apiClient } from '../api'
 import KvTable, { type KvRow } from '../components/KvTable.vue'
+import type { MustTestItem } from '../components/api-testing/MustTestBoard.vue'
 
 type TreeNode = {
   nodeKey: string
@@ -749,6 +750,30 @@ const collectionTitle = computed(() => {
   if (c.sourceBranch) return c.sourceBranch
   return collectionDisplayName(c)
 })
+
+const currentProject = computed(() => {
+  const q = String(route.query.project || '').trim()
+  return (
+    selectedCollection.value?.project ||
+    selectedController.value?.code ||
+    q ||
+    undefined
+  )
+})
+
+async function onMustTestSelect(item: MustTestItem) {
+  if (!item.path) return
+  const node = findTreeNode((n) => {
+    if (!n.path) return false
+    const methodOk = !item.httpMethod || !n.method || n.method.toUpperCase() === item.httpMethod.toUpperCase()
+    return methodOk && (n.path === item.path || n.path.endsWith(item.path) || item.path.endsWith(n.path))
+  })
+  if (node) {
+    await selectTreeNode(node)
+    return
+  }
+  ElMessage.info(`左侧树里还没有 ${item.httpMethod || ''} ${item.path}，先在清单生成用例或归入集合`)
+}
 
 const collectionStatusTag = computed(() => {
   const c = selectedCollection.value
@@ -1798,6 +1823,19 @@ onMounted(async () => {
     if (reqNo && treeData.value.length) {
       const node = findTreeNode((n) => n.kind === 'collection' && (n.requirementNo === reqNo || n.label === reqNo))
       if (node) await selectTreeNode(node)
+    }
+    const qPath = String(route.query.path || '').trim()
+    const qMethod = String(route.query.method || '').trim()
+    if (qPath) {
+      await onMustTestSelect({
+        priority: '',
+        kind: 'ENDPOINT',
+        httpMethod: qMethod,
+        path: qPath,
+        title: '',
+        why: '',
+        notes: []
+      })
     }
   } catch (e: any) {
     ElMessage.error(e?.message || '页面初始化失败')
