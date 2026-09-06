@@ -40,7 +40,7 @@
 
       <div v-else-if="running" class="frw-running">
         <el-progress :percentage="100" :indeterminate="true" :duration="3" :show-text="false" />
-        <span>正在执行，第 {{ steps.length }} 步…（这个弹窗会自己刷新，可以放着不管）</span>
+        <span>{{ runningLabel }}</span>
       </div>
 
       <!-- 步骤流水：跑的时候是进度，跑完是回放 -->
@@ -77,7 +77,14 @@
       </div>
     </div>
 
-    <el-dialog v-model="previewVisible" width="440px" append-to-body title="步骤截图">
+    <el-dialog
+      v-model="previewVisible"
+      width="440px"
+      append-to-body
+      :z-index="6200"
+      title="步骤截图"
+      @closed="revokePreview"
+    >
       <img v-if="previewSrc" :src="previewSrc" class="frw-preview-img" alt="步骤截图" />
     </el-dialog>
   </el-dialog>
@@ -173,8 +180,23 @@ const dialogTitle = computed(() => {
   return props.flowName ? `${kind} · ${props.flowName}` : kind
 })
 
+const lastStepTitle = computed(() => {
+  const last = steps.value[steps.value.length - 1]
+  return String(last?.step || '').trim()
+})
+
+const runningLabel = computed(() => {
+  if (!steps.value.length) {
+    return '正在准备执行…（步骤出来后会自己往下刷）'
+  }
+  const name = lastStepTitle.value
+  return name
+    ? `正在执行：${name}（已记录 ${steps.value.length} 条）`
+    : `正在执行，已记录 ${steps.value.length} 条`
+})
+
 const headline = computed(() => {
-  if (running.value) return '还在跑，结果出来会自动刷新'
+  if (running.value) return lastStepTitle.value ? `正在跑：${lastStepTitle.value}` : '还在跑，步骤出来后会自动刷新'
   const s = status.value
   if (s === 'COMPLETED' || s === 'SUCCESS') return '这一遍全部步骤都过了'
   if (s === 'FAILED') return failedStep.value ? '看下面卡在哪一步' : '执行失败，但没记录到具体步骤'
@@ -191,10 +213,23 @@ function isBad(s: Step) {
 const failedIndex = computed(() => steps.value.findIndex(isBad))
 const failedStep = computed(() => (failedIndex.value >= 0 ? steps.value[failedIndex.value] : null))
 
-const failedShot = computed(() => {
-  if (failedShotBroken.value) return ''
-  return shotSrc(failedStep.value?.screenshotUrl)
-})
+const failedShot = ref('')
+
+watch(
+  () => failedStep.value?.screenshotUrl,
+  async (url) => {
+    if (failedShot.value.startsWith('blob:')) {
+      URL.revokeObjectURL(failedShot.value)
+    }
+    failedShot.value = ''
+    if (failedShotBroken.value || !url) return
+    try {
+      failedShot.value = await apiClient.fetchTaskStepScreenshotObjectUrl(url)
+    } catch {
+      failedShot.value = shotSrc(url)
+    }
+  }
+)
 
 const shownSteps = computed(() =>
   onlyProblem.value ? steps.value.filter(isBad) : steps.value
@@ -217,9 +252,24 @@ function shotSrc(url?: string | null) {
   return base + (path.startsWith('/') ? path : '/' + path)
 }
 
-function preview(s: Step) {
-  previewSrc.value = shotSrc(s.screenshotUrl)
-  previewVisible.value = !!previewSrc.value
+function revokePreview() {
+  if (previewSrc.value.startsWith('blob:')) {
+    URL.revokeObjectURL(previewSrc.value)
+  }
+  previewSrc.value = ''
+}
+
+async function preview(s: Step) {
+  const raw = String(s.screenshotUrl || '').trim()
+  if (!raw) return
+  try {
+    revokePreview()
+    previewSrc.value = await apiClient.fetchTaskStepScreenshotObjectUrl(raw)
+    previewVisible.value = !!previewSrc.value
+  } catch (e: any) {
+    previewSrc.value = shotSrc(raw)
+    previewVisible.value = !!previewSrc.value
+  }
 }
 
 function openFullReport() {
@@ -253,6 +303,10 @@ function start() {
   task.value = null
   steps.value = []
   failedShotBroken.value = false
+  if (failedShot.value.startsWith('blob:')) {
+    URL.revokeObjectURL(failedShot.value)
+  }
+  failedShot.value = ''
   onlyProblem.value = false
   startedAt.value = Date.now()
   now.value = Date.now()
@@ -264,6 +318,11 @@ function stop() {
   if (timer) {
     window.clearTimeout(timer)
     timer = undefined
+  }
+  revokePreview()
+  if (failedShot.value.startsWith('blob:')) {
+    URL.revokeObjectURL(failedShot.value)
+    failedShot.value = ''
   }
 }
 
