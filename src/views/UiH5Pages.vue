@@ -137,6 +137,7 @@
         <el-form-item label="鉴权方式">
           <el-select v-model="form.authType" style="width: 100%">
             <el-option label="URL 拼 token（TOKEN_QUERY）" value="TOKEN_QUERY" />
+            <el-option label="Cookie 登录态（TOKEN_COOKIE）" value="TOKEN_COOKIE" />
             <el-option label="无（NONE）" value="NONE" />
             <el-option label="手动浏览器登录（MANUAL）" value="MANUAL" />
           </el-select>
@@ -151,6 +152,25 @@
             show-password
             placeholder="仅存本地库，勿提交 Git"
           />
+        </el-form-item>
+        <el-form-item v-if="form.authType === 'TOKEN_COOKIE'" label="Cookie 登录态">
+          <el-input
+            v-model="form.authCookies"
+            type="textarea"
+            :rows="3"
+            placeholder='{"PVP_APP_TOKEN":"...","PVP_APP_STEAMID":"...","PVP_APP_USERID":"..."}'
+          />
+          <div class="tip">
+            有些活动页的登录态在 Cookie 里而不是 URL 上，而且要好几个都在才认——
+            只给 token 页面会停在「去登录」，且不报任何错。
+            从已登录的 WebView 里拷，或抓包看请求头。
+          </div>
+        </el-form-item>
+        <el-form-item v-if="form.authType === 'TOKEN_COOKIE'" label="Cookie 域">
+          <el-input v-model="form.cookieDomain" placeholder="留空按页面域名自动推导" />
+          <div class="tip">
+            域不匹配时浏览器会直接丢弃 Cookie，表现同样是「未登录」且无报错。一般留空即可。
+          </div>
         </el-form-item>
         <el-form-item label="排序">
           <el-input-number v-model="form.sortOrder" :min="0" :max="9999" />
@@ -199,6 +219,8 @@ const form = reactive({
   authType: 'TOKEN_QUERY',
   authKey: 'token',
   authToken: '',
+  authCookies: '',
+  cookieDomain: '',
   enabled: true,
   sortOrder: 100
 })
@@ -294,6 +316,8 @@ function openCreate() {
     authType: 'TOKEN_QUERY',
     authKey: 'token',
     authToken: '',
+    authCookies: '',
+    cookieDomain: '',
     enabled: true,
     sortOrder: 100
   })
@@ -311,6 +335,8 @@ function openEdit(row: any) {
     authType: row.authType || 'TOKEN_QUERY',
     authKey: row.authKey || 'token',
     authToken: row.authToken || '',
+    authCookies: row.authCookies || '',
+    cookieDomain: row.cookieDomain || '',
     enabled: row.enabled !== false,
     sortOrder: row.sortOrder ?? 100
   })
@@ -321,6 +347,29 @@ async function saveForm() {
   if (!form.name.trim() || !form.url.trim()) {
     ElMessage.warning('请填写名称和 URL')
     return
+  }
+  // 存之前就把格式问题挡住。存进去坏格式的话，症状是页面「未登录」——
+  // 跟没配、跟 token 过期长得一模一样，回头得从头查一遍
+  if (form.authType === 'TOKEN_COOKIE') {
+    const raw = form.authCookies.trim()
+    if (!raw) {
+      ElMessage.warning('Cookie 登录态不能为空，否则页面会停在未登录')
+      return
+    }
+    try {
+      const parsed = JSON.parse(raw)
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        ElMessage.warning('Cookie 登录态要是 JSON 对象，形如 {"PVP_APP_TOKEN":"..."}')
+        return
+      }
+      if (!Object.keys(parsed).length) {
+        ElMessage.warning('Cookie 登录态是空对象，等于没配')
+        return
+      }
+    } catch {
+      ElMessage.warning('Cookie 登录态不是合法 JSON，检查引号和逗号')
+      return
+    }
   }
   saving.value = true
   try {
@@ -333,6 +382,8 @@ async function saveForm() {
       authType: form.authType,
       authKey: form.authKey.trim() || 'token',
       authToken: form.authToken.trim() || null,
+      authCookies: form.authCookies.trim() || null,
+      cookieDomain: form.cookieDomain.trim() || null,
       enabled: form.enabled,
       sortOrder: form.sortOrder
     }

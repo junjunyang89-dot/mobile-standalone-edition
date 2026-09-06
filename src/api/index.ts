@@ -2568,6 +2568,15 @@ class ApiClient {
     })
   }
 
+  // ---------- 变更影响：表→接口、变更→需复查用例 ----------
+  async getTableImpact(table: string, project?: string) {
+    const q = project ? `?project=${encodeURIComponent(project)}` : ''
+    return this.request<any>(`/table-impact/${encodeURIComponent(table)}${q}`)
+  }
+  async getCaseReview(body: { project?: string; changedFields?: string[]; changedTables?: string[] }) {
+    return this.request<any>('/case-review', { method: 'POST', body: JSON.stringify(body) })
+  }
+
   async analyzeApiChanges(body: { project: string; baseRef?: string; headRef?: string }) {
     return this.request<any>('/api-changes/analyze', {
       method: 'POST',
@@ -4076,6 +4085,72 @@ class ApiClient {
     return this.request(`/failure-diagnosis/records/${encodeURIComponent(id)}/review${q}`, {
       method: 'POST'
     })
+  }
+
+  // ---------- 功能模块树 ----------
+  async getProjectModuleTree(category?: string, enabledOnly?: boolean) {
+    const qs = new URLSearchParams()
+    if (category) qs.set('category', category)
+    if (enabledOnly != null) qs.set('enabledOnly', String(enabledOnly))
+    const q = qs.toString()
+    return this.request<any[]>(`/project-modules/tree${q ? '?' + q : ''}`)
+  }
+  async saveProjectModule(body: Record<string, unknown>) {
+    return this.request<any>('/project-modules', { method: 'POST', body: JSON.stringify(body) })
+  }
+  async deleteProjectModule(id: string) {
+    return this.request<any>(`/project-modules/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  // ---------- 需求登记 ----------
+  async getRequirements(params: { projectCode?: string; versionId?: string; status?: string; keyword?: string } = {}) {
+    const qs = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => { if (v) qs.set(k, String(v)) })
+    const q = qs.toString()
+    return this.request<any[]>(`/requirements${q ? '?' + q : ''}`)
+  }
+  async saveRequirement(requirement: Record<string, unknown>, moduleIds?: string[]) {
+    return this.request<any>('/requirements', {
+      method: 'POST',
+      body: JSON.stringify({ requirement, moduleIds })
+    })
+  }
+  async deleteRequirement(requirementNo: string) {
+    return this.request<any>(`/requirements/${encodeURIComponent(requirementNo)}`, { method: 'DELETE' })
+  }
+
+  // ---------- PVP 接口签名 ----------
+  async pvpSign(body: { environment?: string; r?: string; t?: string; params: Record<string, string> }) {
+    return this.request<{ a: string; r: string; t: string; s: string; signedRequest: string }>(
+      '/pvp-sign', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  // ---------- 接口响应快照 ----------
+  async getResponseSnapshots(requirementNo?: string) {
+    const q = requirementNo ? `?requirementNo=${encodeURIComponent(requirementNo)}` : ''
+    return this.request<any[]>(`/response-snapshots${q}`)
+  }
+  async promoteResponseSnapshot(body: { sessionId: string; name: string; requirementNo?: string; note?: string }) {
+    return this.request<any>('/response-snapshots/promote', { method: 'POST', body: JSON.stringify(body) })
+  }
+  async diffResponseSnapshot(snapshotId: string, sessionId: string) {
+    return this.request<any>(`/response-snapshots/${encodeURIComponent(snapshotId)}/diff`, {
+      method: 'POST', body: JSON.stringify({ sessionId })
+    })
+  }
+  async deleteResponseSnapshot(snapshotId: string) {
+    return this.request<any>(`/response-snapshots/${encodeURIComponent(snapshotId)}`, { method: 'DELETE' })
+  }
+
+  // ---------- 活动页奖励顺序自动校验（从抓包读接口，不用手抄） ----------
+  async auditRewardOrder(body: { sessionId: string; ladder?: string[][]; aliases?: Record<string, string> }) {
+    return this.request<any>('/reward-audit', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  // ---------- 抓包会话（快照的原料） ----------
+  async getCaptureSessions(requirementNo?: string) {
+    const q = requirementNo ? `?requirementNo=${encodeURIComponent(requirementNo)}` : ''
+    return this.request<any[]>(`/packet-capture/sessions${q}`)
   }
 
 }
