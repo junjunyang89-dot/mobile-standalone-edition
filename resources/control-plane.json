@@ -1,3 +1,3 @@
 {
-  "controlPlaneUrl": "http://192.168.3.107:3000/api"
+  "controlPlaneUrl": "http://192.168.3.107:3080/api"
 }

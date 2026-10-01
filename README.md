@@ -33,7 +33,7 @@ cd /Volumes/MOVESPEED/qa_coding/mobile-standalone-backend
 mvn spring-boot:run
 ```
 
-后端服务运行在：`http://127.0.0.1:3000/api`
+后端服务运行在：`http://127.0.0.1:3080/api`
 
 #### 2. 启动前端（开发模式）
 
@@ -79,7 +79,7 @@ npm run build:mac
 后端项目位置：`/Volumes/MOVESPEED/qa_coding/mobile-standalone-backend`
 
 - **技术栈**: Spring Boot 3.2.0 + MyBatis 3.0.3 + MySQL
-- **API 地址**: `http://127.0.0.1:3000/api`
+- **API 地址**: `http://127.0.0.1:3080/api`
 - **详细文档**: 查看后端项目的 README.md
 
 ## 📝 开发说明
@@ -106,10 +106,10 @@ mvn spring-boot:run
 
 ```bash
 # .env
-VITE_API_BASE_URL=http://127.0.0.1:3000/api
+VITE_API_BASE_URL=http://127.0.0.1:3080/api
 ```
 
-默认使用：`http://127.0.0.1:3000/api`
+默认使用：`http://127.0.0.1:3080/api`
 
 ## 📞 需要帮助？
 

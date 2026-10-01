@@ -604,7 +604,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, ArrowRight, Close, CopyDocument, Refresh, Search, Upload } from '@element-plus/icons-vue'
@@ -1379,6 +1379,20 @@ async function openReadiness(row: ApiEndpointVo) {
   } finally {
     readyLoading.value = false
   }
+  // 从「受影响用例」跳转进来时，滚动到那条高亮用例
+  if (focusCaseId.value) {
+    await nextTick()
+    document.querySelector('.ready-item.highlight')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+}
+
+/** 从对比分析的「受影响用例」跳转过来：自动打开该接口的用例弹窗并高亮目标用例 */
+async function focusAffectedCase() {
+  const epId = String(route.query.endpointId || '').trim()
+  if (!focusCaseId.value || !epId) return
+  const row = allRows.value.find((r) => r.id === epId)
+  if (row) await openReadiness(row)
 }
 
 async function loadReqContext() {
@@ -1496,6 +1510,7 @@ async function submitImportDoc() {
 onMounted(async () => {
   await Promise.all([loadTree(), loadReqContext(), loadUrls()])
   await load()
+  await focusAffectedCase()
 })
 
 watch(

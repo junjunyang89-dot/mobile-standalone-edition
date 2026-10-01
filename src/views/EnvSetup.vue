@@ -1,5 +1,5 @@
 <template>
-  <div class="env-setup">
+  <div class="env-setup" :class="{ 'has-side': showSidePane }">
     <div class="stepper-card">
       <el-steps :active="wizardStep" align-center finish-status="success">
         <el-step title="填写配置" description="当前步骤" />
@@ -147,6 +147,7 @@
       </el-form>
     </el-card>
 
+    <div v-if="showSidePane" class="side-pane">
     <el-card v-if="fileTabs.length" class="files-card" shadow="never" v-loading="filesLoading">
       <div class="files-header">
         <div>
@@ -227,6 +228,7 @@
         </el-button>
       </div>
     </el-card>
+    </div>
   </div>
 </template>
 
@@ -270,6 +272,9 @@ const canRun = computed(
 
 const activeDirty = computed(() => dirtyNames.value.has(activeFile.value))
 const anyDirty = computed(() => dirtyNames.value.size > 0)
+const showSidePane = computed(
+  () => fileTabs.value.length > 0 || filesLoadedEmpty.value || messages.value.length > 0
+)
 
 /** 0 填写配置 → 1 生成中 → 2 查看并修改；Docker 永远是第 4 步占位 */
 const wizardStep = computed(() => {
@@ -503,8 +508,18 @@ onMounted(loadStatus)
   display: flex;
   flex-direction: column;
   gap: 16px;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
   padding: 4px 0 28px;
-  max-width: 1080px;
+  box-sizing: border-box;
+}
+
+.side-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
 }
 
 .stepper-card,
@@ -573,7 +588,7 @@ onMounted(loadStatus)
   color: var(--el-text-color-secondary);
   font-size: 13px;
   line-height: 1.65;
-  max-width: 760px;
+  max-width: 72em;
 }
 
 .status-pill {
@@ -720,7 +735,7 @@ onMounted(loadStatus)
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
   word-break: break-all;
-  max-width: 640px;
+  max-width: none;
 }
 
 .file-tabs {
@@ -784,6 +799,57 @@ onMounted(loadStatus)
 
 .follow-btn {
   flex-shrink: 0;
+}
+
+@media (min-width: 1200px) {
+  .env-setup.has-side {
+    display: grid;
+    grid-template-columns: minmax(420px, 0.95fr) minmax(520px, 1.25fr);
+    grid-template-areas:
+      'stepper stepper'
+      'form side';
+    align-items: start;
+    column-gap: 16px;
+    row-gap: 16px;
+  }
+
+  .env-setup.has-side .stepper-card {
+    grid-area: stepper;
+  }
+
+  .env-setup.has-side .main-card {
+    grid-area: form;
+    position: sticky;
+    top: 0;
+  }
+
+  .env-setup.has-side .side-pane {
+    grid-area: side;
+  }
+
+  .env-setup.has-side .file-editor :deep(textarea) {
+    min-height: min(62vh, 720px);
+  }
+
+  .env-setup.has-side .log {
+    max-height: min(42vh, 480px);
+  }
+}
+
+@media (min-width: 1500px) {
+  .env-setup:not(.has-side) .form-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .env-setup:not(.has-side) .main-card,
+  .env-setup:not(.has-side) .stepper-card {
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+
+  .env-setup.has-side {
+    grid-template-columns: minmax(480px, 0.85fr) minmax(640px, 1.35fr);
+  }
 }
 
 @media (max-width: 860px) {

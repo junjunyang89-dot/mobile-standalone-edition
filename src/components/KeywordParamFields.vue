@@ -243,9 +243,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'pick-h5-url': [paramName: string]
-}>()
-
-const emit = defineEmits<{
   'pick-tap-offset': []
 }>()
 

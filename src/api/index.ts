@@ -1131,7 +1131,7 @@ class ApiClient {
     })
   }
 
-/**
+  /**
    * 真机点选：读当前 WebView 完整 URL（尽量含 hash）。
    * X5 等读不到时 available=false，看 message。
    */
@@ -1143,7 +1143,6 @@ class ApiClient {
       contexts?: string[]
       message?: string
     }>(`/devices/${encodeURIComponent(deviceId)}/inspect/webview-url`)
-  }
   }
 
   /** 真机点选：按相对坐标命中控件，返回推荐 locator 与已匹配元素 */

@@ -23,7 +23,7 @@ cd /Volumes/MOVESPEED/qa_coding/mobile-standalone-backend
 mvn spring-boot:run
 ```
 
-**后端服务地址**: http://127.0.0.1:3000/api
+**后端服务地址**: http://127.0.0.1:3080/api
 
 ---
 
@@ -57,7 +57,7 @@ npm run electron:dev
 
 ## ✅ 验证启动成功
 
-1. **检查后端**: 浏览器访问 http://127.0.0.1:3000/api/health
+1. **检查后端**: 浏览器访问 http://127.0.0.1:3080/api/health
    - 应该返回: `{"status":"ok","timestamp":"..."}`
 
 2. **检查前端**: 浏览器访问 http://localhost:5173
@@ -83,7 +83,7 @@ npm run electron:dev
 ### 后端启动失败
 - 检查 Java 版本: `java -version` (需要 17+)
 - 检查 Maven: `mvn -version` (需要 3.6+)
-- 检查端口 3000 是否被占用
+- 检查端口 3080 是否被占用
 
 ### 前端启动失败
 - 检查 Node.js 版本: `node -version` (需要 18+)
@@ -92,7 +92,7 @@ npm run electron:dev
 
 ### 前端无法连接后端
 - 确认后端服务已启动
-- 检查后端地址是否为 http://127.0.0.1:3000/api
+- 检查后端地址是否为 http://127.0.0.1:3080/api
 - 查看浏览器控制台错误信息
 
 ---
