@@ -1,6 +1,11 @@
 <template>
   <div class="app-shell">
-    <div class="window-titlebar">
+    <!--
+      自绘标题栏只在 macOS 上画。
+      Electron 那边只给 darwin 设了 titleBarStyle: 'hiddenInset'，Windows 用的是系统默认标题栏——
+      两个叠在一起就是 38px 的空白条 + 重复的标题，第一眼就能看出来没做完。
+    -->
+    <div v-if="isMac" class="window-titlebar">
       <span class="window-titlebar-text">APP自动化管理平台 — {{ windowPageTitle }}</span>
     </div>
   <el-container class="main-layout">
@@ -23,8 +28,10 @@
             <span>主菜单</span>
           </template>
           <el-menu-item index="/home">工作台</el-menu-item>
-          <el-menu-item index="/app-portal">APP 门户</el-menu-item>
+          <!-- APP 门户暂隐藏，恢复时去掉 v-if="false" -->
+          <el-menu-item v-if="false" index="/app-portal">APP 门户</el-menu-item>
           <el-menu-item index="/codewords-agent">AI助手</el-menu-item>
+          <el-menu-item index="/env-setup">环境搭建</el-menu-item>
         </el-sub-menu>
 
         <el-sub-menu index="test-cases">
@@ -50,11 +57,9 @@
             <span>资产管理</span>
           </template>
           <el-menu-item index="/api-projects">项目管理</el-menu-item>
-          <el-menu-item index="/project-tree">统一项目树</el-menu-item>
-          <el-menu-item index="/requirements">需求登记</el-menu-item>
-          <el-menu-item index="/api-urls">URL 管理</el-menu-item>
-          <el-menu-item v-if="canVisit('/devices')" index="/devices">设备管理</el-menu-item>
+          <el-menu-item v-if="canVisit('/devices')" index="/devices">设备池</el-menu-item>
           <el-menu-item v-if="canVisit('/ui-apps')" index="/ui-apps">应用管理</el-menu-item>
+          <el-menu-item v-if="canVisit('/app-packs')" index="/app-packs">APP 打包</el-menu-item>
         </el-sub-menu>
 
         <el-sub-menu index="api-test">
@@ -62,13 +67,12 @@
             <el-icon><Link /></el-icon>
             <span>接口测试</span>
           </template>
-          <el-menu-item index="/api-testing">概览</el-menu-item>
           <el-menu-item index="/api-collections">用例集合</el-menu-item>
           <!--
             原来叫「接口清单」「接口列表」，中文里几乎同义，谁也分不出哪个是哪个。
             一个是「有哪些接口」（事实）；用例在「用例集合」里按接口管理，不再单独开「接口用例」页
           -->
-          <el-menu-item index="/api-endpoints">接口清单</el-menu-item>
+          <el-menu-item index="/api-endpoints">接口管理</el-menu-item>
           <el-menu-item v-if="canVisit('/api-environments')" index="/api-environments">环境变量</el-menu-item>
           <el-menu-item index="/api-reports">执行报告</el-menu-item>
           <el-menu-item index="/api-changes">接口对比分析</el-menu-item>
@@ -81,16 +85,6 @@
             <span>定时任务</span>
           </template>
           <el-menu-item index="/api-schedules">定时执行</el-menu-item>
-        </el-sub-menu>
-
-        <el-sub-menu v-if="showWebTestMenu" index="web-test-menu">
-          <template #title>
-            <el-icon><Monitor /></el-icon>
-            <span>Web 端测试</span>
-          </template>
-          <el-menu-item index="/web-test">Web 测试</el-menu-item>
-          <el-menu-item v-if="canVisit('/ui-h5-pages')" index="/ui-h5-pages">H5 页面</el-menu-item>
-          <el-menu-item index="/activity-page-check">活动页体检</el-menu-item>
         </el-sub-menu>
 
         <el-sub-menu v-if="showAppAutoMenu" index="app-auto">
@@ -116,6 +110,8 @@
             <span>测试工具</span>
           </template>
           <el-menu-item index="/packet-capture">抓包</el-menu-item>
+          <el-menu-item index="/status-monitor">状态监控</el-menu-item>
+          <el-menu-item v-if="canVisit('/incident-playbooks')" index="/incident-playbooks">事故沉淀</el-menu-item>
         </el-sub-menu>
 
         <el-sub-menu index="reports">
@@ -147,7 +143,7 @@
           </el-sub-menu>
         </el-sub-menu>
 
-        <el-sub-menu index="knowledge-handbook">
+        <el-sub-menu v-if="showHandbookMenu" index="knowledge-handbook">
           <template #title>
             <el-icon><Notebook /></el-icon>
             <span>知识手册</span>
@@ -166,6 +162,15 @@
           </el-sub-menu>
         </el-sub-menu>
 
+        <el-sub-menu index="app-release">
+          <template #title>
+            <el-icon><DocumentCopy /></el-icon>
+            <span>APP发版</span>
+          </template>
+          <el-menu-item index="/release-doc">发版文档</el-menu-item>
+          <el-menu-item index="/release-go-live">上线看板</el-menu-item>
+        </el-sub-menu>
+
         <el-sub-menu index="other">
           <template #title>
             <el-icon><Setting /></el-icon>
@@ -173,48 +178,62 @@
           </template>
           <el-menu-item index="/tracking-check">埋点校验</el-menu-item>
           <el-menu-item index="/version-archives">版本需求归档</el-menu-item>
-          <el-menu-item index="/release-doc">发版文档</el-menu-item>
           <el-menu-item index="/change-review">周改动漏测</el-menu-item>
           <el-menu-item v-if="canManageUsers" index="/platform-users">账号与权限</el-menu-item>
           <el-menu-item index="/settings">设置</el-menu-item>
         </el-sub-menu>
       </el-menu>
     </el-aside>
-    <el-container>
-      <el-header v-if="!isApiReportsPage && !isTestCasesPage && !isBugManagementPage && !isIssueTrackingPage" class="header">
+    <el-container class="content-column" direction="vertical">
+      <div class="tabs-bar">
+        <PageTabs
+          class="tabs-bar-tabs"
+          :tabs="openPages"
+          :active-key="activeTabKey"
+          :last-closable="lastTabClosable"
+          @select="onSelectTab"
+          @duplicate="onDuplicateTab"
+          @close="onCloseTab"
+        />
+        <div v-if="user" class="header-user">
+          <el-tag size="small" :type="roleTagType">{{ user.roleLabel }}</el-tag>
+          <el-dropdown trigger="click" @command="onUserCommand">
+            <span class="header-user-name">
+              {{ user.displayName || user.username }}
+              <el-icon><ArrowDown /></el-icon>
+            </span>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item v-if="!user.bootstrapping" command="password">
+                  修改密码
+                </el-dropdown-item>
+                <el-dropdown-item v-if="!user.bootstrapping" command="logout" divided>
+                  退出登录
+                </el-dropdown-item>
+                <el-dropdown-item v-else disabled>还未启用账号权限</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+      </div>
+      <el-header v-if="!isApiReportsPage && !isTestCasesPage && !isBugManagementPage && !isIssueTrackingPage && !isAppPacksPage && !isApiProjectsPage" class="header">
         <div class="header-content">
           <h3>{{ currentTitle }}</h3>
         </div>
         <div class="header-right">
           <div id="page-header-actions" class="header-actions"></div>
-          <div v-if="user" class="header-user">
-            <el-tag size="small" :type="roleTagType">{{ user.roleLabel }}</el-tag>
-            <el-dropdown trigger="click" @command="onUserCommand">
-              <span class="header-user-name">
-                {{ user.displayName || user.username }}
-                <el-icon><ArrowDown /></el-icon>
-              </span>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item v-if="!user.bootstrapping" command="password">
-                    修改密码
-                  </el-dropdown-item>
-                  <el-dropdown-item v-if="!user.bootstrapping" command="logout" divided>
-                    退出登录
-                  </el-dropdown-item>
-                  <el-dropdown-item v-else disabled>还未启用账号权限</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-          </div>
         </div>
       </el-header>
       <el-main
         class="main-content"
-        :class="{ 'is-agent': isAgentPage, 'is-test-cases': isTestCasesPage, 'is-bug-management': isBugManagementPage, 'is-issue-tracking': isIssueTrackingPage, 'is-api-collections': isApiCollectionsPage, 'is-api-reports': isApiReportsPage }"
+        :class="{ 'is-agent': isAgentPage, 'is-test-cases': isTestCasesPage, 'is-bug-management': isBugManagementPage, 'is-issue-tracking': isIssueTrackingPage, 'is-api-collections': isApiCollectionsPage, 'is-api-reports': isApiReportsPage, 'is-ui-record': isUiRecordPage }"
       >
-        <router-view :key="route.fullPath" />
+        <template v-for="tab in openPages" :key="tab.key">
+          <PagePane v-if="tab.mounted" :location="tab.location" :active="tab.key === activeTabKey" />
+        </template>
       </el-main>
+      <RunningTasksBar />
+      <MinimizedDialogsTray />
     </el-container>
 
     <el-dialog v-model="pwdVisible" title="修改密码" width="420px">
@@ -239,7 +258,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+
+/**
+ * 是不是 macOS。用 userAgent 判断而不是新开一个 IPC——
+ * 这只影响一条标题栏要不要画，不值得为它加一个主进程通道。
+ * 浏览器里跑开发态时也走这条,结果和真机一致。
+ */
+const isMac = /Mac|iPhone|iPad/i.test(navigator.userAgent)
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowReactive, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
@@ -252,14 +278,28 @@ import {
   Connection,
   Link,
   Clock,
-  Monitor,
   Notebook,
   ArrowDown
 } from '@element-plus/icons-vue'
 import { apiClient } from '../api'
+import RunningTasksBar from '../components/RunningTasksBar.vue'
+import MinimizedDialogsTray from '../components/MinimizedDialogsTray.vue'
+import { startDialogMinimize, stopDialogMinimize } from '../composables/useDialogMinimize'
+import PagePane from '../components/PagePane.vue'
+import PageTabs from '../components/PageTabs.vue'
+import {
+  PAGE_TABS_MAX,
+  TAB_COPY_QUERY,
+  basePageTabKey,
+  loadStoredPageTabs,
+  pageTabKey,
+  pageTitle,
+  saveStoredPageTabs,
+  tabCopyNo
+} from '../utils/pageTabs'
 import { canManageUsers, canVisit, logout, user } from '../stores/auth'
-import { findTestCaseSuite, TEST_CASE_SUITES } from '../constants/testCaseSuites'
-import { HANDBOOK_GROUPS, handbookCategoryLabel, handbookGroupIdForCategory, normalizeHandbookCategory } from '../constants/handbookCategories'
+import { TEST_CASE_SUITES } from '../constants/testCaseSuites'
+import { HANDBOOK_GROUPS, handbookGroupIdForCategory, normalizeHandbookCategory } from '../constants/handbookCategories'
 
 const route = useRoute()
 const router = useRouter()
@@ -272,6 +312,9 @@ const roleTagType = computed(() => {
   return 'info'
 })
 
+/** 知识手册暂时不在侧栏露出；路由还在，别处跳过去的链接照常能打开 */
+const showHandbookMenu = false
+
 const showAppAutoMenu = computed(
   () =>
     canVisit('/tasks') ||
@@ -280,10 +323,6 @@ const showAppAutoMenu = computed(
     canVisit('/ui-inspector-import') ||
     canVisit('/ui-keywords') ||
     canVisit('/app-online-regression')
-)
-
-const showWebTestMenu = computed(
-  () => canVisit('/web-test') || canVisit('/ui-h5-pages')
 )
 
 const pwdVisible = ref(false)
@@ -346,7 +385,8 @@ const defaultOpeneds = computed(() => {
   const p = route.path
   if (
     p.startsWith('/home') ||
-    p.includes('codewords-agent')
+    p.includes('codewords-agent') ||
+    p.startsWith('/env-setup')
   ) {
     return ['main']
   }
@@ -355,18 +395,16 @@ const defaultOpeneds = computed(() => {
   }
   if (
     p.startsWith('/api-projects') ||
-    p.startsWith('/api-urls') ||
     p.startsWith('/devices') ||
-    p.startsWith('/ui-apps')
+    p.startsWith('/ui-apps') ||
+    p.startsWith('/app-packs')
   ) {
     return ['assets']
-  }
-  if (p.startsWith('/web-test') || p.startsWith('/ui-h5-pages') || p.startsWith('/activity-page-check')) {
-    return ['web-test-menu']
   }
   if (
     p.startsWith('/tasks') ||
     p.startsWith('/ui-flows') ||
+    p.startsWith('/ui-record') ||
     p.startsWith('/ui-keywords') ||
     p.startsWith('/ui-elements') ||
     p.startsWith('/ui-inspector-import') ||
@@ -378,7 +416,7 @@ const defaultOpeneds = computed(() => {
     return ['schedules']
   }
   // 接口测试下页面以 /api- 开头（概览、集合、清单、环境变量、报告、对比分析）。
-  // api-projects / api-urls 在资产管理下，已在上面单独处理
+  // api-projects 在资产管理下，已在上面单独处理
   if (p.startsWith('/api-')) {
     return ['api-test']
   }
@@ -395,11 +433,16 @@ const defaultOpeneds = computed(() => {
     const cat = String(route.query.category || 'app')
     return ['knowledge-handbook', handbookGroupIdForCategory(cat)]
   }
+  if (p.startsWith('/packet-capture') || p.startsWith('/incident-playbooks') || p.startsWith('/status-monitor')) {
+    return ['tools']
+  }
+  if (p.startsWith('/release-doc') || p.startsWith('/release-go-live')) {
+    return ['app-release']
+  }
   if (
     p.startsWith('/settings') ||
     p.startsWith('/tracking-check') ||
     p.startsWith('/version-archives') ||
-    p.startsWith('/release-doc') ||
     p.startsWith('/change-review')
   ) {
     return ['other']
@@ -407,56 +450,179 @@ const defaultOpeneds = computed(() => {
   return ['main', 'assets']
 })
 
-const titleMap: Record<string, string> = {
-  '/home': '工作台',
-  '/app-portal': 'APP 门户',
-  '/tasks': 'APP测试任务',
-  '/codewords-agent': 'AI助手',
-  '/ui-elements': '元素管理',
-  '/ui-keywords': '关键字库',
-  '/ui-inspector-import': 'Inspector XML 导入',
-  '/ui-h5-pages': 'H5 页面',
-  '/project-tree': '统一项目树',
-  '/requirements': '需求登记',
-  '/coverage-gap': '覆盖差集',
-  '/activity-page-check': '活动页体检',
-  '/api-projects': '项目管理',
-  '/api-urls': 'URL 管理',
-  '/devices': '设备管理',
-  '/ui-apps': '应用管理',
-  '/reports': 'APP UI测试报告',
-  '/reports/esports/performance': '完美世界电竞 · 性能报告',
-  '/performance': '性能监控',
-  '/performance-baseline': '安卓性能测试',
-  '/special-report': '版本质量卡',
-  '/release-doc': '发版文档与邮件管理',
-  '/version-archives': '版本需求归档',
-  '/change-review': '本周改动 / 漏测看板',
-  '/bug-management': 'Bug 管理',
-  '/issue-tracking': '线上问题跟踪',
-  '/web-test': 'Web 端测试',
-  '/api-testing': '概览',
-  '/api-collections': '用例集合',
-  '/api-schedules': '定时任务',
-  '/api-reports': '执行报告',
-  '/api-environments': '环境变量',
-  '/api-changes': '接口对比分析',
-  '/knowledge-handbook': '知识手册'
+type OpenPage = {
+  key: string
+  fullPath: string
+  label: string
+  mounted: boolean
+  lastActive: number
+  location: Record<string, any>
 }
 
-const currentTitle = computed(() => {
-  const p = route.path
-  if (p.startsWith('/test-cases/')) {
-    const key = String(route.params.category || '')
-    const suite = findTestCaseSuite(key)
-    return suite?.fullTitle || suite?.title || '测试用例'
+function createLocation(src: any) {
+  return shallowReactive({
+    fullPath: src.fullPath,
+    path: src.path,
+    hash: src.hash || '',
+    name: src.name,
+    params: { ...src.params },
+    query: { ...src.query },
+    meta: src.meta || {},
+    matched: src.matched ? [...src.matched] : [],
+    redirectedFrom: src.redirectedFrom,
+    href: src.href || src.fullPath
+  })
+}
+
+function assignLocation(target: Record<string, any>, src: any) {
+  target.fullPath = src.fullPath
+  target.path = src.path
+  target.hash = src.hash || ''
+  target.name = src.name
+  target.params = { ...src.params }
+  target.query = { ...src.query }
+  target.meta = src.meta || {}
+  target.matched = src.matched ? [...src.matched] : []
+  target.redirectedFrom = src.redirectedFrom
+  target.href = src.href || src.fullPath
+}
+
+function isLayoutChild(fullPath: string) {
+  const resolved = router.resolve(fullPath)
+  return resolved.matched.length >= 2 && resolved.matched.some((r) => r.components?.default)
+}
+
+const openPages = ref<OpenPage[]>([])
+
+const activeTabKey = computed(() => pageTabKey(route.path, route.query))
+
+function persistPages() {
+  saveStoredPageTabs(openPages.value.map(({ key, fullPath }) => ({ key, fullPath })))
+}
+
+function evictPages() {
+  while (openPages.value.length > PAGE_TABS_MAX) {
+    const current = activeTabKey.value
+    const victim = [...openPages.value]
+      .filter((t) => t.key !== current)
+      .sort((a, b) => a.lastActive - b.lastActive)[0]
+    if (!victim) break
+    const idx = openPages.value.findIndex((t) => t.key === victim.key)
+    if (idx >= 0) openPages.value.splice(idx, 1)
   }
-  if (p.startsWith('/knowledge-handbook')) {
-    return handbookCategoryLabel(String(route.query.category || ''))
+}
+
+function restorePages() {
+  const currentKey = pageTabKey(route.path, route.query)
+  for (const item of loadStoredPageTabs()) {
+    if (!isLayoutChild(item.fullPath)) continue
+    const resolved = router.resolve(item.fullPath)
+    if (resolved.matched.some((m) => m.redirect)) continue
+    const key = pageTabKey(resolved.path, resolved.query)
+    if (key !== item.key || openPages.value.some((t) => t.key === key)) continue
+    const isCurrent = key === currentKey
+    const src = isCurrent ? route : resolved
+    openPages.value.push({
+      key,
+      fullPath: src.fullPath,
+      label: pageTitle(src),
+      mounted: isCurrent,
+      lastActive: isCurrent ? Date.now() : 0,
+      location: createLocation(src)
+    })
   }
-  if (titleMap[p]) return titleMap[p]
-  return (route.meta?.title as string) || '移动自动化测试'
+}
+
+function syncActivePage() {
+  const key = pageTabKey(route.path, route.query)
+  let tab = openPages.value.find((t) => t.key === key)
+  if (!tab) {
+    tab = {
+      key,
+      fullPath: route.fullPath,
+      label: pageTitle(route),
+      mounted: true,
+      lastActive: Date.now(),
+      location: createLocation(route)
+    }
+    openPages.value.push(tab)
+    evictPages()
+  } else {
+    tab.mounted = true
+    tab.lastActive = Date.now()
+    tab.fullPath = route.fullPath
+    tab.label = pageTitle(route)
+    assignLocation(tab.location, route)
+  }
+  persistPages()
+}
+
+restorePages()
+watch(() => route.fullPath, syncActivePage, { immediate: true })
+
+function onSelectTab(key: string) {
+  const tab = openPages.value.find((t) => t.key === key)
+  if (!tab || tab.fullPath === route.fullPath) return
+  router.push(tab.fullPath)
+}
+
+onMounted(() => {
+  startDialogMinimize({
+    currentTab: () => {
+      const tab = openPages.value.find((t) => t.key === activeTabKey.value)
+      return { key: activeTabKey.value, label: tab?.label || pageTitle(route) }
+    },
+    openTab: async (key) => {
+      const tab = openPages.value.find((t) => t.key === key)
+      if (tab && tab.fullPath !== route.fullPath) await router.push(tab.fullPath)
+      await nextTick()
+    }
+  })
 })
+onBeforeUnmount(stopDialogMinimize)
+
+function onDuplicateTab(key: string) {
+  const tab = openPages.value.find((t) => t.key === key)
+  if (!tab) return
+  const { path, query } = tab.location
+  const base = basePageTabKey(path, query)
+  const used = new Set(
+    openPages.value
+      .filter((t) => basePageTabKey(t.location.path, t.location.query) === base)
+      .map((t) => tabCopyNo(t.location.query))
+  )
+  let n = 2
+  while (used.has(n)) n++
+  const nextQuery: Record<string, string> = { [TAB_COPY_QUERY]: String(n) }
+  if (query.category) nextQuery.category = String(query.category)
+  router.push({ path, query: nextQuery })
+}
+
+const HOME_PATH = '/home'
+
+const lastTabClosable = computed(
+  () => openPages.value.length === 1 && openPages.value[0].fullPath.split('?')[0] !== HOME_PATH
+)
+
+function onCloseTab(key: string) {
+  const tabs = openPages.value
+  const idx = tabs.findIndex((t) => t.key === key)
+  if (idx < 0) return
+  if (tabs.length <= 1) {
+    if (!lastTabClosable.value) return
+    tabs.splice(idx, 1)
+    persistPages()
+    router.push(HOME_PATH)
+    return
+  }
+  const closingActive = key === activeTabKey.value
+  const neighbor = tabs[idx + 1] || tabs[idx - 1]
+  tabs.splice(idx, 1)
+  persistPages()
+  if (closingActive && neighbor) router.push(neighbor.fullPath)
+}
+
+const currentTitle = computed(() => pageTitle(route, { long: true }))
 
 const windowPageTitle = computed(() => currentTitle.value)
 
@@ -468,6 +634,7 @@ watch(
   { immediate: true }
 )
 const isAgentPage = computed(() => route.path.includes('codewords-agent'))
+const isUiRecordPage = computed(() => route.path.startsWith('/ui-record'))
 const isTestCasesPage = computed(
   () => route.path.startsWith('/test-cases') || route.path.startsWith('/ai-test-cases')
 )
@@ -475,6 +642,8 @@ const isBugManagementPage = computed(() => route.path.startsWith('/bug-managemen
 const isIssueTrackingPage = computed(() => route.path.startsWith('/issue-tracking'))
 const isApiCollectionsPage = computed(() => route.path.startsWith('/api-collections'))
 const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
+const isAppPacksPage = computed(() => route.path.startsWith('/app-packs'))
+const isApiProjectsPage = computed(() => route.path.startsWith('/api-projects'))
 </script>
 
 <style scoped>
@@ -514,21 +683,23 @@ const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
   background-color: var(--app-main-bg);
 }
 
-.sidebar {
-  background-color: var(--app-sidebar-bg);
+.content-column {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   height: 100%;
-  overflow-y: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
 }
 
-.sidebar::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-  display: none;
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--app-sidebar-bg);
+  height: 100%;
+  overflow: hidden;
 }
 
 .logo {
+  flex-shrink: 0;
   height: 56px;
   display: flex;
   align-items: center;
@@ -549,12 +720,23 @@ const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
 }
 
 .sidebar-menu {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   border-right: none;
   padding: 8px 0 20px;
   font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
     'Microsoft YaHei', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   background-color: var(--app-sidebar-bg) !important;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.sidebar-menu::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 .sidebar-menu :deep(.el-menu-item),
@@ -663,6 +845,22 @@ const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
   display: none;
 }
 
+.tabs-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-right: 20px;
+  background: var(--el-fill-color-light);
+  border-bottom: 1px solid var(--app-border);
+}
+
+.tabs-bar > .tabs-bar-tabs {
+  flex: 1;
+  min-width: 0;
+  border-bottom: none;
+}
+
 .header {
   background-color: var(--app-card-bg);
   border-bottom: 1px solid var(--app-border);
@@ -673,6 +871,11 @@ const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
   /* 仅左侧标题可拖窗口；右侧留空给抽屉/弹窗的关闭按钮，避免 macOS 拖拽区吞掉点击 */
   -webkit-app-region: drag;
   app-region: drag;
+}
+
+/* 页签已经写了页面名，只剩标题时整栏不要；接口管理这类往右侧塞按钮的页面才显示 */
+.header:not(:has(#page-header-actions > *)) {
+  display: none;
 }
 
 .header-content {
@@ -734,8 +937,11 @@ const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
 }
 
 .main-content {
-  padding: 20px;
-  overflow-y: auto;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   background-color: var(--app-main-bg);
 }
 
@@ -744,12 +950,31 @@ const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
 .main-content.is-bug-management,
 .main-content.is-issue-tracking,
 .main-content.is-api-collections,
-.main-content.is-api-reports {
+.main-content.is-api-reports,
+.main-content.is-ui-record {
+  height: 100%;
+}
+
+.main-content.is-agent :deep(.page-pane),
+.main-content.is-test-cases :deep(.page-pane),
+.main-content.is-bug-management :deep(.page-pane),
+.main-content.is-issue-tracking :deep(.page-pane),
+.main-content.is-api-collections :deep(.page-pane),
+.main-content.is-api-reports :deep(.page-pane),
+.main-content.is-ui-record :deep(.page-pane) {
   padding: 0;
   overflow: hidden;
-  height: 100%;
   display: flex;
   flex-direction: column;
+}
+
+.main-content.is-ui-record :deep(.page-pane) {
+  padding: 12px 16px;
+}
+.main-content.is-ui-record :deep(.ui-record) {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
 }
 
 .main-content.is-api-reports {
@@ -764,7 +989,7 @@ const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
 
 .main-content.is-agent {
   scrollbar-width: thin;
-  scrollbar-color: #3d4a5c transparent;
+  scrollbar-color: #cbd5e1 transparent;
 }
 
 .main-content.is-agent::-webkit-scrollbar,
@@ -778,16 +1003,17 @@ const isApiReportsPage = computed(() => route.path.startsWith('/api-reports'))
 }
 .main-content.is-agent::-webkit-scrollbar-thumb,
 .main-content.is-agent ::-webkit-scrollbar-thumb {
-  background: #3d4a5c;
+  background: #cbd5e1;
   border-radius: 8px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 .main-content.is-agent::-webkit-scrollbar-thumb:hover,
 .main-content.is-agent ::-webkit-scrollbar-thumb:hover {
-  background: #5a6a7e;
+  background: #94a3b8;
 }
 
+.main-content.is-agent :deep(.ask-shell),
 .main-content.is-agent :deep(.xk-shell) {
   flex: 1;
   min-height: 0;

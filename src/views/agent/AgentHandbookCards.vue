@@ -25,8 +25,8 @@ defineProps<{
 <style scoped>
 .xk-hb-card {
   margin-bottom: 8px;
-  background: #f0f9eb;
-  border: 1px solid #e1f3d8;
+  background: var(--el-color-success-light-9);
+  border: 1px solid var(--el-color-success-light-8);
   border-radius: 10px;
   padding: 10px 12px;
   width: 100%;

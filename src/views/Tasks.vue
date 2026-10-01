@@ -27,6 +27,12 @@
               {{ item.label }}
             </el-radio-button>
           </el-radio-group>
+          <!-- 不是任务类型：不产生任务、不进通过率，所以不放进上面的单选组 -->
+          <span class="convention-sep" aria-hidden="true" />
+          <el-button size="small" type="primary" plain class="convention-entry" @click="showConvention = true">
+            <el-icon><DocumentChecked /></el-icon>
+            源码约定检查
+          </el-button>
         </div>
         <div class="filter-row">
           <span class="filter-label">平台：</span>
@@ -194,6 +200,8 @@
       v-model="showCreateDialog"
       :initial-task-type="createDialogTaskType"
       @success="onCreateTaskSuccess" />
+
+    <ConventionCheckDrawer v-model="showConvention" />
   </div>
 </template>
 
@@ -201,16 +209,18 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, DocumentChecked } from '@element-plus/icons-vue'
 import { useTaskStore } from '@/stores/task'
 import type { TaskQuery } from '@/stores/task'
 import CreateTaskDialog from '@/components/CreateTaskDialog.vue'
+import ConventionCheckDrawer from '@/components/ConventionCheckDrawer.vue'
 import { platformElTagType, platformRowClass, platformUiLabel } from '@/utils/platform'
 
 const route = useRoute()
 const router = useRouter()
 const taskStore = useTaskStore()
 const showCreateDialog = ref(false)
+const showConvention = ref(false)
 const createDialogTaskType = ref('')
 
 // 筛选相关状态
@@ -466,21 +476,22 @@ const deleteTask = async (taskId: string) => {
   align-items: center;
 }
 
-/* 筛选区域：增加留白，减少拥挤感 */
+/* 筛选区字号对齐「流程编排」：13px 标签/选项，内边距更紧 */
 .filter-bar {
-  padding: 20px;
+  padding: 14px 16px 12px;
   margin-bottom: 16px;
-  background: #fafbfc;
+  background: var(--el-fill-color-lighter);
   border-radius: 8px;
   border: 1px solid var(--app-border);
+  font-family: var(--app-font-family);
 }
 
 .filter-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 12px 16px;
-  margin-bottom: 16px;
+  gap: 8px 12px;
+  margin-bottom: 10px;
 }
 
 .filter-row:last-child {
@@ -488,13 +499,15 @@ const deleteTask = async (taskId: string) => {
 }
 
 .filter-row-inputs {
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .filter-label {
   flex-shrink: 0;
-  color: var(--app-text-secondary);
+  color: var(--el-text-color-secondary);
   font-size: 13px;
+  font-weight: 400;
+  line-height: 22px;
   min-width: 72px;
 }
 
@@ -507,11 +520,46 @@ const deleteTask = async (taskId: string) => {
 }
 
 .filter-radio-group :deep(.el-radio-button__inner) {
-  padding: 7px 12px;
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 22px;
+  font-family: var(--app-font-family);
 }
 
 .filter-status-select {
   width: 150px;
+}
+
+.convention-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--el-border-color);
+}
+
+.convention-entry {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.convention-entry :deep(.el-icon) {
+  margin-right: 2px;
+  font-size: 13px;
+}
+
+.filter-status-select :deep(.el-select__wrapper),
+.filter-status-select :deep(.el-input__inner),
+.filter-input :deep(.el-input__wrapper),
+.filter-input :deep(.el-input__inner),
+.filter-input :deep(.el-input-group__prepend) {
+  font-size: 13px;
+}
+
+.filter-bar :deep(.el-button) {
+  font-size: 13px;
+  --el-button-size: 28px;
 }
 
 .filter-input {

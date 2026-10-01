@@ -214,7 +214,7 @@ function resetResult() {
 }
 .card-sub {
   margin: 6px 0 0;
-  color: #666;
+  color: var(--app-text-regular);
   font-size: 13px;
 }
 .upload-row {
@@ -223,7 +223,7 @@ function resetResult() {
   gap: 12px;
 }
 .file-name {
-  color: #666;
+  color: var(--app-text-regular);
   font-size: 13px;
 }
 .meta {

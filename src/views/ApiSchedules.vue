@@ -1,6 +1,6 @@
 <template>
   <div class="api-schedules">
-    <Teleport to="#page-header-actions">
+    <Teleport v-if="paneActive" to="#page-header-actions">
       <el-button type="primary" @click="openCreate">
         <el-icon class="el-icon--left"><Plus /></el-icon>
         新建定时任务
@@ -254,8 +254,10 @@ import {
   WarningFilled
 } from '@element-plus/icons-vue'
 import { apiClient } from '../api'
+import { usePagePaneActive } from '../utils/pagePane'
 
 const router = useRouter()
+const paneActive = usePagePaneActive()
 
 const PRESETS = [
   { label: '每天 8 点', cron: '0 0 8 * * ?' },
@@ -309,7 +311,8 @@ const stats = computed(() => {
   const paused = list.length - enabled
   const todayFails = list.filter((s) => isFail(s.lastStatus) && isToday(s.lastRunAt))
   const firstFail = todayFails[0]
-  const week = weekRuns(list)
+  // 没跑成（服务挂了/连不上）的那几次不进分母，否则通过率掉下去，人会去查用例而不是看服务
+  const week = weekRuns(list).filter((r) => r.status !== 'BLOCKED')
   const passed = week.filter((r) => r.status === 'PASSED').length
   const next = list
     .filter((s) => s.enabled && s.nextRunAt)
@@ -449,12 +452,14 @@ function recentDots(s: any): Array<'ok' | 'bad' | 'warn'> {
 function cardClass(s: any) {
   if (!s.enabled) return 'is-paused'
   if (isFail(s.lastStatus)) return 'is-fail'
+  if (s.lastStatus === 'BLOCKED') return 'is-blocked'
   return 'is-ok'
 }
 
 function statusClass(s: any) {
   if (!s.enabled) return 'paused'
   if (isFail(s.lastStatus)) return 'bad'
+  if (s.lastStatus === 'BLOCKED') return 'blocked'
   return 'good'
 }
 
@@ -467,6 +472,7 @@ function tagType(status: string) {
 function statusText(status: string) {
   if (status === 'PASSED') return '通过'
   if (status === 'FAILED') return '有失败'
+  if (status === 'BLOCKED') return '没跑成'
   return '执行异常'
 }
 
@@ -622,7 +628,7 @@ onMounted(async () => {
   gap: 8px;
   padding: 10px 14px;
   border-radius: 8px;
-  background: #e8f3ff;
+  background: var(--el-color-primary-light-9);
   color: #3d5a80;
   font-size: 13px;
   line-height: 1.6;
@@ -658,15 +664,15 @@ onMounted(async () => {
   flex: none;
 }
 .kpi-icon.is-blue {
-  background: #e8f3ff;
+  background: var(--el-color-primary-light-9);
   color: var(--app-primary);
 }
 .kpi-icon.is-red {
-  background: #fff1f0;
+  background: var(--el-color-danger-light-9);
   color: var(--app-danger);
 }
 .kpi-icon.is-green {
-  background: #f0f9eb;
+  background: var(--el-color-success-light-9);
   color: var(--app-success);
 }
 .kpi-body {
@@ -732,7 +738,7 @@ onMounted(async () => {
   cursor: pointer;
 }
 .filter-btn.active {
-  background: #e8f3ff;
+  background: var(--el-color-primary-light-9);
   color: var(--app-primary);
   font-weight: 600;
 }
@@ -763,14 +769,21 @@ onMounted(async () => {
   background: var(--app-success);
 }
 .task-card.is-fail {
-  background: #fff7f7;
-  border-color: #ffccc7;
+  background: var(--el-color-danger-light-9);
+  border-color: var(--el-color-danger-light-7);
 }
 .task-card.is-fail .task-accent {
   background: var(--app-danger);
 }
+.task-card.is-blocked {
+  background: var(--el-color-warning-light-9);
+  border-color: var(--el-color-warning-light-7);
+}
+.task-card.is-blocked .task-accent {
+  background: var(--el-color-warning);
+}
 .task-card.is-paused {
-  background: #fafafa;
+  background: var(--el-fill-color-lighter);
 }
 .task-card.is-paused .task-accent {
   background: #c0c4cc;
@@ -797,6 +810,10 @@ onMounted(async () => {
 .task-play.bad {
   background: var(--el-color-danger-light-9);
   color: var(--el-color-danger);
+}
+.task-play.blocked {
+  background: var(--el-color-warning-light-9);
+  color: var(--el-color-warning);
 }
 .task-play.paused {
   background: var(--el-fill-color);

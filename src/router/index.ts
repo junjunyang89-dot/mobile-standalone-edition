@@ -16,10 +16,10 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '工作台' }
       },
       {
+        // APP 门户暂隐藏：直链也跳回首页，恢复时改回 AppPortal.vue
         path: 'app-portal',
         name: 'AppPortal',
-        component: () => import('../views/AppPortal.vue'),
-        meta: { title: 'APP 门户' }
+        redirect: '/home'
       },
       {
         path: 'devices',
@@ -96,6 +96,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '发版文档与邮件管理' }
       },
       {
+        path: 'release-go-live',
+        name: 'ReleaseGoLive',
+        component: () => import('../views/ReleaseGoLive.vue'),
+        meta: { title: '上线看板' }
+      },
+      {
         path: 'change-review',
         name: 'ChangeReview',
         component: () => import('../views/ChangeReview.vue'),
@@ -112,6 +118,12 @@ const routes: RouteRecordRaw[] = [
         name: 'CodeWordsAgent',
         component: () => import('../views/CodeWordsAgent.vue'),
         meta: { title: 'AI助手' }
+      },
+      {
+        path: 'env-setup',
+        name: 'EnvSetup',
+        component: () => import('../views/EnvSetup.vue'),
+        meta: { title: '环境搭建' }
       },
       {
         path: 'bug-management',
@@ -142,6 +154,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '应用字典' }
       },
       {
+        path: 'app-packs',
+        name: 'AppPacks',
+        component: () => import('../views/AppPack.vue'),
+        meta: { title: 'APP 打包' }
+      },
+      {
         path: 'ui-elements',
         name: 'UiElements',
         component: () => import('../views/UiElements.vue'),
@@ -154,12 +172,6 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Inspector XML 导入' }
       },
       {
-        path: 'ui-h5-pages',
-        name: 'UiH5Pages',
-        component: () => import('../views/UiH5Pages.vue'),
-        meta: { title: 'H5 页面' }
-      },
-      {
         path: 'api-projects',
         name: 'ApiProjects',
         component: () => import('../views/ApiProjects.vue'),
@@ -167,9 +179,7 @@ const routes: RouteRecordRaw[] = [
       },
       {
         path: 'api-urls',
-        name: 'ApiUrls',
-        component: () => import('../views/ApiUrls.vue'),
-        meta: { title: 'URL 管理' }
+        redirect: '/api-projects'
       },
       {
         path: 'ui-keywords',
@@ -184,16 +194,14 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '流程编排' }
       },
       {
-        path: 'web-test',
-        name: 'WebTest',
-        component: () => import('../views/WebTest.vue'),
-        meta: { title: 'Web 端测试' }
+        path: 'ui-record',
+        name: 'UiFlowRecord',
+        component: () => import('../views/UiFlowRecord.vue'),
+        meta: { title: '从模拟器录制' }
       },
       {
         path: 'api-testing',
-        name: 'ApiTesting',
-        component: () => import('../views/ApiTestingDashboard.vue'),
-        meta: { title: 'API Testing' }
+        redirect: '/home'
       },
       {
         path: 'api-test',
@@ -269,13 +277,11 @@ const routes: RouteRecordRaw[] = [
         path: 'api-endpoints',
         name: 'ApiEndpoints',
         component: () => import('../views/ApiEndpoints.vue'),
-        meta: { title: '接口清单' }
+        meta: { title: '接口管理' }
       },
       {
         path: 'project-tree',
-        name: 'ProjectTree',
-        component: () => import('../views/ProjectTree.vue'),
-        meta: { title: '统一项目树' }
+        redirect: '/api-projects'
       },
       {
         path: 'requirements',
@@ -290,16 +296,22 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '接口覆盖差集' }
       },
       {
-        path: 'activity-page-check',
-        name: 'ActivityPageCheck',
-        component: () => import('../views/ActivityPageCheck.vue'),
-        meta: { title: '活动页体检' }
-      },
-      {
         path: 'packet-capture',
         name: 'PacketCapture',
         component: () => import('../views/PacketCapture.vue'),
         meta: { title: '抓包' }
+      },
+      {
+        path: 'status-monitor',
+        name: 'StatusMonitor',
+        component: () => import('../views/StatusMonitor.vue'),
+        meta: { title: '状态监控' }
+      },
+      {
+        path: 'incident-playbooks',
+        name: 'IncidentPlaybooks',
+        component: () => import('../views/IncidentPlaybooks.vue'),
+        meta: { title: '事故沉淀' }
       },
       {
         path: 'platform-users',
@@ -341,7 +353,9 @@ router.beforeEach(async (to) => {
     // 带上 redirect，登录完直接回到他本来要去的页面
     return { path: '/login', query: to.fullPath === '/' ? {} : { redirect: to.fullPath } }
   }
-  if (!canVisit(to.path)) {
+  const visitPath =
+    to.path === '/ui-record' || to.path.startsWith('/ui-record/') ? '/ui-flows' : to.path
+  if (!canVisit(visitPath)) {
     ElMessage.warning('当前账号没有这个页面的权限')
     return { path: '/home' }
   }

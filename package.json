@@ -10,7 +10,7 @@
     "dev": "vite",
     "dev:backend": "cd /Volumes/MOVESPEED/qa_coding/mobile-standalone-backend && mvn spring-boot:run",
     "dev:all": "concurrently \"npm run dev:backend\" \"npm run dev\"",
-    "dev:electron": "concurrently \"npm run dev:backend\" \"vite\" \"wait-on http://127.0.0.1:3000 http://localhost:5173 && electron .\"",
+    "dev:electron": "concurrently \"npm run dev:backend\" \"vite\" \"wait-on http://127.0.0.1:3080 http://localhost:5173 && electron .\"",
     "dev:app": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "build": "vite build && electron-builder",
     "build:win": "vite build && electron-builder --win",

@@ -536,7 +536,7 @@ onMounted(() => refreshAll())
   border-radius: 8px;
   padding: 10px;
   margin-bottom: 8px;
-  background: #fafafa;
+  background: var(--el-fill-color-lighter);
 }
 .step-head {
   display: flex;

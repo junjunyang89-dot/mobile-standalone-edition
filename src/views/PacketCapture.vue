@@ -44,43 +44,11 @@
               </p>
             </div>
           </el-form-item>
-
-          <el-form-item label="挂到需求单" class="cap-field">
-            <div class="cap-field-body">
-              <el-input v-model="form.requirementNo" placeholder="如 APP-9059（可留空，留空就只看不挂）" class="cap-control" />
-              <p class="cap-hint">结束抓包时可挂到该需求单，便于用例集合里按单查看。</p>
-            </div>
-          </el-form-item>
-
-          <el-form-item label="归属项目" class="cap-field">
-            <div class="cap-field-body">
-              <div class="cap-proj">
-                <el-select
-                  v-model="form.project"
-                  filterable
-                  clearable
-                  placeholder="选项目"
-                  class="cap-control cap-proj-select"
-                >
-                  <el-option
-                    v-for="p in projects"
-                    :key="p.code"
-                    :label="`${p.name}（${p.code}）`"
-                    :value="p.code"
-                  />
-                </el-select>
-                <el-button link type="primary" @click="newProjVisible = true">+ 新建项目</el-button>
-              </div>
-              <p class="cap-hint">
-                抓到的接口归入该项目；不选则无法生成用例。
-              </p>
-            </div>
-          </el-form-item>
         </div>
       </el-form>
 
       <div class="cap-actions-bar">
-        <div v-if="!running" key="cap-idle">
+        <div v-if="!running" key="cap-idle" class="cap-actions-idle">
           <el-button
             type="success"
             :loading="starting"
@@ -88,6 +56,13 @@
             @click="start"
           >
             开始抓包
+          </el-button>
+          <el-button
+            v-if="canReset"
+            :loading="resetting"
+            @click="reset"
+          >
+            重置
           </el-button>
         </div>
         <div v-else key="cap-live" class="cap-actions-live">
@@ -98,6 +73,7 @@
           <span class="cap-count">命中 {{ count }} 条</span>
           <span class="cap-seen">代理上共 {{ seenTotal }} 个请求</span>
           <el-button type="danger" :loading="stopping" @click="stop">结束抓包</el-button>
+          <el-button :loading="resetting" @click="reset">重置</el-button>
         </div>
       </div>
 
@@ -273,7 +249,7 @@
 
       <div v-if="flows.length" key="cap-result" class="cap-result">
         <div class="cap-result-head">
-          <b>{{ flows.length }} 个接口</b>
+          <b>{{ kindCount('api') }} 个接口</b>
           <!--
             「4 个接口」孤零零摆着，人会以为抓漏了。
             真实关系是「23 个请求 → 12 个命中白名单 → 去重后 4 个接口」，
@@ -283,63 +259,40 @@
           -->
           <span class="cap-ratio">
             代理上共 {{ seenGrandTotal }} 个请求 · 命中白名单 {{ capturedTotal }} 次调用 ·
-            去重后 {{ flows.length }} 个接口
+            去重后 {{ flows.length }} 条
+            <template v-if="kindCount('api') !== flows.length">
+              （接口 {{ kindCount('api') }}）
+            </template>
           </span>
-          <span v-if="lastLinked > 0" class="cap-linked">
-            已挂到 {{ linkedTo }}（{{ lastLinked }} 个）
+          <span v-if="savedCount > 0" class="cap-linked">
+            已收录 {{ savedCount }} 个
+            <template v-if="inboxCount">（待归类 {{ inboxCount }}）</template>
           </span>
-          <!--
-            抓之前经常还不知道该挂哪个单——抓一遍看到走了什么接口，
-            才想起来「这是 APP-9059 的」。所以补挂要放在结果这里
-          -->
           <div class="cap-link-box">
-            <el-input
-              v-model="linkNo"
-              size="small"
-              placeholder="挂到需求单，如 APP-9059"
-              style="width: 180px"
-            />
-            <el-select
-              v-model="form.project"
-              key="cap-link-project"
-              size="small"
-              filterable
-              placeholder="项目"
-              style="width: 170px"
-            >
-              <el-option v-for="p in projects" :key="p.code" :label="p.name" :value="p.code" />
-            </el-select>
-            <el-button size="small" type="primary" :loading="linking" @click="linkNow">
-              挂到需求单
+            <el-button size="small" type="primary" :loading="saving" @click="saveToCatalog()">
+              收录到接口管理
             </el-button>
-            <!--
-              挂上去只是「知道它被调了」，还没有任何东西在验它。
-              生成用例和上传文档都放在这儿，人才会顺手做完——
-              跳去另一个页面找入口，十次有九次不会去
-            -->
-            <el-button
-              size="small"
-              type="success"
-              plain
-              :loading="genning"
-              :disabled="!lastLinked"
-              @click="genCases"
-            >
-              生成用例
+            <el-button size="small" plain :disabled="!inboxCount && !savedCount" @click="goEndpoints">
+              去接口管理归类{{ inboxCount ? `（${inboxCount}）` : '' }}
             </el-button>
-            <el-button size="small" plain :disabled="!form.project" @click="docVisible = true">
-              上传接口文档
-            </el-button>
-            <!--
-              用例里不写死 token：它会过期，写死的话过期那天所有用例集体变红，
-              而红的原因和接口毫无关系。存到环境上，一处改、全部生效
-            -->
             <el-button size="small" plain :loading="savingToken" @click="saveToken">
               用这次的 token
             </el-button>
           </div>
         </div>
-        <el-table :data="flows" size="small" style="width: 100%">
+        <div class="cap-kind-bar">
+          <button
+            v-for="tab in kindTabs"
+            :key="tab.id"
+            type="button"
+            class="cap-kind-tab"
+            :class="{ active: kindTab === tab.id }"
+            @click="kindTab = tab.id"
+          >
+            {{ tab.label }}<em>{{ tab.count }}</em>
+          </button>
+        </div>
+        <el-table :data="kindFlows" size="small" style="width: 100%" empty-text="这一类没有请求">
           <el-table-column label="方法" width="80">
             <template #default="{ row }">
               <el-tag size="small" :type="methodType(row.method)">{{ row.method }}</el-tag>
@@ -353,6 +306,16 @@
                 <span v-if="row.calls > 1" class="cap-calls">× {{ row.calls }}</span>
               </div>
               <div class="cap-host-sub">{{ row.host }}</div>
+            </template>
+          </el-table-column>
+          <el-table-column v-if="kindTab === 'api'" key="cap-catalog" label="接口管理" min-width="170">
+            <template #default="{ row }">
+              <div v-if="row.endpointId" class="cap-catalog">
+                <el-tag v-if="row.project === 'capture-inbox'" size="small" type="warning">待归类</el-tag>
+                <span v-else class="cap-catalog-proj">{{ projectName(row.project) }}</span>
+              </div>
+              <span v-else-if="row.catalogMessage" class="opt-dim">{{ row.catalogMessage }}</span>
+              <span v-else class="opt-dim">未收录</span>
             </template>
           </el-table-column>
           <el-table-column label="状态" width="80">
@@ -376,7 +339,7 @@
           </el-table-column>
           <el-table-column label="详情" width="86">
             <template #default="{ row }">
-              <el-button size="small" text type="primary" @click="openDetail(row)">详情</el-button>
+              <el-button size="small" text type="primary" @click.stop="openDetail(row)">详情</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -387,67 +350,32 @@
       </div>
     </el-card>
 
-    <el-dialog v-model="newProjVisible" title="新建项目" width="480px">
-      <el-form label-width="90px">
-        <el-form-item label="项目代号">
-          <el-input v-model="newProj.code" placeholder="英文短代号，如 gld-domestic" />
-        </el-form-item>
-        <el-form-item label="项目名称">
-          <el-input v-model="newProj.name" placeholder="如 国内接口" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="newProjVisible = false">取消</el-button>
-        <el-button type="primary" :loading="projSaving" @click="createProj">创建</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="docVisible" title="上传接口文档" width="540px">
-      <p class="cap-doc-tip">
-        文档补的是抓包补不了的那一半：<b>必填、默认值、枚举回落、边界、哪些字段可空</b>。
-        <br />
-        只有抓包的话，用例就是把这次调用重放一遍 —— 边界一条都验不到；
-        更要紧的是它会给文档写明「可空」的字段生成非空断言，那种用例正常情况下也会红。
-      </p>
-      <input ref="docInput" type="file" accept=".docx" style="display: none" @change="onDocPicked" />
-      <el-button plain @click="docInput?.click()">选择 .docx（Confluence 导出）</el-button>
-      <span v-if="docFile" class="cap-doc-file">{{ docFile.name }}</span>
-      <div v-if="docResult" class="cap-doc-result">
-        <div>写入接口清单 <b>{{ docResult.matched }}</b> 个</div>
-        <div v-if="docResult.unmatched?.length" class="cap-doc-warn">
-          文档里有、清单里没有的 {{ docResult.unmatched.length }} 个：
-          {{ docResult.unmatched.slice(0, 3).join('、') }}
-          <br />这些多半是<b>这次没抓到</b>的接口 —— 那就是漏测点。
-        </div>
-        <div v-if="docResult.aliasApplied?.length" class="cap-doc-dim">
-          另有 {{ docResult.aliasApplied.length }} 条按<b>同名透传</b>推断着套过去了
-          （如 GLD 直连和 DC 编排是同一个契约）：{{ docResult.aliasApplied.slice(0, 2).join('；') }}
-          <br />这是推断不是文档写的，不对的话在接口清单里改。
-        </div>
-      </div>
-      <template #footer>
-        <el-button @click="docVisible = false">关闭</el-button>
-        <el-button type="primary" :loading="docUploading" @click="submitDoc">导入</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="bodyVisible" :title="bodyTitle" width="820px" top="6vh">
-      <div v-loading="bodyLoading">
+    <el-dialog
+      v-model="bodyVisible"
+      :title="bodyTitle"
+      width="960px"
+      top="6vh"
+      append-to-body
+      destroy-on-close
+      :z-index="6200"
+      class="cap-detail-dialog"
+    >
+      <div v-loading="bodyLoading" class="cap-detail-body">
         <el-alert
           v-if="bodyErr"
-          type="info"
+          type="warning"
           :closable="false"
           show-icon
           :title="bodyErr"
         />
-        <template v-else>
+        <template v-else-if="!bodyLoading && detail">
           <el-alert
             v-if="bodyTruncated"
             type="warning"
             :closable="false"
             show-icon
             class="cap-tip"
-            title="响应太大，只留了前 256 KB"
+            title="这场抓包时响应被截过。重新抓一次才能看到全文"
           />
           <el-tabs v-model="bodyTab">
             <!-- 对着手机抓包工具的 General 页排的，两边好对照 -->
@@ -483,6 +411,109 @@
                   </span>
                 </el-descriptions-item>
               </el-descriptions>
+            </el-tab-pane>
+            <el-tab-pane label="字段对照" name="fields">
+              <p class="cap-fields-tip">
+                对照源是 App 战绩页（swift-sphere deadlock/matchDetail），不是猜的。
+                「前端判断」是这一条 JSON 套进页面源码后会怎么走；字段表里「用法」写清直出还是算出来的。
+              </p>
+              <div v-if="matchJudgments?.length" class="cap-judge">
+                <div class="cap-judge-head">这一条 · 前端判断</div>
+                <el-table :data="matchJudgments" size="small" border class="cap-judge-table">
+                  <el-table-column prop="title" label="看什么" width="120" />
+                  <el-table-column label="前端怎么写" min-width="200">
+                    <template #default="{ row }">
+                      <span class="cap-mono">{{ row.code }}</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="本条后端值" min-width="180">
+                    <template #default="{ row }">
+                      <span class="cap-mono">{{ row.sample }}</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="outcome" label="页面会怎样" min-width="200" />
+                </el-table>
+              </div>
+              <el-alert
+                v-else-if="fieldRows.length"
+                type="info"
+                :closable="false"
+                show-icon
+                class="cap-tip"
+                title="这条不是战绩详情（没有 result.players / demoStatus），下面只对字段名，没有判断演算。"
+              />
+              <div class="cap-body-toolbar">
+                <el-input
+                  v-model="fieldSearch"
+                  clearable
+                  placeholder="搜字段名 / 中文 / 路径 / 用法"
+                  class="cap-body-search"
+                />
+                <el-radio-group v-model="fieldFilter" size="small">
+                  <el-radio-button label="app">前端在用</el-radio-button>
+                  <el-radio-button label="labeled">已有中文</el-radio-button>
+                  <el-radio-button label="all">全部</el-radio-button>
+                  <el-radio-button label="empty">未标注</el-radio-button>
+                  <el-radio-button label="mismatch">文案不一致</el-radio-button>
+                </el-radio-group>
+                <span class="cap-search-meta">{{ fieldRowsView.length }} / {{ fieldRows.length }}</span>
+              </div>
+              <el-alert
+                v-if="!fieldRows.length"
+                type="info"
+                :closable="false"
+                show-icon
+                class="cap-tip"
+                title="这条响应不是 JSON，对不上字段"
+              />
+              <el-table
+                v-else
+                :data="fieldRowsView"
+                size="small"
+                border
+                height="52vh"
+                class="cap-fields-table"
+              >
+                <el-table-column label="路径" min-width="240">
+                  <template #default="{ row }">
+                    <span class="cap-path">{{ row.path }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="name" label="字段" width="160" />
+                <el-table-column label="前端中文" min-width="180">
+                  <template #default="{ row }">
+                    <el-input
+                      v-model="row.zh"
+                      size="small"
+                      :placeholder="row.appZh || row.seed || '对得上再填'"
+                      @change="onFieldLabelChange(row)"
+                    />
+                  </template>
+                </el-table-column>
+                <el-table-column label="用法" min-width="220">
+                  <template #default="{ row }">
+                    <div v-if="row.appNote || row.appUse" class="cap-use">
+                      <el-tag v-if="row.appUse" size="small" effect="plain">{{ useLabel(row.appUse) }}</el-tag>
+                      <span>{{ row.appNote }}</span>
+                    </div>
+                    <span v-else class="opt-dim" style="margin: 0">战绩页没用到</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="来源" width="88" align="center">
+                  <template #default="{ row }">
+                    <el-tag v-if="row.mismatch" size="small" type="danger" effect="plain">不一致</el-tag>
+                    <el-tag v-else-if="row.source === 'override'" size="small" type="warning">手改</el-tag>
+                    <el-tag v-else-if="row.source === 'app'" size="small" type="success" effect="plain">战绩页</el-tag>
+                    <el-tag v-else-if="row.source === 'seed'" size="small" type="info" effect="plain">内置</el-tag>
+                    <span v-else class="opt-dim" style="margin: 0">—</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="示例" min-width="140">
+                  <template #default="{ row }">
+                    <span class="cap-mono">{{ row.sample }}</span>
+                  </template>
+                </el-table-column>
+              </el-table>
             </el-tab-pane>
             <el-tab-pane label="响应体" name="resp">
               <el-alert
@@ -522,11 +553,17 @@
                     下一个
                   </el-button>
                 </div>
-                <pre ref="respBodyRef" class="cap-body" v-html="respHighlightedHtml" />
+                <div v-if="respParsed != null" ref="respBodyRef" class="cap-json-wrap">
+                  <CaptureJsonTree :value="respParsed" :query="respSearch.trim()" />
+                </div>
+                <pre v-else ref="respBodyRef" class="cap-body" v-html="respHighlightedHtml" />
               </template>
             </el-tab-pane>
             <el-tab-pane label="请求体" name="req">
-              <pre class="cap-body">{{ reqText || '（没有请求体）' }}</pre>
+              <div v-if="reqParsed != null" class="cap-json-wrap">
+                <CaptureJsonTree :value="reqParsed" />
+              </div>
+              <pre v-else class="cap-body">{{ reqText || '（没有请求体）' }}</pre>
             </el-tab-pane>
             <el-tab-pane label="请求头" name="reqh">
               <pre class="cap-body">{{ headerText(detail?.reqHeaders) }}</pre>
@@ -539,9 +576,10 @@
             </el-tab-pane>
           </el-tabs>
         </template>
+        <div v-else-if="!bodyLoading" class="cap-detail-empty">没有读到详情</div>
       </div>
       <template #footer>
-        <el-button v-if="!bodyErr" @click="copyCurrent">复制当前内容</el-button>
+        <el-button v-if="!bodyErr && detail" @click="copyCurrent">复制当前内容</el-button>
         <el-button type="primary" @click="bodyVisible = false">关闭</el-button>
       </template>
     </el-dialog>
@@ -550,20 +588,41 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { apiClient } from '../api'
+import CaptureJsonTree from '../components/CaptureJsonTree.vue'
+import {
+  flattenFields,
+  loadOverrides,
+  parseRespBody,
+  resolveLabel,
+  saveOverride,
+  SEED_LABELS
+} from '../utils/captureFieldLabels'
+import {
+  appMetaOf,
+  evaluateMatchJudgments,
+  type AppFieldUse
+} from '../utils/captureFrontendRules'
+import {
+  captureKind,
+  CAPTURE_KIND_TABS,
+  type CaptureKind
+} from '../utils/captureResourceKind'
 
+const router = useRouter()
 const devices = ref<any[]>([])
-const form = reactive({ deviceId: '', hosts: '', requirementNo: '', project: '' })
+const form = reactive({ deviceId: '', hosts: '' })
 const projects = ref<any[]>([])
-const newProjVisible = ref(false)
-const projSaving = ref(false)
-const newProj = reactive({ code: '', name: '' })
 
 const running = ref(false)
 const starting = ref(false)
 const stopping = ref(false)
+const resetting = ref(false)
 const sessionId = ref('')
+/** 结束后仍能按这场 id 读详情；单靠 last 在后端重启后会丢 */
+const finishedSessionId = ref('')
 const count = ref(0)
 const seenHosts = ref<Record<string, number>>({})
 const seenTotal = ref(0)
@@ -595,11 +654,45 @@ function recallHosts(): string {
 const hostsDirty = computed(() => running.value && form.hosts.trim() !== runningHosts.value.trim())
 const tip = ref('')
 const flows = ref<any[]>([])
-const lastLinked = ref(0)
-const linkedTo = ref('')
-const linkNo = ref('')
-const linking = ref(false)
+const kindTab = ref<CaptureKind>('api')
+
+const kindTabs = computed(() =>
+  CAPTURE_KIND_TABS.map((t) => ({ ...t, count: kindCount(t.id) })).filter(
+    (t) => t.id === 'api' || t.count > 0
+  )
+)
+
+const kindFlows = computed(() => flows.value.filter((f) => captureKind(f) === kindTab.value))
+
+function kindCount(id: CaptureKind) {
+  return flows.value.filter((f) => captureKind(f) === id).length
+}
+
+const apiFlows = computed(() => flows.value.filter((f) => captureKind(f) === 'api'))
+
+watch(flows, () => {
+  if (kindCount(kindTab.value) > 0) return
+  const first = kindTabs.value.find((t) => t.count > 0)
+  kindTab.value = first?.id || 'api'
+})
+const saving = ref(false)
+const savedCount = computed(() => apiFlows.value.filter((f) => f.endpointId).length)
+const inboxCount = computed(() =>
+  apiFlows.value.filter((f) => f.endpointId && f.project === 'capture-inbox').length
+)
 const linkWarn = ref('')
+
+function projectName(code?: string | null) {
+  if (!code || code === 'capture-inbox') return ''
+  return projects.value.find((p) => p.code === code)?.name || code
+}
+
+function goEndpoints() {
+  router.push({
+    path: '/api-endpoints',
+    query: inboxCount.value ? { project: 'capture-inbox' } : undefined
+  })
+}
 
 const bodyVisible = ref(false)
 const bodyLoading = ref(false)
@@ -613,6 +706,83 @@ const cur = ref<any>(null)
 const respSearch = ref('')
 const respBodyRef = ref<HTMLElement | null>(null)
 const respMatchIndex = ref(0)
+const fieldSearch = ref('')
+const fieldFilter = ref<'app' | 'labeled' | 'all' | 'empty' | 'mismatch'>('app')
+const fieldOverrides = ref<Record<string, string>>(loadOverrides())
+
+type FieldViewRow = {
+  path: string
+  name: string
+  sample: string
+  labelKey: string
+  zh: string
+  seed: string
+  source: '' | 'seed' | 'override' | 'app'
+  appZh: string
+  appUse: AppFieldUse | ''
+  appNote: string
+  mismatch: boolean
+}
+
+const matchJudgments = computed(() => evaluateMatchJudgments(parseRespBody(detail.value?.respBody)))
+
+const fieldRows = computed<FieldViewRow[]>(() => {
+  const parsed = parseRespBody(detail.value?.respBody)
+  if (parsed == null) return []
+  return flattenFields(parsed).map((row) => {
+    const found = resolveLabel(row.labelKey, fieldOverrides.value)
+    const app = appMetaOf(row.labelKey)
+    const seed = SEED_LABELS[row.labelKey] || ''
+    const appZh = app?.zh || ''
+    return {
+      ...row,
+      zh: found.zh,
+      seed,
+      source: found.source,
+      appZh,
+      appUse: app?.use || '',
+      appNote: app?.note || '',
+      mismatch: !!(
+        appZh &&
+        seed &&
+        appZh !== seed &&
+        !seed.includes(appZh) &&
+        !appZh.includes(seed) &&
+        found.source !== 'override'
+      )
+    }
+  })
+})
+
+const fieldRowsView = computed(() => {
+  const q = fieldSearch.value.trim().toLowerCase()
+  return fieldRows.value.filter((row) => {
+    if (fieldFilter.value === 'app' && !row.appUse) return false
+    if (fieldFilter.value === 'labeled' && !row.zh) return false
+    if (fieldFilter.value === 'empty' && row.zh) return false
+    if (fieldFilter.value === 'mismatch' && !row.mismatch) return false
+    if (!q) return true
+    return (
+      row.path.toLowerCase().includes(q) ||
+      row.name.toLowerCase().includes(q) ||
+      row.zh.toLowerCase().includes(q) ||
+      row.appNote.toLowerCase().includes(q)
+    )
+  })
+})
+
+function useLabel(use: AppFieldUse) {
+  if (use === 'display') return '直出'
+  if (use === 'judge') return '判断'
+  if (use === 'derived') return '演算'
+  if (use === 'css') return '样式'
+  return use
+}
+
+function onFieldLabelChange(row: FieldViewRow) {
+  saveOverride(row.labelKey, row.zh)
+  fieldOverrides.value = loadOverrides()
+}
 
 let poll: ReturnType<typeof setInterval> | null = null
 
@@ -662,14 +832,13 @@ const failedOutOfScope = computed(() =>
 
 const noiseOpen = ref(false)
 
-const genning = ref(false)
 const savingToken = ref(false)
 
 /** 把这次抓包的 token 存到测试环境，用例执行时自动注入 */
 async function saveToken() {
   savingToken.value = true
   try {
-    const r = await apiClient.saveCaptureToken(sessionId.value || 'last', 'TEST')
+    const r = await apiClient.saveCaptureToken(sessionId.value || finishedSessionId.value || 'last', 'TEST')
     ElMessage.success(r.message)
   } catch (e: any) {
     ElMessage.error(e?.message || '保存失败')
@@ -677,64 +846,46 @@ async function saveToken() {
     savingToken.value = false
   }
 }
-const docVisible = ref(false)
-const docUploading = ref(false)
-const docInput = ref<HTMLInputElement>()
-const docFile = ref<File | null>(null)
-const docResult = ref<any>(null)
 
-function onDocPicked(e: Event) {
-  docFile.value = (e.target as HTMLInputElement).files?.[0] || null
-  docResult.value = null
-}
-
-/** 给这一单下所有涉及接口一次性生成用例 */
-async function genCases() {
-  const no = linkNo.value.trim() || form.requirementNo.trim()
-  if (!no) {
-    ElMessage.warning('先挂到需求单')
+/** 抓到的接口收进接口管理；认不出归属的先进「待归类」 */
+async function saveToCatalog(silent = false) {
+  const toSave = apiFlows.value
+  if (!toSave.length) {
+    if (!silent) ElMessage.warning('没有识别成接口的请求。JS / CSS / 图片不收录')
     return
   }
-  genning.value = true
+  saving.value = true
   try {
-    const r = await apiClient.generateCasesForRequirement(no, {
-      // 抓包页没有版本选择框；版本由生成器按需求单已有的集合决定
+    const r = await apiClient.saveCaptureEndpoints({
+      sessionId: sessionId.value || finishedSessionId.value || 'last',
+      flows: toSave.map((f) => ({ seq: f.seq, method: f.method, path: f.path, query: f.query }))
     })
-    const parts: string[] = []
-    if (r.created) parts.push(`新建 ${r.created} 条`)
-    // 复用的也要说：不说的话人会以为没生成，然后再点一次
-    if (r.reused) parts.push(`复用已有 ${r.reused} 条`)
-    ElMessage.success(
-      (parts.join('，') || '没有可生成的接口') +
-        (r.cases[0]?.collectionName ? `，归入集合「${r.cases[0].collectionName}」` : '')
-    )
-    if (r.failed?.length) {
-      ElMessage.warning(`${r.failed.length} 个没生成：${r.failed[0]}`)
+    const byKey = new Map(r.items.map((x) => [`${x.method} ${x.path}`, x]))
+    flows.value = flows.value.map((f) => {
+      const hit = byKey.get(`${String(f.method || 'GET').toUpperCase()} ${f.path}`)
+      if (!hit) return f
+      return {
+        ...f,
+        project: hit.project || null,
+        endpointId: hit.endpointId || null,
+        catalogMessage: hit.message || ''
+      }
+    })
+    linkWarn.value = ''
+    const inbox = r.items.filter((x) => x.project === 'capture-inbox').length
+    if (!silent) {
+      ElMessage.success(
+        `已收录 ${r.saved} 个接口` + (inbox ? `，其中 ${inbox} 个待归类，去接口管理里选项目` : '')
+      )
     }
   } catch (e: any) {
-    ElMessage.error(e?.message || '生成失败')
+    ElMessage.error(e?.message || '收录失败')
   } finally {
-    genning.value = false
+    saving.value = false
   }
 }
 
-async function submitDoc() {
-  if (!docFile.value) {
-    ElMessage.warning('先选一个 .docx 文件')
-    return
-  }
-  docUploading.value = true
-  try {
-    const r = await apiClient.importInterfaceDoc(form.project, docFile.value)
-    // 不关弹窗：未匹配的接口要留给人看——那是漏测点，关掉就没人再想起来
-    docResult.value = r
-    ElMessage.success(`已写入 ${r.matched} 个接口的文档约束`)
-  } catch (e: any) {
-    ElMessage.error(e?.message || '导入失败')
-  } finally {
-    docUploading.value = false
-  }
-}
+
 
 const failedList = computed(() =>
   Object.entries(failedHosts.value)
@@ -761,6 +912,8 @@ function pretty(raw: string) {
 
 const respText = computed(() => pretty(detail.value?.respBody || ''))
 const reqText = computed(() => pretty(detail.value?.reqBody || ''))
+const respParsed = computed(() => parseRespBody(detail.value?.respBody))
+const reqParsed = computed(() => parseRespBody(detail.value?.reqBody))
 
 const respMatchCount = computed(() => countMatches(respText.value, respSearch.value.trim()))
 const respHighlightedHtml = computed(() => highlightText(respText.value, respSearch.value.trim()))
@@ -845,6 +998,10 @@ function headerText(h?: Record<string, string>) {
 }
 
 async function openDetail(row: any) {
+  if (row?.seq == null) {
+    ElMessage.error('这条没有序号，点不开详情')
+    return
+  }
   bodyVisible.value = true
   bodyLoading.value = true
   bodyErr.value = ''
@@ -852,13 +1009,16 @@ async function openDetail(row: any) {
   cur.value = row
   respSearch.value = ''
   respMatchIndex.value = 0
+  fieldSearch.value = ''
+  fieldOverrides.value = loadOverrides()
   // 默认落在概览：点开详情多半是想先看这条到底是什么，再决定看不看 body
   bodyTab.value = 'general'
   bodyTitle.value = `${row.method} ${row.path}`
   bodyTruncated.value = !!row.respTruncated
   try {
-    // 抓完之后 session 已经结束了，用 last 取上一场
-    const r = await apiClient.captureDetail(sessionId.value || 'last', row.seq)
+    // 优先用本场 sessionId；结束之后仍保留 finishedSessionId，避免只靠易丢的 last
+    const sid = sessionId.value || finishedSessionId.value || 'last'
+    const r = await apiClient.captureDetail(sid, row.seq)
     if (!r.available) {
       bodyErr.value = r.message || '这条没有留详情'
     } else {
@@ -872,8 +1032,12 @@ async function openDetail(row: any) {
 }
 
 async function copyCurrent() {
+  const fieldTsv = fieldRowsView.value
+    .map((r) => `${r.path}\t${r.name}\t${r.zh}\t${r.sample}`)
+    .join('\n')
   const map: Record<string, string> = {
     general: cur.value?.url || '',
+    fields: fieldTsv ? `路径\t字段\t前端中文\t示例\n${fieldTsv}` : '',
     resp: respText.value,
     req: reqText.value,
     reqh: headerText(detail.value?.reqHeaders),
@@ -885,64 +1049,6 @@ async function copyCurrent() {
     ElMessage.success('已复制')
   } catch {
     ElMessage.error('复制失败，手动选中复制吧')
-  }
-}
-
-async function createProj() {
-  const code = newProj.code.trim()
-  const name = newProj.name.trim()
-  if (!code || !name) {
-    ElMessage.warning('代号和名称都要填')
-    return
-  }
-  projSaving.value = true
-  try {
-    await apiClient.createApiProject({ code, name, enabled: true })
-    projects.value = await apiClient.getApiProjects({ enabledOnly: true })
-    form.project = code
-    newProjVisible.value = false
-    newProj.code = ''
-    newProj.name = ''
-    ElMessage.success(`已创建项目 ${name}`)
-  } catch (e: any) {
-    ElMessage.error(e?.message || '创建项目失败')
-  } finally {
-    projSaving.value = false
-  }
-}
-
-async function linkNow() {
-  const no = linkNo.value.trim()
-  if (!no) {
-    ElMessage.warning('先填需求单号')
-    return
-  }
-  if (!form.project) {
-    ElMessage.warning('先选接口归哪个项目——接口清单按项目分，不选就生不成用例')
-    return
-  }
-  linking.value = true
-  try {
-    const r = await apiClient.linkCapturedFlows({
-      requirementNo: no,
-      project: form.project,
-      sessionId: 'last',
-      flows: flows.value.map((f) => ({
-        method: f.method,
-        path: f.path,
-        host: f.host,
-        seq: f.seq
-      }))
-    })
-    lastLinked.value = r.linked
-    linkedTo.value = no
-    linkWarn.value = ''
-    const extra = r.fieldsExtracted ? `，已解析 ${r.fieldsExtracted} 条响应字段` : ''
-    ElMessage.success(`已挂 ${r.linked} 个接口到 ${no}${extra}`)
-  } catch (e: any) {
-    ElMessage.error(e?.message || '挂载失败')
-  } finally {
-    linking.value = false
   }
 }
 
@@ -1002,20 +1108,69 @@ function stopPoll() {
   }
 }
 
+/** 上一场的表格、诊断、挂单状态。设备/白名单/需求单是下次还要用的，不清 */
+const canReset = computed(
+  () =>
+    running.value ||
+    flows.value.length > 0 ||
+    capturedTotal.value > 0 ||
+    count.value > 0 ||
+    Object.keys(seenHosts.value).length > 0 ||
+    Object.keys(failedHosts.value).length > 0 ||
+    !!linkWarn.value
+)
+
+function clearBoard() {
+  stopPoll()
+  running.value = false
+  sessionId.value = ''
+  finishedSessionId.value = ''
+  count.value = 0
+  capturedTotal.value = 0
+  seenHosts.value = {}
+  seenTotal.value = 0
+  failedHosts.value = {}
+  flows.value = []
+  linkWarn.value = ''
+  tip.value = ''
+  bodyVisible.value = false
+  detail.value = null
+  cur.value = null
+  noiseOpen.value = false
+}
+
+/** 丢掉当前这场，页面回到可以再点「开始抓包」的状态 */
+async function reset() {
+  resetting.value = true
+  try {
+    if (running.value && sessionId.value) {
+      try {
+        await apiClient.stopCapture(sessionId.value, {})
+      } catch {
+        /* 代理可能已经停了，页面照样清掉 */
+      }
+    }
+    clearBoard()
+    ElMessage.success('已清空，可以重新开始抓包')
+  } finally {
+    resetting.value = false
+  }
+}
+
 async function start() {
   const dev = devices.value.find((d) => d.id === form.deviceId)
   starting.value = true
   flows.value = []
-  lastLinked.value = 0
+  linkWarn.value = ''
   try {
     const r = await apiClient.startCapture({
       deviceId: form.deviceId,
       platform: String(dev?.platform || 'ANDROID'),
-      requirementNo: form.requirementNo.trim() || undefined,
       hosts: form.hosts.trim() || undefined
     })
     running.value = true
     sessionId.value = r.sessionId
+    finishedSessionId.value = ''
     form.hosts = r.hosts || form.hosts
     runningHosts.value = form.hosts
     rememberHosts(form.hosts)
@@ -1034,27 +1189,29 @@ async function start() {
 async function stop() {
   stopping.value = true
   try {
-    const r = await apiClient.stopCapture(sessionId.value, {
-      requirementNo: form.requirementNo.trim() || undefined,
-      project: form.project || undefined
-    })
+    const stoppedId = sessionId.value
+    const r = await apiClient.stopCapture(sessionId.value, {})
     flows.value = r.flows || []
     capturedTotal.value = r.total || 0
-    linkWarn.value = r.linkWarn || ''
-    lastLinked.value = r.linked || 0
-    linkedTo.value = r.linked ? form.requirementNo.trim() : ''
-    linkNo.value = form.requirementNo.trim()
+    linkWarn.value = ''
     seenHosts.value = r.seenHosts || {}
     failedHosts.value = r.failedHosts || {}
+    finishedSessionId.value = stoppedId || ''
     ElMessage.success(
-      `抓到 ${r.total} 条请求，去重后 ${r.distinct} 个接口` +
-        (r.linked ? `，已挂到 ${form.requirementNo}` : '') +
-        (r.fieldsExtracted ? `，解析 ${r.fieldsExtracted} 条响应字段` : '')
+      `抓到 ${r.total} 条请求，去重后 ${r.distinct} 条` +
+        (kindCount('api') ? `（接口 ${kindCount('api')}）` : '')
     )
+    // 安卓会撤全局代理；若 Wi‑Fi 里还留着手动 127.0.0.1:8080，页面会全挂
+    ElMessage.warning({
+      message:
+        '抓包已结束。若手机页面打不开：到 Wi‑Fi → 当前网络 → 代理，确认已「关闭」（不要留 127.0.0.1:8080）',
+      duration: 8000
+    })
     stopPoll()
     running.value = false
     sessionId.value = ''
     tip.value = ''
+    void saveToCatalog(true)
   } catch (e: any) {
     ElMessage.error(e?.message || '结束抓包失败')
   } finally {
@@ -1089,7 +1246,6 @@ onMounted(async () => {
       form.deviceId = cur.deviceId || ''
       form.hosts = cur.hosts || ''
       runningHosts.value = cur.hosts || ''
-      form.requirementNo = cur.requirementNo || ''
       startPoll()
     }
   } catch {
@@ -1155,6 +1311,7 @@ onBeforeUnmount(() => {
   width: 100%;
 }
 
+.cap-actions-idle,
 .cap-actions-live {
   display: flex;
   align-items: center;
@@ -1231,6 +1388,41 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
+.cap-kind-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+
+.cap-kind-tab {
+  border: 1px solid var(--el-border-color);
+  background: var(--el-bg-color);
+  color: var(--el-text-color-regular);
+  border-radius: 14px;
+  padding: 3px 10px;
+  font-size: 12.5px;
+  cursor: pointer;
+  line-height: 1.6;
+}
+
+.cap-kind-tab em {
+  margin-left: 5px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  color: var(--el-text-color-secondary);
+}
+
+.cap-kind-tab.active {
+  border-color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+}
+
+.cap-kind-tab.active em {
+  color: var(--el-color-primary);
+}
+
 .cap-link-box {
   display: flex;
   gap: 8px;
@@ -1246,6 +1438,7 @@ onBeforeUnmount(() => {
 .cap-sz {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12.5px;
+  word-break: break-all;
 }
 
 .cap-sz {
@@ -1271,15 +1464,49 @@ onBeforeUnmount(() => {
 }
 
 .cap-body :deep(mark.cap-hl) {
-  background: #ffe58f;
+  background: var(--el-color-warning-light-7);
   color: inherit;
   padding: 0 1px;
   border-radius: 2px;
 }
 
 .cap-body :deep(mark.cap-hl-active) {
-  background: #ffc53d;
-  outline: 1px solid #faad14;
+  background: var(--el-color-warning-light-3);
+  outline: 1px solid var(--el-color-warning);
+}
+
+.cap-fields-tip {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
+}
+
+.cap-fields-table {
+  width: 100%;
+}
+
+.cap-judge {
+  margin: 0 0 14px;
+}
+
+.cap-judge-head {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cap-judge-table {
+  width: 100%;
+  margin-bottom: 4px;
+}
+
+.cap-use {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  line-height: 1.45;
+  font-size: 12px;
 }
 
 .cap-body {
@@ -1299,6 +1526,18 @@ onBeforeUnmount(() => {
 .cap-linked {
   font-size: 12px;
   color: var(--el-color-success);
+}
+
+.cap-catalog {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.cap-catalog-proj {
+  font-size: 12px;
+  color: var(--el-text-color-regular);
 }
 
 .cap-path {
@@ -1417,6 +1656,16 @@ code {
   color: var(--el-text-color-secondary);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+}
+
+.cap-detail-body {
+  min-height: 120px;
+}
+
+.cap-detail-empty {
+  padding: 24px 0;
+  text-align: center;
+  color: var(--el-text-color-secondary);
 }
 
 </style>

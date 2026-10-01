@@ -167,7 +167,7 @@ onMounted(reload)
   margin: 0 0 16px;
   padding: 12px 14px;
   background: #fff7f6;
-  border: 1px solid #ffccc7;
+  border: 1px solid var(--el-color-danger-light-7);
   border-radius: 8px;
 }
 .mb-head {
@@ -180,12 +180,12 @@ onMounted(reload)
 .mb-title {
   font-size: 15px;
   font-weight: 600;
-  color: #cf1322;
+  color: var(--el-color-danger-dark-2);
 }
 .mb-sub {
   margin-top: 4px;
   font-size: 12px;
-  color: #8c8c8c;
+  color: var(--el-text-color-secondary);
 }
 .mb-actions {
   display: flex;
@@ -208,12 +208,12 @@ onMounted(reload)
   padding-left: 16px;
   font-size: 12px;
   line-height: 1.5;
-  color: #595959;
+  color: var(--app-text-regular);
 }
 .mb-more {
   margin-top: 6px;
 }
 .mb-table :deep(.is-hit) {
-  background: #fff1b8;
+  background: var(--el-color-warning-light-8);
 }
 </style>

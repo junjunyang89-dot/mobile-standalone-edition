@@ -312,15 +312,15 @@ onMounted(loadSnapshots)
 
 <style scoped>
 .title { font-size: 16px; font-weight: 600; }
-.sub { margin: 4px 0 0; color: #909399; font-size: 12px; max-width: 760px; }
+.sub { margin: 4px 0 0; color: var(--el-text-color-secondary); font-size: 12px; max-width: 760px; }
 .snap-actions { display: flex; gap: 8px; }
 .drift { margin-bottom: 12px; }
-.drift-ep { font-family: monospace; font-size: 13px; margin-bottom: 4px; color: #303133; }
+.drift-ep { font-family: monospace; font-size: 13px; margin-bottom: 4px; color: var(--el-text-color-primary); }
 code.wrap { word-break: break-all; }
-.tip { color: #909399; font-size: 12px; margin-top: 4px; }
-.task-audit { padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+.tip { color: var(--el-text-color-secondary); font-size: 12px; margin-top: 4px; }
+.task-audit { padding: 8px 0; border-bottom: 1px solid var(--el-border-color-lighter); }
 .task-head { display: flex; align-items: center; gap: 8px; }
 .task-name { font-weight: 600; }
-.task-rewards { color: #606266; font-size: 13px; }
-.unmatched { color: #e6a23c; font-size: 12px; margin: 4px 0 0 60px; }
+.task-rewards { color: var(--app-text-regular); font-size: 13px; }
+.unmatched { color: var(--el-color-warning); font-size: 12px; margin: 4px 0 0 60px; }
 </style>

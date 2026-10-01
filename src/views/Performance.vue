@@ -180,6 +180,31 @@
             <el-descriptions-item label="采集引擎">{{ report.collectorEngineUsed || '-' }}</el-descriptions-item>
           </el-descriptions>
           <p class="conclusion">{{ report.conclusion || '暂无结论' }}</p>
+          <!--
+            内存泄漏结论。三种状态要长得不一样：
+            泄漏＝红、没泄漏＝绿、样本不足＝灰。
+            把「没测出来」显示成绿色的「无泄漏」，是最容易骗到人的一种报告
+          -->
+          <div v-if="report.memoryLeak" class="leak-block">
+            <el-alert
+              :type="leakAlertType"
+              :closable="false"
+              show-icon
+              :title="leakTitle"
+              :description="report.memoryLeak.summary"
+            />
+            <p v-for="(n, i) in (report.memoryLeak.notes || [])" :key="i" class="leak-note">· {{ n }}</p>
+            <div v-if="leakPoints.length" class="leak-points">
+              <span class="leak-points-label">每轮内存（MB）：</span>
+              <span class="leak-points-val">{{ leakPoints.join('  →  ') }}</span>
+            </div>
+            <p v-if="report.memoryLeak.verdict !== 'INSUFFICIENT'" class="leak-meta">
+              斜率 {{ (report.memoryLeak.slopeKbPerRound / 1024).toFixed(2) }} MB/轮 ·
+              趋势拟合度 R² {{ report.memoryLeak.rSquared?.toFixed(2) }} ·
+              总增长 {{ (report.memoryLeak.growthKb / 1024).toFixed(1) }} MB
+            </p>
+          </div>
+
           <div v-if="stutterMoments.length" class="stutter-block">
             <div class="stutter-title">卡顿时刻（共 {{ stutterMoments.length }} 次）</div>
             <p class="stutter-hint">
@@ -276,6 +301,27 @@ const fmt = (n?: number | null, digits = 1) => {
   if (n == null || Number.isNaN(n)) return '-'
   return Number(n).toFixed(digits)
 }
+
+const leakAlertType = computed(() => {
+  const v = report.value?.memoryLeak?.verdict
+  if (v === 'LEAKING') return 'error'
+  // 样本不足用 info（灰），不能用 success——「没测出来」不是「没问题」
+  if (v === 'INSUFFICIENT') return 'info'
+  return 'success'
+})
+
+const leakTitle = computed(() => {
+  const v = report.value?.memoryLeak?.verdict
+  if (v === 'LEAKING') return '内存泄漏：疑似'
+  if (v === 'INSUFFICIENT') return '内存泄漏：样本不足，本次没测出结论'
+  return '内存泄漏：未发现'
+})
+
+const leakPoints = computed(() => {
+  const pts = report.value?.memoryLeak?.checkpointsKb
+  if (!Array.isArray(pts)) return []
+  return pts.map((k: number) => (k / 1024).toFixed(0))
+})
 
 const issueTotal = computed(() => Number(report.value?.issueSummary?.totalIssueCount ?? 0))
 
@@ -987,7 +1033,7 @@ watch(
   margin-top: 4px;
   font-size: 13px;
   line-height: 1.55;
-  color: #334155;
+  color: var(--app-text-regular);
 }
 
 .analysis-section {
@@ -997,14 +1043,14 @@ watch(
 .analysis-section h4 {
   margin: 0 0 6px;
   font-size: 14px;
-  color: #0f172a;
+  color: var(--el-text-color-primary);
 }
 
 .analysis-section ul,
 .analysis-section ol {
   margin: 0;
   padding-left: 18px;
-  color: #334155;
+  color: var(--app-text-regular);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -1016,21 +1062,21 @@ watch(
 .analysis-next-steps {
   padding: 12px 14px;
   border-radius: 10px;
-  background: linear-gradient(145deg, #fffbeb 0%, #fef3c7 100%);
-  border-left: 4px solid #f59e0b;
-  box-shadow: inset 0 0 0 1px #fcd34d;
+  background: linear-gradient(145deg, var(--el-color-warning-light-9) 0%, var(--el-color-warning-light-8) 100%);
+  border-left: 4px solid var(--el-color-warning);
+  box-shadow: inset 0 0 0 1px var(--el-color-warning-light-5);
 }
 
 .analysis-next-steps h4 {
-  color: #b45309;
+  color: var(--el-color-warning-dark-2);
 }
 
 .analysis-next-steps ol {
-  color: #92400e;
+  color: var(--el-color-warning-dark-2);
 }
 
 .analysis-next-steps li::marker {
-  color: #d97706;
+  color: var(--el-color-warning-dark-2);
   font-weight: 700;
 }
 
@@ -1059,32 +1105,32 @@ watch(
 }
 
 .metric-card.tone-cpu {
-  background: linear-gradient(145deg, #eff6ff 0%, #dbeafe 100%);
-  box-shadow: inset 0 0 0 1px #93c5fd;
+  background: linear-gradient(145deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-8) 100%);
+  box-shadow: inset 0 0 0 1px var(--el-color-primary-light-5);
 }
 
 .metric-card.tone-mem {
-  background: linear-gradient(145deg, #f0fdf4 0%, #dcfce7 100%);
-  box-shadow: inset 0 0 0 1px #86efac;
+  background: linear-gradient(145deg, var(--el-color-success-light-9) 0%, var(--el-color-success-light-8) 100%);
+  box-shadow: inset 0 0 0 1px var(--el-color-success-light-5);
 }
 
 .metric-card.tone-fps {
-  background: linear-gradient(145deg, #fff7ed 0%, #ffedd5 100%);
+  background: linear-gradient(145deg, var(--el-color-warning-light-9) 0%, var(--el-color-warning-light-8) 100%);
   box-shadow: inset 0 0 0 1px #fdba74;
 }
 
 .metric-card.tone-issue-ok {
-  background: linear-gradient(145deg, #ecfdf5 0%, #d1fae5 100%);
+  background: linear-gradient(145deg, var(--el-color-success-light-9) 0%, var(--el-color-success-light-8) 100%);
   box-shadow: inset 0 0 0 1px #6ee7b7;
 }
 
 .metric-card.tone-issue-bad {
-  background: linear-gradient(145deg, #fef2f2 0%, #fee2e2 100%);
-  box-shadow: inset 0 0 0 1px #fca5a5;
+  background: linear-gradient(145deg, var(--el-color-danger-light-9) 0%, var(--el-color-danger-light-8) 100%);
+  box-shadow: inset 0 0 0 1px var(--el-color-danger-light-5);
 }
 
 .metric-label {
-  color: #475569;
+  color: var(--app-text-regular);
   font-size: 13px;
   font-weight: 600;
 }
@@ -1097,29 +1143,29 @@ watch(
 }
 
 .tone-cpu .metric-value {
-  color: #1d4ed8;
+  color: var(--el-color-primary-dark-2);
 }
 
 .tone-mem .metric-value {
-  color: #15803d;
+  color: var(--el-color-success-dark-2);
 }
 
 .tone-fps .metric-value {
-  color: #c2410c;
+  color: var(--el-color-warning-dark-2);
 }
 
 .tone-issue-ok .metric-value {
-  color: #047857;
+  color: var(--el-color-success-dark-2);
 }
 
 .tone-issue-bad .metric-value {
-  color: #b91c1c;
+  color: var(--el-color-danger-dark-2);
 }
 
 .metric-sub {
   margin-top: 6px;
   font-size: 12px;
-  color: #64748b;
+  color: var(--el-text-color-secondary);
 }
 
 .chart-card,
@@ -1136,7 +1182,7 @@ watch(
 .chart-title,
 .panel-title {
   font-weight: 700;
-  color: #0f172a;
+  color: var(--el-text-color-primary);
 }
 
 .issues-card :deep(.el-card__header) {
@@ -1163,39 +1209,39 @@ watch(
   margin: 12px 0 0;
   padding: 10px 12px;
   border-radius: 8px;
-  background: #f8fafc;
-  border-left: 4px solid #3b82f6;
-  color: #334155;
+  background: var(--el-fill-color-lighter);
+  border-left: 4px solid var(--el-color-primary);
+  color: var(--app-text-regular);
   font-size: 13px;
   line-height: 1.5;
 }
 .stutter-block {
   margin-top: 12px;
   padding-top: 10px;
-  border-top: 1px dashed #e2e8f0;
+  border-top: 1px dashed var(--el-border-color);
 }
 
 .stutter-title {
   font-size: 13px;
   font-weight: 600;
-  color: #b91c1c;
+  color: var(--el-color-danger-dark-2);
   margin-bottom: 4px;
 }
 
 .stutter-hint {
   margin: 0 0 8px;
   font-size: 12px;
-  color: #64748b;
+  color: var(--el-text-color-secondary);
   line-height: 1.45;
 }
 
 .num-ok {
-  color: #047857;
+  color: var(--el-color-success-dark-2);
   font-weight: 700;
 }
 
 .num-bad {
-  color: #b91c1c;
+  color: var(--el-color-danger-dark-2);
   font-weight: 700;
 }
 
@@ -1208,22 +1254,29 @@ watch(
 }
 
 .metric-chip.tone-cpu {
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: var(--el-color-primary-light-8);
+  color: var(--el-color-primary-dark-2);
 }
 
 .metric-chip.tone-mem {
-  background: #dcfce7;
-  color: #15803d;
+  background: var(--el-color-success-light-8);
+  color: var(--el-color-success-dark-2);
 }
 
 .metric-chip.tone-fps {
-  background: #ffedd5;
-  color: #c2410c;
+  background: var(--el-color-warning-light-8);
+  color: var(--el-color-warning-dark-2);
 }
 
 .metric-chip.tone-temp {
   background: #fce7f3;
   color: #be185d;
 }
+
+.leak-block { margin-top: 12px; }
+.leak-note { margin: 6px 0 0; font-size: 12px; color: var(--el-text-color-secondary); }
+.leak-points { margin-top: 8px; font-size: 12px; }
+.leak-points-label { color: var(--el-text-color-secondary); }
+.leak-points-val { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.leak-meta { margin: 6px 0 0; font-size: 12px; color: var(--el-text-color-secondary); }
 </style>

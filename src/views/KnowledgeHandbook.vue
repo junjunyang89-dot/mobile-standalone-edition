@@ -709,7 +709,7 @@ onMounted(async () => {
 }
 
 .thumb-empty {
-  color: #c0c4cc;
+  color: var(--el-text-color-disabled);
 }
 
 .ai-draft {

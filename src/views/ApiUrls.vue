@@ -6,7 +6,8 @@
           <div>
             <span class="title">URL 管理</span>
             <p class="sub">
-              按<strong>项目</strong>维护网关 / Base URL。接口测试用例只存 path，执行时下拉选择这里的 URL。
+              按<strong>项目</strong>维护网关 / Base URL（域名或 IP+端口均可）。
+              接口测试用例只存 path；<strong>状态监控</strong>也从这里选地址，不另建一套 IP 清单。
             </p>
           </div>
           <el-button type="primary" @click="openCreate">新建 URL</el-button>
@@ -88,7 +89,10 @@
           </el-radio-group>
         </el-form-item>
         <el-form-item label="Base URL" required>
-          <el-input v-model="form.baseUrl" placeholder="https://gateway-qa.arca42.com" />
+          <el-input
+            v-model="form.baseUrl"
+            placeholder="https://gateway-qa.example.com 或 http://10.0.0.31:8080"
+          />
         </el-form-item>
         <el-form-item label="说明">
           <el-input v-model="form.description" type="textarea" :rows="2" />

@@ -97,7 +97,7 @@
             >
               <div style="display: flex; flex-direction: column">
                 <span>{{ f.name || f.id }}</span>
-                <span style="font-size: 12px; color: #909399">
+                <span style="font-size: 12px; color: var(--el-text-color-secondary)">
                   {{ f.id }}{{ f.appId ? ` · ${f.appId}` : '' }}{{ f.platform ? ` · ${f.platform}` : '' }}
                 </span>
               </div>
@@ -213,7 +213,7 @@
               <el-option label="SoloX（Python 旁路，需节点已安装）" value="SOLOX" />
             </template>
           </el-select>
-          <div style="margin-top: 6px; font-size: 12px; color: #909399; max-width: 560px; line-height: 1.5">
+          <div style="margin-top: 6px; font-size: 12px; color: var(--el-text-color-secondary); max-width: 560px; line-height: 1.5">
             <template v-if="isIosPlatform">
               Tidevice：
               <code>pip install -r scripts/perf/requirements-ios-perf.txt</code>

@@ -82,7 +82,7 @@
             :rows="4"
             placeholder='JSON，如 {"XIAOMI":"https://...","HUAWEI":"https://...","OPPO":"...","VIVO":"..."}'
           />
-          <div style="margin-top: 6px; font-size: 12px; color: #909399">
+          <div style="margin-top: 6px; font-size: 12px; color: var(--el-text-color-secondary)">
             CHANNEL_PAGE 安装时优先打开对应厂商地址；你汇总各渠道页后粘贴即可。
           </div>
         </el-form-item>

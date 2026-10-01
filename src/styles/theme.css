@@ -16,6 +16,7 @@
   --app-danger: #ff4d4f;
   --app-warning: #faad14;
   --app-text: #1f2329;
+  --app-text-regular: #475569;
   --app-text-secondary: #64748b;
   --app-border: #e8eaef;
   --app-surface: #f1f5f9;
@@ -25,6 +26,11 @@
   --app-font-size-sm: 12px;
   --app-font-size-lg: 15px;
   --app-font-size-title: 17px;
+
+  /* 和任务列表、侧栏同一套：不写苹方的话，原生 button 会走浏览器默认按钮字体 */
+  --app-font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --el-font-family: var(--app-font-family);
 
   /* 侧栏文字层级（由 sidebar 背景推导） */
   --app-sidebar-text: #bfcbd9;
@@ -92,6 +98,7 @@
   --el-text-color-regular: var(--app-text);
   --el-text-color-secondary: var(--app-text-secondary);
   --el-text-color-placeholder: #8f959e;
+  --el-text-color-disabled: #a8abb2;
   --el-border-color: var(--app-border);
   --el-border-color-light: var(--app-border);
   --el-border-color-lighter: #eef0f3;
@@ -99,12 +106,15 @@
   --el-bg-color: var(--app-card-bg);
   --el-bg-color-page: var(--app-main-bg);
   --el-fill-color-blank: var(--app-card-bg);
+  --el-fill-color-lighter: #f8fafc;
   --el-fill-color-light: var(--app-surface);
   --el-fill-color: #eef0f3;
+  --el-fill-color-dark: #e4e7ed;
 }
 
 html {
   font-size: var(--app-font-size);
+  font-family: var(--app-font-family);
 }
 
 .nav-section-label {
@@ -120,10 +130,19 @@ html {
 }
 
 body {
+  font-family: var(--app-font-family);
   font-size: var(--app-font-size);
   line-height: 1.55;
   color: var(--app-text);
   background: var(--app-main-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
 }
 
 .el-menu {
@@ -185,6 +204,132 @@ body {
   margin-right: 0;
 }
 
+/*
+ * 弹窗统一成「执行流程」那一套：白底、16 圆角、头底分割线、灰底关闭钮。
+ * 各页不必再各自写一份壳，内容区可以继续有自己的卡片。
+ */
+.el-dialog {
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.18);
+}
+.el-dialog__header {
+  margin: 0;
+  padding: 16px 20px 14px;
+  border-bottom: 1px solid var(--el-border-color);
+}
+.el-dialog__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  line-height: 1.3;
+}
+.el-dialog__headerbtn {
+  top: 16px;
+  right: 20px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--el-fill-color-light);
+}
+.el-dialog__headerbtn .el-dialog__close {
+  color: var(--el-text-color-secondary);
+  font-size: 14px;
+}
+.el-dialog__headerbtn:hover {
+  background: var(--el-fill-color-dark);
+}
+.el-dialog__headerbtn:hover .el-dialog__close {
+  color: var(--app-text-regular);
+}
+
+/* 「放到后台」按钮：弹窗里贴在关闭钮左边，抽屉里是头部的一个 flex 项 */
+.el-overlay.is-bg-minimized {
+  display: none !important;
+}
+.dlg-bg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+.dlg-bg-btn:hover {
+  background: var(--el-fill-color-dark);
+  color: var(--app-text-regular);
+}
+.el-dialog__header > .dlg-bg-btn {
+  position: absolute;
+  top: 16px;
+  right: 56px;
+}
+.el-dialog__header:has(> .dlg-bg-btn) {
+  padding-right: 96px;
+}
+.el-drawer__header > .dlg-bg-btn {
+  margin-right: 8px;
+}
+/* 自己画头部的弹窗多是 space-between，不推到右边会被均分到中间 */
+.dlg-bg-btn:has(+ button[aria-label='关闭']) {
+  margin-left: auto;
+  margin-right: 8px;
+}
+.el-dialog__body {
+  padding: 18px 20px;
+  color: var(--el-text-color-primary);
+}
+.el-dialog__footer {
+  padding: 14px 20px 18px;
+  border-top: 1px solid var(--el-border-color);
+}
+.el-dialog__footer .el-button {
+  min-width: 76px;
+  border-radius: 8px;
+}
+.el-dialog__footer .el-button--primary {
+  min-width: 96px;
+}
+
+.el-message-box {
+  border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.18);
+  --el-messagebox-title-color: #303133;
+}
+.el-message-box__header {
+  padding: 16px 20px 14px;
+}
+.el-message-box__title {
+  font-size: 16px;
+  font-weight: 600;
+}
+.el-message-box__headerbtn {
+  top: 16px;
+  right: 20px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--el-fill-color-light);
+}
+.el-message-box__content {
+  padding: 12px 20px 8px;
+}
+.el-message-box__btns {
+  padding: 14px 20px 18px;
+}
+.el-message-box__btns .el-button {
+  min-width: 76px;
+  border-radius: 8px;
+}
+
 .el-overlay {
   background-color: rgba(29, 39, 64, 0.45);
 }
@@ -206,3 +351,69 @@ body {
   --el-pagination-button-color: var(--app-text-secondary);
   --el-pagination-hover-color: var(--app-primary);
 }
+
+/*
+ * 系统默认滚动条又宽又方，桌面窗口里特别扎眼。
+ * 不加限定选择器：html / body / el-main / 表格里哪一层在滚都吃到同一套。
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #b6bcc6 #f3f4f6;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--el-fill-color-light);
+  border-radius: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #c5cad3;
+  border-radius: 8px;
+  border: 2px solid var(--el-border-color-lighter);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #8f959e;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.el-scrollbar__bar.is-horizontal {
+  height: 8px;
+}
+
+.el-scrollbar__bar.is-vertical {
+  width: 8px;
+}
+
+.el-scrollbar__thumb {
+  background-color: #c5cad3 !important;
+  opacity: 1 !important;
+  border-radius: 8px;
+}
+
+.el-scrollbar__thumb:hover {
+  background-color: #8f959e !important;
+}
+
+/* 线上执行拦截弹窗（src/utils/writeEffect.ts） */
+.we-guard-box { width: 520px; max-width: 92vw; }
+.we-guard-box p { margin: 0 0 8px; }
+.we-guard-sub { color: var(--app-text-regular); font-size: 13px; }
+.we-guard-list { margin: 0; padding: 0; list-style: none; max-height: 280px; overflow: auto; }
+.we-guard-list li { padding: 6px 0; border-top: 1px solid var(--el-border-color-lighter); font-size: 13px; }
+.we-guard-name { margin-left: 6px; color: var(--el-text-color-primary); }
+.we-guard-reason { margin-top: 2px; font-size: 12px; color: var(--el-text-color-secondary); }
+.we-guard-more { color: var(--el-text-color-secondary); font-size: 12px; }
+.we-guard-tag { display: inline-block; padding: 0 6px; font-size: 11px; line-height: 16px; border-radius: 4px; border: 1px solid transparent; }
+.we-guard-tag.is-writes { color: var(--el-color-danger-dark-2); background: var(--el-color-danger-light-9); border-color: var(--el-color-danger-light-7); }
+.we-guard-tag.is-readonly { color: var(--el-color-success-dark-2); background: var(--el-color-success-light-9); border-color: var(--el-color-success-light-7); }
+.we-guard-tag.is-unknown { color: var(--el-text-color-secondary); background: var(--el-fill-color-lighter); border: 1px dashed #bfbfbf; }

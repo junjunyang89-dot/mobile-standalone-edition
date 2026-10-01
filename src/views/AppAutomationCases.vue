@@ -211,22 +211,42 @@
         </div>
 
         <div class="exec-field">
-          <div class="exec-dev-head">
+          <el-radio-group v-model="execAutoAssign" class="exec-assign-mode">
+            <el-radio-button :value="true">自动分配（排队）</el-radio-button>
+            <el-radio-button :value="false">指定设备</el-radio-button>
+          </el-radio-group>
+
+          <div v-if="execAutoAssign" class="exec-auto-box">
+            <div class="exec-auto-line">
+              从设备池挑一台空闲的 {{ platformLabel }} 设备开跑；都在忙就排队，空出来一台自动接上。
+            </div>
+            <div class="exec-auto-line">
+              <el-switch v-model="execAllowEmulator" :disabled="environment !== 'TEST'" />
+              <span class="exec-auto-switch-label">
+                允许派给模拟器
+                <span v-if="environment !== 'TEST'" class="exec-auto-muted">（生产环境一律只用真机）</span>
+              </span>
+            </div>
+          </div>
+
+          <div v-show="!execAutoAssign" class="exec-dev-head">
             <div class="exec-field-label">选择执行设备</div>
             <el-button link type="primary" class="exec-refresh-btn" :loading="execRefreshing" @click="refreshExecDevices">
               <el-icon v-if="!execRefreshing"><Refresh /></el-icon>
               刷新设备
             </el-button>
           </div>
-          <div v-if="!execDevices.length" class="exec-hint">当前没有在线设备，点「刷新设备」扫描，或先到设备管理连接</div>
-          <div v-else class="exec-dev-list">
+          <div v-if="!execAutoAssign && !execDevices.length" class="exec-hint">
+            设备池里暂时没有在线设备。真机和模拟器都挂在主控机上，可改用「自动分配」排队。
+          </div>
+          <div v-else-if="!execAutoAssign" class="exec-dev-list">
             <button
               v-for="d in execDevices"
               :key="d.id"
               type="button"
               class="exec-dev-card"
               :class="[execDeviceKind(d), { selected: execDeviceId === d.id }]"
-              :disabled="execDeviceKind(d) === 'offline'"
+              :disabled="execDeviceKind(d) !== 'idle'"
               @click="selectExecDevice(d)"
             >
               <span class="exec-dev-radio" :class="{ on: execDeviceId === d.id }" />
@@ -256,7 +276,8 @@
       <template #footer>
         <div class="exec-dlg-footer">
           <div class="exec-picked">
-            <template v-if="selectedExecDevice">已选: {{ execDeviceTitle(selectedExecDevice) }}</template>
+            <template v-if="execAutoAssign">将自动分配空闲设备</template>
+            <template v-else-if="selectedExecDevice">已选: {{ execDeviceTitle(selectedExecDevice) }}</template>
             <template v-else>尚未选择设备</template>
           </div>
           <div class="exec-dlg-actions">
@@ -309,6 +330,8 @@ import { apiClient } from '@/api'
 import ProdExecuteConfirm from '@/components/ProdExecuteConfirm.vue'
 import { logout, user } from '@/stores/auth'
 import { isAndroidFamilyPlatform, isIosFamilyPlatform } from '@/utils/platform'
+import { isEmulatorDevice } from '@/utils/deviceKind'
+import { useDeviceOccupancy } from '@/composables/useDeviceOccupancy'
 
 type Env = 'TEST' | 'PROD'
 type Product = 'ESPORTS' | 'POGPOG'
@@ -349,14 +372,24 @@ const selectedRows = ref<any[]>([])
 const execVisible = ref(false)
 const execRow = ref<any | null>(null)
 const execDeviceId = ref('')
+const execAutoAssign = ref(true)
+const execAllowEmulator = ref(true)
 const execRunNow = ref(true)
 const execLoading = ref(false)
 const execRefreshing = ref(false)
 const execDevices = ref<any[]>([])
 const executing = ref(false)
+const execOcc = useDeviceOccupancy()
 const selectedExecDevice = computed(() =>
   execDevices.value.find((d) => d.id === execDeviceId.value) || null
 )
+watch(execVisible, (v) => {
+  if (v) execOcc.start()
+  else execOcc.stop()
+})
+watch(environment, (env) => {
+  if (env !== 'TEST') execAllowEmulator.value = false
+})
 
 const batchVisible = ref(false)
 const batchDeviceIds = ref<string[]>([])
@@ -518,24 +551,29 @@ function execDeviceSub(d: any) {
   const ver = String(d?.version || '').replace(/^(android|ios|harmonyos)\s*/i, '').trim()
   const model = d?.name && d.name !== d.id ? String(d.name) : ''
   const os = plat + (ver ? ' ' + ver : '')
-  return [model, os].filter(Boolean).join(' • ') || '—'
+  const kind = isEmulatorDevice(d) ? '模拟器' : ''
+  return [model, os, kind].filter(Boolean).join(' • ') || '—'
 }
 
 function execDeviceKind(d: any): 'idle' | 'busy' | 'offline' {
-  if (String(d?.status || '').toUpperCase() !== 'CONNECTED') return 'offline'
-  if (d?.locked) return 'busy'
+  if (String(d?.status || '').toUpperCase() !== 'CONNECTED' || d?.disabled) return 'offline'
+  if (d?.locked || execOcc.isOccupied(d?.id)) return 'busy'
   return 'idle'
 }
 
 function execDeviceStatusText(d: any) {
   const k = execDeviceKind(d)
   if (k === 'idle') return '空闲'
-  if (k === 'busy') return '执行中'
+  if (k === 'busy') {
+    const occ = execOcc.of(d?.id)
+    if (occ?.kind === 'MANUAL') return occ.mine ? '我借的' : '已借出'
+    return occ?.label || '占用中'
+  }
   return '离线'
 }
 
 function selectExecDevice(d: any) {
-  if (execDeviceKind(d) === 'offline') return
+  if (execDeviceKind(d) !== 'idle') return
   execDeviceId.value = d.id
 }
 
@@ -760,6 +798,8 @@ async function refreshExecDevices() {
 async function openExecute(row: any) {
   execRow.value = row
   execDeviceId.value = ''
+  execAutoAssign.value = true
+  execAllowEmulator.value = environment.value === 'TEST'
   execRunNow.value = true
   execDevices.value = []
   execVisible.value = true
@@ -773,36 +813,43 @@ async function openExecute(row: any) {
 
 async function submitExecute() {
   if (!execRow.value?.id) return
-  if (!execDeviceId.value) {
-    ElMessage.warning('请选择设备')
-    return
-  }
-  const picked = selectedExecDevice.value
-  if (picked && execDeviceKind(picked) === 'busy') {
-    ElMessage.warning('这台设备正在执行中，请换一台空闲设备')
-    return
-  }
-  if (picked && execDeviceKind(picked) === 'offline') {
-    ElMessage.warning('这台设备已离线，请换一台或先刷新设备')
-    return
+  const picked = execAutoAssign.value ? null : selectedExecDevice.value
+  if (!execAutoAssign.value) {
+    if (!execDeviceId.value) {
+      ElMessage.warning('请选择设备')
+      return
+    }
+    if (picked && execDeviceKind(picked) === 'busy') {
+      ElMessage.warning('这台设备正在占用中，请换一台空闲设备，或改用「自动分配」排队')
+      return
+    }
+    if (picked && execDeviceKind(picked) === 'offline') {
+      ElMessage.warning('这台设备已离线，请换一台或先刷新设备')
+      return
+    }
+    if (isEmulatorDevice(picked) && environment.value === 'PROD') {
+      ElMessage.warning('模拟器不能跑生产环境。请切到测试环境，或换一台真机。')
+      return
+    }
   }
   if (
     !(await confirmProd({
       flowName: execRow.value.name,
-      deviceName: execDeviceModel(picked)
+      deviceName: execAutoAssign.value ? '自动分配' : execDeviceModel(picked)
     }))
   )
     return
   executing.value = true
   try {
     const res = await apiClient.executeUiFlow(execRow.value.id, {
-      deviceId: execDeviceId.value,
+      deviceId: execAutoAssign.value ? undefined : execDeviceId.value,
+      allowEmulator: execAutoAssign.value ? execAllowEmulator.value : undefined,
       platform: execRow.value.platform || platform.value,
       appId: execRow.value.appId || currentAppId.value,
       environment: environment.value,
       runNow: execRunNow.value
     })
-    ElMessage.success(res.message || '已开始执行')
+    ElMessage.success(res.message || (res.queued ? '已加入排队' : '已开始执行'))
     execVisible.value = false
     const taskId = res.taskId || res.task?.id
     if (taskId) {
@@ -829,6 +876,12 @@ async function openBatch() {
 async function submitBatch() {
   if (!batchDeviceIds.value.length) {
     ElMessage.warning('请选择至少一台设备')
+    return
+  }
+  if (environment.value === 'PROD' && batchDeviceIds.value.some((id) =>
+    isEmulatorDevice(deviceOptions.value.find((d) => d.id === id))
+  )) {
+    ElMessage.warning('模拟器不能跑生产环境。请改选真机，或切到测试环境。')
     return
   }
   if (
@@ -886,8 +939,8 @@ onMounted(load)
   padding: 0 24px;
   height: 60px;
   background: #fff;
-  border-bottom: 1px solid #eef0f3;
-  color: #1f2329;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  color: var(--el-text-color-primary);
   flex-shrink: 0;
 }
 .nav-left {
@@ -899,12 +952,12 @@ onMounted(load)
 .nav-title {
   font-size: 18px;
   font-weight: 700;
-  color: #1f2329;
+  color: var(--el-text-color-primary);
   white-space: nowrap;
 }
 .nav-sub {
   font-size: 13px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   white-space: nowrap;
 }
 .nav-right {
@@ -920,7 +973,7 @@ onMounted(load)
   margin-left: 6px;
 }
 .nav-user-name {
-  color: #1f2329;
+  color: var(--el-text-color-primary);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -947,7 +1000,7 @@ onMounted(load)
   width: 36px;
   flex: none;
   font-size: 13px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 .seg {
   display: flex;
@@ -955,35 +1008,35 @@ onMounted(load)
 }
 .seg-btn {
   padding: 5px 16px;
-  border: 1px solid #dcdfe6;
+  border: 1px solid var(--el-border-color);
   border-radius: 16px;
   background: #fff;
   font-size: 13px;
   cursor: pointer;
-  color: #606266;
+  color: var(--app-text-regular);
 }
 .seg-btn:hover {
-  border-color: #409eff;
-  color: #409eff;
+  border-color: var(--el-color-primary);
+  color: var(--el-color-primary);
 }
 .seg-btn.active {
-  background: #409eff;
-  border-color: #409eff;
+  background: var(--el-color-primary);
+  border-color: var(--el-color-primary);
   color: #fff;
 }
 .seg-btn.is-android.active {
-  background: #67c23a;
-  border-color: #67c23a;
+  background: var(--el-color-success);
+  border-color: var(--el-color-success);
   color: #fff;
 }
 .seg-btn.is-ios.active {
-  background: #409eff;
-  border-color: #409eff;
+  background: var(--el-color-primary);
+  border-color: var(--el-color-primary);
   color: #fff;
 }
 .seg-btn.is-harmonyos.active {
-  background: #e6a23c;
-  border-color: #e6a23c;
+  background: var(--el-color-warning);
+  border-color: var(--el-color-warning);
   color: #fff;
 }
 .filter-search {
@@ -997,7 +1050,7 @@ onMounted(load)
 }
 .flow-count {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   white-space: nowrap;
 }
 
@@ -1007,7 +1060,7 @@ onMounted(load)
   gap: 16px;
   padding: 10px 24px 12px;
   background: #fff;
-  border-bottom: 1px solid #eef0f3;
+  border-bottom: 1px solid var(--el-border-color-lighter);
   flex-shrink: 0;
 }
 .path-left {
@@ -1018,27 +1071,27 @@ onMounted(load)
   font-weight: 600;
 }
 .path-seg {
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 .path-seg.is-android {
-  color: #67c23a;
+  color: var(--el-color-success);
 }
 .path-seg.is-ios {
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 .path-seg.is-harmonyos {
-  color: #e6a23c;
+  color: var(--el-color-warning);
 }
 .path-dot {
-  color: #c0c4cc;
+  color: var(--el-text-color-disabled);
   font-weight: 400;
 }
 .path-count {
   margin-left: 6px;
   padding: 1px 8px;
   border-radius: 10px;
-  background: #f4f4f5;
-  color: #909399;
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-secondary);
   font-size: 12px;
   font-weight: 500;
 }
@@ -1050,7 +1103,7 @@ onMounted(load)
 }
 .stat-pill {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 .stat-pill em {
   margin-left: 4px;
@@ -1059,16 +1112,16 @@ onMounted(load)
   font-size: 14px;
 }
 .stat-pill .is-total {
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 .stat-pill .is-bound {
-  color: #67c23a;
+  color: var(--el-color-success);
 }
 .stat-pill .is-idle {
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 .stat-pill .is-fail {
-  color: #f56c6c;
+  color: var(--el-color-danger);
 }
 .proxy-alert {
   margin: 0 24px 8px;
@@ -1083,7 +1136,7 @@ onMounted(load)
 .case-table {
   --el-table-border-color: #f0f2f5;
   --el-table-header-bg-color: #fafafa;
-  --el-table-row-hover-bg-color: #f5f9ff;
+  --el-table-row-hover-bg-color: var(--el-color-primary-light-9);
 }
 .table-wrap :deep(.el-table__inner-wrapper::before) {
   display: none;
@@ -1099,7 +1152,7 @@ onMounted(load)
 }
 .name-text {
   font-weight: 600;
-  color: #1f2329;
+  color: var(--el-text-color-primary);
 }
 .pill {
   display: inline-block;
@@ -1110,27 +1163,27 @@ onMounted(load)
   line-height: 20px;
 }
 .pill-muted {
-  background: #f4f4f5;
-  color: #909399;
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-secondary);
 }
 .pill-ok {
-  background: #f0f9eb;
-  color: #67c23a;
+  background: var(--el-color-success-light-9);
+  color: var(--el-color-success);
 }
 .pill-auto {
-  background: #ecf5ff;
-  color: #409eff;
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
 }
 .pill-shared {
-  background: #f4f4f5;
-  color: #606266;
+  background: var(--el-fill-color-light);
+  color: var(--app-text-regular);
 }
 .pill-online {
-  background: #f0f9eb;
-  color: #67c23a;
+  background: var(--el-color-success-light-9);
+  color: var(--el-color-success);
 }
 .result-idle {
-  color: #c0c4cc;
+  color: var(--el-text-color-disabled);
 }
 
 .exec-body {
@@ -1141,7 +1194,7 @@ onMounted(load)
 .exec-flow-card {
   padding: 14px 16px 12px;
   border-radius: 10px;
-  background: #f5f7fa;
+  background: var(--el-fill-color-lighter);
 }
 .exec-flow-title-row {
   display: flex;
@@ -1152,7 +1205,7 @@ onMounted(load)
 .exec-flow-name {
   font-size: 16px;
   font-weight: 700;
-  color: #1f2329;
+  color: var(--el-text-color-primary);
   line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1166,21 +1219,21 @@ onMounted(load)
   line-height: 20px;
   padding: 0 8px;
   border-radius: 10px;
-  background: #e8f8ee;
-  color: #237804;
+  background: var(--el-color-success-light-9);
+  color: var(--el-color-success-dark-2);
 }
 .exec-plat-pill.plat-ios {
-  background: #fff7e6;
-  color: #d48806;
+  background: var(--el-color-warning-light-9);
+  color: var(--el-color-warning-dark-2);
 }
 .exec-plat-pill.plat-harmonyos {
-  background: #ecf5ff;
-  color: #1677ff;
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
 }
 .exec-flow-meta {
   margin-top: 4px;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   line-height: 1.4;
 }
 .exec-flow-stats {
@@ -1189,7 +1242,7 @@ onMounted(load)
   gap: 14px 18px;
   margin-top: 10px;
   font-size: 12px;
-  color: #606266;
+  color: var(--app-text-regular);
 }
 .exec-stat {
   display: inline-flex;
@@ -1198,20 +1251,46 @@ onMounted(load)
 }
 .exec-stat .el-icon {
   font-size: 14px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 .exec-stat b {
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
-.exec-stat b.run-pass { color: #52c41a; }
-.exec-stat b.run-fail { color: #f5222d; }
-.exec-stat b.run-warn { color: #fa8c16; }
-.exec-stat b.run-idle { color: #909399; font-weight: 500; }
+.exec-stat b.run-pass { color: var(--el-color-success); }
+.exec-stat b.run-fail { color: var(--el-color-danger); }
+.exec-stat b.run-warn { color: var(--el-color-warning); }
+.exec-stat b.run-idle { color: var(--el-text-color-secondary); font-weight: 500; }
 .exec-field-label {
   font-size: 13px;
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary);
+}
+.exec-assign-mode {
+  margin-bottom: 10px;
+}
+.exec-auto-box {
+  border: 1px solid var(--el-border-color);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--el-fill-color-lighter);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.exec-auto-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--app-text-regular);
+  line-height: 1.6;
+}
+.exec-auto-switch-label {
+  font-size: 13px;
+}
+.exec-auto-muted {
+  color: var(--el-text-color-disabled);
 }
 .exec-dev-head {
   display: flex;
@@ -1239,37 +1318,38 @@ onMounted(load)
   width: 100%;
   margin: 0;
   padding: 10px 12px;
-  border: 1px solid #e4e7ed;
+  border: 1px solid var(--el-border-color);
   border-radius: 10px;
   background: #fff;
   text-align: left;
   cursor: pointer;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 .exec-dev-card:hover:not(:disabled) {
-  border-color: #b3d8ff;
+  border-color: var(--el-color-primary-light-7);
 }
 .exec-dev-card.selected {
-  border-color: #409eff;
-  background: #ecf5ff;
+  border-color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
 }
-.exec-dev-card.offline {
+.exec-dev-card.offline,
+.exec-dev-card.busy {
   opacity: 0.55;
   cursor: not-allowed;
-  background: #fafafa;
+  background: var(--el-fill-color-lighter);
 }
 .exec-dev-radio {
   flex: 0 0 16px;
   width: 16px;
   height: 16px;
-  border: 1.5px solid #c0c4cc;
+  border: 1.5px solid var(--el-border-color);
   border-radius: 50%;
   background: #fff;
   box-sizing: border-box;
 }
 .exec-dev-radio.on {
-  border-color: #409eff;
-  box-shadow: inset 0 0 0 4px #409eff;
+  border-color: var(--el-color-primary);
+  box-shadow: inset 0 0 0 4px var(--el-color-primary);
 }
 .exec-dev-icon {
   flex: 0 0 28px;
@@ -1279,13 +1359,13 @@ onMounted(load)
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #f0f9eb;
-  color: #67c23a;
+  background: var(--el-color-success-light-9);
+  color: var(--el-color-success);
   font-size: 16px;
 }
 .exec-dev-card.offline .exec-dev-icon {
-  background: #f5f7fa;
-  color: #c0c4cc;
+  background: var(--el-fill-color-lighter);
+  color: var(--el-text-color-disabled);
 }
 .exec-dev-main {
   min-width: 0;
@@ -1301,7 +1381,7 @@ onMounted(load)
 }
 .exec-dev-sub {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   line-height: 1.3;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1321,11 +1401,11 @@ onMounted(load)
   border-radius: 50%;
   background: currentColor;
 }
-.exec-dev-status.idle { color: #52c41a; }
-.exec-dev-status.busy { color: #fa8c16; }
-.exec-dev-status.offline { color: #c0c4cc; }
+.exec-dev-status.idle { color: var(--el-color-success); }
+.exec-dev-status.busy { color: var(--el-color-warning); }
+.exec-dev-status.offline { color: var(--el-text-color-disabled); }
 .exec-opt-card {
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--el-border-color);
   border-radius: 10px;
   overflow: hidden;
   background: #fff;
@@ -1340,18 +1420,18 @@ onMounted(load)
 .exec-opt-title {
   font-size: 14px;
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 .exec-opt-sub {
   margin-top: 4px;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   line-height: 1.4;
 }
 .exec-hint {
   margin-top: 6px;
   font-size: 12px;
-  color: #e6a23c;
+  color: var(--el-color-warning);
 }
 .exec-dlg-footer {
   display: flex;
@@ -1362,7 +1442,7 @@ onMounted(load)
 .exec-picked {
   font-size: 13px;
   font-weight: 600;
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 .exec-dlg-actions {
   display: flex;
@@ -1379,7 +1459,7 @@ onMounted(load)
 .auto-exec-dialog .el-dialog__header {
   margin: 0;
   padding: 16px 20px 14px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--el-border-color);
 }
 .auto-exec-dialog .el-dialog__body {
   padding: 18px 20px;
@@ -1388,7 +1468,7 @@ onMounted(load)
 }
 .auto-exec-dialog .el-dialog__footer {
   padding: 14px 20px 18px;
-  border-top: 1px solid #ebeef5;
+  border-top: 1px solid var(--el-border-color);
 }
 .auto-exec-dialog .exec-dlg-header {
   display: flex;
@@ -1399,15 +1479,15 @@ onMounted(load)
 .auto-exec-dialog .exec-dlg-title {
   font-size: 16px;
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 .auto-exec-dialog .exec-dlg-close {
   width: 28px;
   height: 28px;
   border: none;
   border-radius: 8px;
-  background: #f0f2f5;
-  color: #909399;
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-secondary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1415,7 +1495,7 @@ onMounted(load)
   padding: 0;
 }
 .auto-exec-dialog .exec-dlg-close:hover {
-  background: #e4e7ed;
-  color: #606266;
+  background: var(--el-fill-color-dark);
+  color: var(--app-text-regular);
 }
 </style>

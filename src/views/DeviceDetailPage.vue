@@ -547,7 +547,7 @@ watch(deviceId, (id) => {
 
 .detail-section-card {
   padding: 18px 22px;
-  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, #d9ecff 100%);
+  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-8) 100%);
   border-radius: 10px;
   border: 1px solid var(--el-color-primary-light-7);
   border-left: 4px solid var(--el-color-primary);
@@ -703,7 +703,7 @@ watch(deviceId, (id) => {
 }
 
 .detail-apps-table :deep(.el-table--striped .el-table__body tr.el-table__row--striped td) {
-  background: #fafbfc;
+  background: var(--el-fill-color-lighter);
 }
 
 .device-info-raw {
@@ -719,12 +719,12 @@ watch(deviceId, (id) => {
   white-space: pre-wrap;
   word-break: break-all;
   color: var(--app-text);
-  border: 1px solid #c0c4cc;
+  border: 1px solid var(--el-border-color);
   border-left: 4px solid var(--el-text-color-placeholder);
 }
 
 .wda-toolkit-section {
-  border-left-color: #e6a23c !important;
+  border-left-color: var(--el-color-warning) !important;
 }
 
 .wda-intro {
@@ -749,27 +749,27 @@ watch(deviceId, (id) => {
   padding: 12px 14px;
   border-radius: 8px;
   border: 1px solid var(--app-border);
-  background: #fafbfc;
+  background: var(--el-fill-color-lighter);
 }
 
 .wda-step--fail {
-  border-color: #fbc4c4;
+  border-color: var(--el-color-danger-light-7);
   background: #fff6f6;
 }
 
 .wda-step--warn {
-  border-color: #f5dab1;
-  background: #fdf6ec;
+  border-color: var(--el-color-warning-light-7);
+  background: var(--el-color-warning-light-9);
 }
 
 .wda-step--pass {
-  border-color: #b3e19d;
-  background: #f0f9eb;
+  border-color: var(--el-color-success-light-5);
+  background: var(--el-color-success-light-9);
 }
 
 .wda-step--manual {
-  border-color: #c6e2ff;
-  background: #ecf5ff;
+  border-color: var(--el-color-primary-light-7);
+  background: var(--el-color-primary-light-9);
 }
 
 .wda-step-head {

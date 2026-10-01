@@ -578,7 +578,7 @@ onMounted(() => {
   border-radius: 8px;
   padding: 12px;
   margin-bottom: 12px;
-  background: #fafafa;
+  background: var(--el-fill-color-lighter);
 }
 .project-card-head {
   display: flex;

@@ -56,9 +56,22 @@ export interface CurrentUserVo {
 export interface ApiEndpointVo {
   id: string
   project: string
+  /** 左侧项目树里的节点编码；旧写法的项目编码会归到同一个节点 */
+  treeKey?: string
   httpMethod: string
   path: string
   handler?: string
+  /** 源码文件路径，页面按它归到 Controller */
+  sourceFile?: string
+  tablesJson?: string
+  /** 源码里挂了 @Auth / @NeedUserLogin 这类注解为 true；空＝看不出来 */
+  authRequired?: boolean | null
+  /** USED 有人调 / DEF_ONLY 只在 API 封装里写了、封装没人用 / NONE 没找到 / 空＝没搜过 */
+  callerStatus?: 'USED' | 'DEF_ONLY' | 'NONE' | null
+  callers?: ApiEndpointCallerRef[] | null
+  /** 人工标记废弃的时间，空＝没标 */
+  retiredAt?: string | null
+  retiredBy?: string | null
   summary?: string
   caseCount: number
   /** 其中真正验了返回字段的有几条；0 表示这个接口的用例全是只验 200 的 */
@@ -75,6 +88,84 @@ export interface ApiEndpointVo {
   actionable: boolean
   hasCaptureMeta?: boolean
   hasDocMeta?: boolean
+  /** 自动化级别：人工定过的优先，否则按调用方算；空＝调用方没扫过 */
+  level?: ApiEndpointLevel | null
+  levelLabel?: string | null
+  levelAuto?: ApiEndpointLevel | null
+  levelReason?: string
+  levelManual?: boolean
+  /** 会不会改数据：扫依赖链上的 SQL 得出。UNKNOWN 按会写处理，只有 READ_ONLY 能上生产 */
+  writeEffect?: ApiWriteEffect | null
+  /** 写 / 只读 / 未知 */
+  writeEffectLabel?: string | null
+  writeEffectReason?: string | null
+}
+
+export type ApiWriteEffect = 'WRITES' | 'READ_ONLY' | 'UNKNOWN'
+
+export type ApiEndpointLevel = 'CORE' | 'IMPORTANT' | 'NORMAL' | 'UNUSED'
+
+export interface ApiEndpointCallerRef {
+  repo: string
+  file: string
+  line: number
+  code: string
+  /** 路径写在哪个 JS 封装函数里 */
+  via?: string | null
+  /** 封装函数被哪些文件用到 */
+  usedBy: string[]
+  unused: boolean
+}
+
+export interface ApiAuthProfile {
+  project?: string
+  enabled?: boolean
+  tokenHeaders?: string | null
+  loginMethod?: string | null
+  loginUrlTest?: string | null
+  loginUrlProd?: string | null
+  loginBody?: string | null
+  tokenPath?: string | null
+}
+
+export interface AiCaseJobItem {
+  endpointId: string
+  method: string
+  path: string
+  summary?: string
+  /** WAITING / RUNNING / ENABLED / PENDING / SKIPPED / FAILED */
+  status: string
+  cases: number
+  enabled: number
+  note?: string
+  caseIds: string[]
+}
+
+export interface AiCaseJob {
+  id: string
+  project: string
+  total: number
+  done: number
+  created: number
+  enabledCases: number
+  failed: number
+  running: boolean
+  cancelled: boolean
+  message?: string
+  items: AiCaseJobItem[]
+}
+
+export interface ApiLoginCandidate {
+  repo: string
+  httpMethod: string
+  path: string
+  summary?: string | null
+  file: string
+  fields: string[]
+  bodyTemplate: string
+  callerRepos: string[]
+  /** 入参是账号 + 密码/验证码，且不是扫码/第三方登录 */
+  automatable: boolean
 }
 
 export interface PlatformUserVo {
@@ -86,6 +177,31 @@ export interface PlatformUserVo {
   enabled: boolean
   lastLoginAt?: string
   createdAt?: string
+}
+
+export interface UiRecordingStep {
+  index: number
+  keywordCode: string
+  elementKey?: string
+  elementNameZh?: string
+  locatorType?: string
+  locatorValue?: string
+  matchCount?: number
+  previewImage?: string
+  params?: Record<string, unknown>
+  existingElementId?: string
+  existingElementStatus?: string
+}
+
+export interface UiRecordingSession {
+  recordingId: string
+  deviceId: string
+  appId: string
+  platform: string
+  name?: string
+  startedAt?: string
+  screenshotUrl?: string
+  steps: UiRecordingStep[]
 }
 
 const AUTH_TOKEN_STORAGE_KEY = 'platform-auth-token'
@@ -155,7 +271,7 @@ function notifyUnauthorized() {
 const API_BASE_STORAGE_KEY = 'apiBaseUrl'
 const WORKER_BASE_STORAGE_KEY = 'workerBaseUrl'
 const BAKED_CONTROL_PLANE_URL = String(import.meta.env.VITE_CONTROL_PLANE_URL || '').trim()
-const DEV_DEFAULT_API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:3000/api'
+const DEV_DEFAULT_API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:3080/api'
 const DEFAULT_API_BASE_URL = BAKED_CONTROL_PLANE_URL || DEV_DEFAULT_API_BASE_URL
 
 function isLoopbackApiUrl(url: string) {
@@ -170,7 +286,23 @@ function isLoopbackApiUrl(url: string) {
 function normalizeApiBaseUrl(raw: string) {
   const s = raw.trim().replace(/\/+$/, '')
   if (!s) return DEFAULT_API_BASE_URL
-  return s.endsWith('/api') ? s : `${s}/api`
+  const withApi = s.endsWith('/api') ? s : `${s}/api`
+  return rewriteRetiredDevPort(withApi)
+}
+
+/** 本机后端已从 3000 换到 3080，避免设置里还记着旧地址 */
+function rewriteRetiredDevPort(url: string) {
+  try {
+    const u = new URL(url)
+    if ((u.hostname === '127.0.0.1' || u.hostname === 'localhost' || u.hostname === '::1')
+        && u.port === '3000') {
+      u.port = '3080'
+      return u.toString().replace(/\/$/, '')
+    }
+  } catch {
+    /* 非法 URL 原样返回 */
+  }
+  return url
 }
 
 function readStoredUrl(key: string, fallback: string) {
@@ -219,6 +351,31 @@ interface ApiResponse<T = any> {
   success: boolean
   data?: T
   error?: string
+}
+
+export type ConventionStatus = 'OK' | 'IMPROVED' | 'REGRESSED' | 'NO_BASELINE' | 'SKIPPED'
+
+export interface ConventionResult {
+  id: string
+  title: string
+  why: string
+  type: 'RATCHET' | 'PARITY' | 'REGISTRY'
+  status: ConventionStatus
+  current?: number
+  baseline?: number
+  detail: string
+  evidence?: Record<string, any>
+}
+
+export interface ConventionReport {
+  kind: 'CONVENTION'
+  countsTowardPassRate: false
+  note: string
+  verdict: 'RISK' | 'INCOMPLETE' | 'CLEAN'
+  summary: Record<ConventionStatus, number>
+  commits: Record<string, string>
+  ranAt: string
+  results: ConventionResult[]
 }
 
 class ApiClient {
@@ -547,6 +704,225 @@ class ApiClient {
     )
   }
 
+  /** 全部设备的占用情况一次拿完；逐台调 /lock 的话六台就是六个请求 */
+  async getDeviceOccupancy() {
+    return this.request<{
+      occupancy: Record<string, {
+        kind: string
+        kindLabel: string
+        label?: string
+        refId?: string
+        since?: string
+        describe?: string
+        /** 是不是当前登录用户自己借的（后端按登录身份算，前端不用自己存 refId） */
+        mine?: boolean
+      }>
+      maxHoldMinutes: number
+    }>('/devices/occupancy')
+  }
+
+  /** 借走一台设备手动用：期间调度器不再往这台派自动化任务 */
+  async reserveDevice(deviceId: string, note?: string) {
+    return this.request<{ ok: boolean; refId: string; message: string }>(
+      `/devices/${encodeURIComponent(deviceId)}/reserve`,
+      { method: 'POST', body: JSON.stringify({ note: note || '' }) }
+    )
+  }
+
+  /** 归还自己借的设备 */
+  async releaseDevice(deviceId: string) {
+    return this.request<{ released: boolean; message: string }>(
+      `/devices/${encodeURIComponent(deviceId)}/release`,
+      { method: 'POST' }
+    )
+  }
+
+  /** 续借：还在用就把时间往后推，免得被当成忘记归还收走 */
+  async renewDevice(deviceId: string) {
+    return this.request<{ renewed: boolean; message: string }>(
+      `/devices/${encodeURIComponent(deviceId)}/renew`,
+      { method: 'POST' }
+    )
+  }
+
+  /**
+   * 设备池页一张表：已入库设备 + 还没开机的模拟器。
+   * 选设备 / 排班不要用这个，继续走 getDevices。
+   */
+  async getDevicePool() {
+    return this.request<{
+      devices: Array<Record<string, any>>
+      emulatorCliAvailable: boolean
+      runningCount: number
+      maxRunning: number
+      hint?: string | null
+      runningUnmatched?: string[]
+    }>('/devices/pool')
+  }
+
+  /**
+   * 主控机上有哪些 AVD、各自起没起。
+   * 设备列表只认已经连上 adb 的；没开机的模拟器在那边看不见，所以单独问。
+   */
+  async getEmulators() {
+    return this.request<{
+      emulatorCliAvailable: boolean
+      runningCount: number
+      maxRunning: number
+      hint?: string | null
+      runningUnmatched?: string[]
+      avds: Array<{
+        name: string
+        state: 'NOT_RUNNING' | 'BOOTING' | 'READY' | 'FAILED' | string
+        deviceId?: string | null
+        startedAt?: string | null
+        elapsedSeconds?: number | null
+        message?: string | null
+        busy?: boolean
+        occupiedBy?: string | null
+        platform?: 'ANDROID' | 'IOS' | string
+      }>
+    }>('/devices/emulators')
+  }
+
+  /**
+   * 启动一台 AVD。立刻返回（HTTP 202），不等开机。
+   * wipeData=true 这次开机顺带恢复出厂——要干净环境用这个，不要关机再开。
+   */
+  async startEmulator(avd: string, wipeData = false) {
+    return this.request<{ ok: boolean; state: string; message: string }>(
+      `/devices/emulators/${encodeURIComponent(avd)}/start`,
+      { method: 'POST', body: JSON.stringify({ wipeData }) }
+    )
+  }
+
+  /** 关闭一台 AVD。占着（跑任务/被人借）时后端 409 拒绝 */
+  async stopEmulator(avd: string) {
+    return this.request<{ ok: boolean; state: string; message: string }>(
+      `/devices/emulators/${encodeURIComponent(avd)}/stop`,
+      { method: 'POST' }
+    )
+  }
+
+  /** 模拟器录制：在截图上点，平台记一步再驱动设备点一下。真机后端会拒。 */
+  async startUiRecording(body: {
+    deviceId: string
+    appId: string
+    platform?: string
+    name?: string
+  }) {
+    return this.request<UiRecordingSession>('/ui-recordings', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async getUiRecording(id: string) {
+    return this.request<UiRecordingSession>(`/ui-recordings/${encodeURIComponent(id)}`)
+  }
+
+  async tapUiRecording(id: string, body: { xRatio: number; yRatio: number }) {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 25000)
+    try {
+      return await this.request<{
+        step: UiRecordingStep
+        screenshotUrl?: string
+        totalSteps: number
+      }>(`/ui-recordings/${encodeURIComponent(id)}/tap`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+        signal: ctrl.signal
+      })
+    } catch (e) {
+      if (ctrl.signal.aborted) {
+        throw new Error('点这一步超过 25 秒还没回来。刷新截图后再点一次')
+      }
+      throw e
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  async swipeUiRecording(
+    id: string,
+    body: { x1Ratio: number; y1Ratio: number; x2Ratio: number; y2Ratio: number; durationMs?: number }
+  ) {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 25000)
+    try {
+      return await this.request<{
+        step: UiRecordingStep
+        screenshotUrl?: string
+        totalSteps: number
+      }>(`/ui-recordings/${encodeURIComponent(id)}/swipe`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+        signal: ctrl.signal
+      })
+    } catch (e) {
+      if (ctrl.signal.aborted) {
+        throw new Error('这一下滑超过 25 秒还没回来。刷新截图后再拖一次')
+      }
+      throw e
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  async addUiRecordingStep(
+    id: string,
+    body: { keywordCode: string; elementKey?: string; params?: Record<string, unknown> }
+  ) {
+    return this.request<{ step: UiRecordingStep; totalSteps: number; screenshotUrl?: string }>(
+      `/ui-recordings/${encodeURIComponent(id)}/step`,
+      { method: 'POST', body: JSON.stringify(body) }
+    )
+  }
+
+  async undoUiRecording(id: string) {
+    return this.request<{ totalSteps: number; message: string }>(
+      `/ui-recordings/${encodeURIComponent(id)}/undo`,
+      { method: 'POST' }
+    )
+  }
+
+  async refreshUiRecording(id: string) {
+    return this.request<UiRecordingSession>(`/ui-recordings/${encodeURIComponent(id)}/refresh`, {
+      method: 'POST'
+    })
+  }
+
+  async finishUiRecording(id: string, flowName?: string) {
+    return this.request<{
+      flowId: string
+      flowName: string
+      steps: number
+      elementsCreated: number
+      elementsReused: number
+      warnings: string[]
+      message: string
+    }>(`/ui-recordings/${encodeURIComponent(id)}/finish`, {
+      method: 'POST',
+      body: JSON.stringify({ flowName })
+    })
+  }
+
+  async cancelUiRecording(id: string) {
+    return this.request<{ ok: boolean; message: string }>(
+      `/ui-recordings/${encodeURIComponent(id)}`,
+      { method: 'DELETE' }
+    )
+  }
+
+  /** 人工停用 / 恢复：坏了、维护中的设备不再参与派活 */
+  async setDeviceDisabled(deviceId: string, disabled: boolean) {
+    return this.request<{ ok: boolean; disabled: boolean; message: string }>(
+      `/devices/${encodeURIComponent(deviceId)}/disabled`,
+      { method: 'POST', body: JSON.stringify({ disabled }) }
+    )
+  }
+
   /** 这台设备现在被谁占着；没人占 locked=false */
   async getDeviceLock(deviceId: string) {
     return this.request<{ locked: boolean; describe?: string; refId?: string; since?: string }>(
@@ -670,6 +1046,21 @@ class ApiClient {
     })
   }
 
+  /**
+   * 执行中看屏：只截图，不 dump 控件树。
+   * 和 snapshot 分开，避免装包/跑步骤时再去抢 Appium 的 page source。
+   */
+  async getDeviceInspectPreview(deviceId: string) {
+    return this.request<{
+      deviceId: string
+      platform?: string
+      screenshotUrl: string
+      screenshotPath?: string
+      width?: number
+      height?: number
+    }>(`/devices/${encodeURIComponent(deviceId)}/inspect/preview`)
+  }
+
   /** 真机点选：拉取当前屏截图元信息；screenshotUrl 为 devices/{id}/inspect/screenshot */
   async getDeviceInspectSnapshot(deviceId: string) {
     return this.request<{
@@ -740,6 +1131,21 @@ class ApiClient {
     })
   }
 
+/**
+   * 真机点选：读当前 WebView 完整 URL（尽量含 hash）。
+   * X5 等读不到时 available=false，看 message。
+   */
+  async getDeviceInspectWebviewUrl(deviceId: string) {
+    return this.request<{
+      available: boolean
+      url?: string
+      context?: string
+      contexts?: string[]
+      message?: string
+    }>(`/devices/${encodeURIComponent(deviceId)}/inspect/webview-url`)
+  }
+  }
+
   /** 真机点选：按相对坐标命中控件，返回推荐 locator 与已匹配元素 */
   async postDeviceInspectHitTest(
     deviceId: string,
@@ -778,6 +1184,8 @@ class ApiClient {
         matchCount?: number
         /** matchCount === 1；null 表示无法校验（坐标定位、语法错等） */
         unique?: boolean | null
+        /** NATIVE 原生 / H5_SHELL WebView 壳 / H5 壳内内容 */
+        layer?: 'NATIVE' | 'H5_SHELL' | 'H5' | string
       }>
       /** 本次点选发现的问题，如「库里某条元素的定位在这一屏指向了别的节点」 */
       warnings?: string[]
@@ -1025,6 +1433,13 @@ class ApiClient {
     return this.request<any>('/ui-elements', { method: 'POST', body: JSON.stringify(body) })
   }
 
+  /** 中文元素名 → 建议英文 nameEn（小写下划线） */
+  async suggestElementKey(nameZh: string) {
+    return this.request<{ key: string }>(
+      `/ui-elements/suggest-key?nameZh=${encodeURIComponent(nameZh)}`
+    )
+  }
+
   /** 解析 Appium Inspector XML：POST /ui-elements/inspector-xml/parse */
   async parseInspectorXml(body: { platform: string; xml: string }) {
     return this.request<{ candidates: any[]; count: number }>('/ui-elements/inspector-xml/parse', {
@@ -1141,6 +1556,21 @@ class ApiClient {
     return this.request<any>(`/ui-elements/${id}`, { method: 'PUT', body: JSON.stringify(body) })
   }
 
+  /** 从另一个平台复制元素：名字、页面带过去，定位留空待补 */
+  async copyUiElementsFromPlatform(body: {
+    fromAppId: string
+    fromPlatform: string
+    toAppId: string
+    toPlatform: string
+    pageId?: string
+    dryRun?: boolean
+  }) {
+    return this.request<{ created: number; existing: string[]; pagesCreated: number; dryRun: boolean }>(
+      '/ui-elements/copy-platform',
+      { method: 'POST', body: JSON.stringify(body) }
+    )
+  }
+
   async deleteUiElement(id: string) {
     return this.request<{ ok: boolean }>(`/ui-elements/${id}`, { method: 'DELETE' })
   }
@@ -1201,6 +1631,8 @@ class ApiClient {
     track?: string
     /** 流程名称模糊搜索 */
     name?: string
+    /** 只要标了核心的流程 */
+    coreOnly?: boolean
   }) {
     const q = new URLSearchParams()
     if (params?.appId) q.append('appId', params.appId)
@@ -1212,6 +1644,7 @@ class ApiClient {
     if (params?.environment) q.append('environment', params.environment)
     if (params?.track) q.append('track', params.track)
     if (params?.name) q.append('name', params.name)
+    if (params?.coreOnly) q.append('coreOnly', 'true')
     const qs = q.toString()
     return this.request<any[]>(qs ? `/ui-flows?${qs}` : '/ui-flows')
   }
@@ -1244,6 +1677,33 @@ class ApiClient {
 
   async createUiFlow(body: Record<string, unknown>) {
     return this.request<any>('/ui-flows', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  /** 复制流程：步骤原样带走，名字加「副本」 */
+  async copyUiFlow(id: string) {
+    return this.request<any>(`/ui-flows/${encodeURIComponent(id)}/copy`, { method: 'POST' })
+  }
+
+  /**
+   * 用已审元素编一条停用草稿。模型 10～40 秒，校验失败会再试一次，所以这里给 120 秒。
+   */
+  async composeUiFlowByAi(body: AiComposeRequest) {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 120_000)
+    try {
+      return await this.request<AiComposeResponse>('/ui-flows/ai-compose', {
+        method: 'POST',
+        body: JSON.stringify(body),
+        signal: ctrl.signal
+      })
+    } catch (e: unknown) {
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        throw new Error('生成超过 120 秒还没返回，请再试一次')
+      }
+      throw e
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
   async updateUiFlow(id: string, body: Record<string, unknown>) {
@@ -1297,7 +1757,8 @@ class ApiClient {
   async executeUiFlow(
     flowId: string,
     body: {
-      deviceId: string
+      /** 留空＝交给设备池排班：没有空闲设备就排队，空出来一台自动开跑 */
+      deviceId?: string
       platform?: string
       appId?: string
       /** 自定义包名 / BundleId，可覆盖字典或单独使用 */
@@ -1308,6 +1769,8 @@ class ApiClient {
       /** TEST / PROD，缺省 PROD。只决定报告标识与验证码，包名两个环境一致 */
       environment?: string
       runNow?: boolean
+      /** 排班时允不允许派给模拟器；不填按「试跑 + 测试环境才允许」 */
+      allowEmulator?: boolean
       /**
        * 传 'DEBUG' ＝ 试跑：结果不算通过率、不当这条流程的「最近结果」、失败不告警。
        * 流程编排页默认传它——在编辑器里跑本来就是调试，调试挂两次不该拉低质量数据。
@@ -1325,6 +1788,7 @@ class ApiClient {
         taskId: string
         task: any
         started: boolean
+        queued?: boolean
         message: string
       }>(path, {
         method: 'POST',
@@ -1516,6 +1980,33 @@ class ApiClient {
     })
   }
 
+  /** 上线看板：从 Wiki 拉表并按项目汇总 */
+  async getReleaseGoLiveBoard(wikiUrl: string) {
+    const q = new URLSearchParams({ wikiUrl })
+    return this.request<any>(`/release-go-live/board?${q}`)
+  }
+
+  /** 上线看板：保存已合 master / 已上线勾选 */
+  async saveReleaseGoLiveState(body: {
+    wikiPageId: string
+    project: string
+    mergedMaster?: boolean
+    released?: boolean
+  }) {
+    return this.request<any>('/release-go-live/state', {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    })
+  }
+
+  /** 上线看板：清空本页勾选 */
+  async resetReleaseGoLiveState(wikiPageId: string) {
+    return this.request<any>('/release-go-live/state/reset', {
+      method: 'POST',
+      body: JSON.stringify({ wikiPageId })
+    })
+  }
+
   /** 埋点校验：Wiki 表 vs Kibana JSON */
   async trackingCheckVerify(body: {
     wikiUrl: string
@@ -1622,6 +2113,49 @@ class ApiClient {
   }
 
   /** 从接口清单生成一条用例骨架。凑不出有意义断言时后端会生成为「停用」 */
+  /** AI 读源码出请求、测试环境试跑、按真实返回写断言；后台跑，返回任务 */
+  async startAiCases(body: {
+    project: string
+    endpointIds?: string[]
+    onlyUncovered?: boolean
+    tryRun?: boolean
+    runWrites?: boolean
+    dir?: string
+  }) {
+    return this.request<AiCaseJob>('/api-endpoints/ai-cases', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async getAiCaseJob(jobId: string) {
+    return this.request<AiCaseJob>(`/api-endpoints/ai-cases/${encodeURIComponent(jobId)}`)
+  }
+
+  /** 有在跑的给在跑的，没有给最近一批；都没有返回 {} */
+  async latestAiCaseJob(project: string) {
+    return this.request<Partial<AiCaseJob>>(`/api-endpoints/ai-cases/latest?project=${encodeURIComponent(project)}`)
+  }
+
+  async cancelAiCaseJob(jobId: string) {
+    return this.request<{ ok: boolean }>(`/api-endpoints/ai-cases/${encodeURIComponent(jobId)}/cancel`, {
+      method: 'POST'
+    })
+  }
+
+  /** 标记 / 取消废弃。标了之后单条生成和 AI 批量生成都会跳过 */
+  async retireApiEndpoints(ids: string[], retired = true) {
+    return this.request<{ ok: boolean; updated: number }>('/api-endpoints/retire', {
+      method: 'POST',
+      body: JSON.stringify({ ids, retired })
+    })
+  }
+
+  /** level 传 null＝清掉人工级别，回到按调用方自动算 */
+  async setApiEndpointLevel(ids: string[], level: ApiEndpointLevel | null) {
+    return this.request<{ ok: boolean; updated: number }>('/api-endpoints/level', {
+      method: 'POST',
+      body: JSON.stringify({ ids, level })
+    })
+  }
+
   async generateCaseFromEndpoint(endpointId: string) {
     return this.request<{
       case: { id: string; name: string }
@@ -1646,10 +2180,9 @@ class ApiClient {
   }
 
   /**
-   * 接口清单的树：APP 后端 / PVP · 客户端 / WEB / 其他 → 项目 → 接口数。
-   * 二十多个项目铺成一张平表，人第一眼找不到自己那块。
+   * 接口清单的树：分类（APP / PVP / WEB / 其他）→ 项目 → 接口数。
+   * 测试/生产环境在页面顶部单独切换，不再在项目下挂 master / 分支。
    */
-  /** 接口清单左侧 catalog 树：APP / PVP / WEB → 项目 + 接口数 */
   async fetchApiEndpointTree() {
     return this.request<{
       categories: Array<{
@@ -1694,6 +2227,63 @@ class ApiClient {
       branches: string[]
       details: Array<{ httpMethod: string; path: string; params: number; fields: number; nullableFields: number }>
     }>
+  }
+
+  /** 按本地源码目录全量扫描 Controller，接口录进这个项目；dir 留空用项目管理里配的仓库路径 */
+  async scanApiEndpointSource(project: string, dir?: string, callerDirs?: string) {
+    return this.request<{
+      dir: string
+      javaFiles: number
+      controllers: number
+      endpoints: number
+      created: number
+      updated: number
+      callerDirs?: string[]
+      callerUsed?: number
+      callerDefOnly?: number
+      callerNone?: number
+      callerError?: string
+      authRequired?: number
+      tokenHeaders?: string[]
+    }>(`/api-endpoints/projects/${encodeURIComponent(project)}/scan-source`, {
+      method: 'POST',
+      body: JSON.stringify({ dir: dir || '', callerDirs: callerDirs || '' })
+    })
+  }
+
+  async getApiAuth(project: string) {
+    return this.request<{
+      profile: ApiAuthProfile | null
+      credentials: Record<'TEST' | 'PROD', { account: string; secret: string }>
+      authRequired: number
+      authUnknown: number
+      total: number
+    }>(`/api-auth/projects/${encodeURIComponent(project)}`)
+  }
+
+  async saveApiAuth(
+    project: string,
+    body: ApiAuthProfile & { credentials?: Record<string, { account?: string; secret?: string }> }
+  ) {
+    return this.request<ApiAuthProfile>(`/api-auth/projects/${encodeURIComponent(project)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    })
+  }
+
+  /** 在源码目录的上一级（并排的各仓库）里找登录接口 */
+  async detectApiLogin(project: string, dir?: string) {
+    return this.request<{ searched: string; candidates: ApiLoginCandidate[]; tokenHeaders?: string | null }>(
+      `/api-auth/projects/${encodeURIComponent(project)}/detect`,
+      { method: 'POST', body: JSON.stringify({ dir: dir || '' }) }
+    )
+  }
+
+  async testApiLogin(project: string, environment: string) {
+    return this.request<{ token: string; tokenPath: string }>(
+      `/api-auth/projects/${encodeURIComponent(project)}/test-login`,
+      { method: 'POST', body: JSON.stringify({ environment }) }
+    )
   }
 
   /** 状态字典由后端下发，前端不硬编码这几个中文名 */
@@ -1860,6 +2450,13 @@ class ApiClient {
     return this.request<any>('/api-projects', { method: 'POST', body: JSON.stringify(body) })
   }
 
+  async syncApiProjectRepo(code: string) {
+    return this.request<{ action: 'CLONE' | 'FETCH'; repoPath: string; message: string }>(
+      `/api-projects/${encodeURIComponent(code)}/sync-repo`,
+      { method: 'POST' }
+    )
+  }
+
   async updateApiProject(code: string, body: Record<string, unknown>) {
     return this.request<any>(`/api-projects/${encodeURIComponent(code)}`, {
       method: 'PUT',
@@ -1925,6 +2522,25 @@ class ApiClient {
 
   async deleteApiUrl(id: string) {
     return this.request<{ ok: boolean }>(`/api-urls/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  /** 业务状态监控：批量探活（只允许探 URL 管理里已登记的地址） */
+  async probeStatusMonitor(targets: Array<{ id: string; urlId: string; healthPath?: string }>) {
+    return this.request<{ results: Array<{
+      id: string
+      urlId?: string
+      status: 'online' | 'down' | 'timeout' | 'degraded' | 'unknown'
+      latencyMs?: number | null
+      httpStatus?: number | null
+      error?: string | null
+      probeUrl?: string
+      baseUrl?: string
+      healthPath?: string
+      checkedAt?: string
+    }> }>('/status-monitor/probe', {
+      method: 'POST',
+      body: JSON.stringify({ targets }),
+    })
   }
 
   // —— 接口测试（TEST / PROD 环境）——
@@ -2066,6 +2682,33 @@ class ApiClient {
     )
   }
 
+  async getApiTestLiveInterfaces(
+    project: string,
+    params: {
+      controller?: string
+      keyword?: string
+      kind?: string
+      page?: number
+      size?: number
+      includeArchived?: boolean
+    } = {}
+  ) {
+    const q = new URLSearchParams()
+    if (params.controller) q.set('controller', params.controller)
+    if (params.keyword) q.set('keyword', params.keyword)
+    if (params.kind) q.set('kind', params.kind)
+    if (params.page) q.set('page', String(params.page))
+    if (params.size) q.set('size', String(params.size))
+    if (params.includeArchived != null) q.set('includeArchived', String(params.includeArchived))
+    return this.request<{
+      total: number
+      caseTotal: number
+      page: number
+      size: number
+      items: Array<{ method: string; path: string; title: string; level?: string | null; cases: any[] }>
+    }>(`/api-test/projects/${encodeURIComponent(project)}/live-interfaces?${q.toString()}`)
+  }
+
   async getApiTestCollectionCases(collectionId: string) {
     return this.request<Array<{ id: string; name: string; method: string; path: string; enabled?: boolean; controller?: string }>>(
       `/api-test/collections/${encodeURIComponent(collectionId)}/cases`
@@ -2205,11 +2848,24 @@ class ApiClient {
         total: number
         passed: number
         failed: number
+        blocked?: number
+        skipped?: number
         durationMs: number
         ok: boolean | number
         message?: string
+        triggerType?: 'MANUAL' | 'SCHEDULE' | null
+        createdBy?: string | null
         createdAt: string
-        interfaces: Array<{ project: string; method: string; path: string }>
+        interfaces: Array<{
+          project: string
+          method: string
+          path: string
+          caseCount?: number
+          failedCount?: number
+          /** 这个接口在该次执行里第一条失败的原因 */
+          error?: string | null
+          httpStatus?: number | null
+        }>
       }>
     >(`/api-test/runs/browse?limit=${limit}`)
   }
@@ -2236,7 +2892,7 @@ class ApiClient {
   }
 
   /** 环境变量。secret 的值后端返回掩码，真值不下发浏览器 */
-  async getApiTestVariables(environment: string) {
+  async getApiTestVariables(environment: string, project?: string) {
     return this.request<
       Array<{
         environment: string
@@ -2247,7 +2903,10 @@ class ApiClient {
         description?: string
         sortOrder?: number
       }>
-    >(`/api-test/envs/${encodeURIComponent(environment)}/variables`)
+    >(
+      `/api-test/envs/${encodeURIComponent(environment)}/variables` +
+        (project ? `?project=${encodeURIComponent(project)}` : '')
+    )
   }
 
   async saveApiTestVariable(
@@ -2326,12 +2985,16 @@ class ApiClient {
     environment?: string
     enabledOnly?: boolean
     keyword?: string
+    /** 只能传这三个大写值或不传：后端认不出会回 400，而不是悄悄不筛 */
+    caseKind?: 'BRANCH' | 'REGRESSION' | 'UNCLASSIFIED'
     page?: number
     size?: number
   }) {
     const q = new URLSearchParams()
     if (params?.project) q.set('project', params.project)
+    if (params?.collectionId) q.set('collectionId', params.collectionId)
     if (params?.environment) q.set('environment', params.environment)
+    if (params?.caseKind) q.set('caseKind', params.caseKind)
     if (params?.enabledOnly != null) q.set('enabledOnly', String(params.enabledOnly))
     if (params?.keyword) q.set('keyword', params.keyword)
     if (params?.page != null) q.set('page', String(params.page))
@@ -2348,6 +3011,12 @@ class ApiClient {
       }>(path)
     }
     return this.request<any[]>(path)
+  }
+
+  /** 待分诊队列：分支用例按来源分支计数。sourceBranch 为 null 的那组是「是分支用例却没记分支」 */
+  async getApiTestCaseBranchGroups(project?: string) {
+    const q = project ? `?project=${encodeURIComponent(project)}` : ''
+    return this.request<Array<{ sourceBranch: string | null; cnt: number }>>(`/api-test/cases/branch-groups${q}`)
   }
 
   async createApiTestCase(body: Record<string, unknown>) {
@@ -2512,6 +3181,80 @@ class ApiClient {
       knowledgeCount?: number
       storageReady?: boolean
     }>('/codewords/status')
+  }
+
+  /** 主菜单 AI助手：本机 Cursor SDK（替代千问对话） */
+  async cursorAskStatus() {
+    return this.request<{
+      enabled?: boolean
+      configured?: boolean
+      provider?: string
+      model?: string
+      cwd?: string
+      k8sCwd?: string
+      hasApiKey?: boolean
+      scriptReady?: boolean
+      sdkInstalled?: boolean
+      hint?: string
+    }>('/cursor-ask/status')
+  }
+
+  async cursorAskChat(body: {
+    message: string
+    sessionId?: string
+    cwd?: string
+    mode?: 'ask' | 'k8s'
+  }) {
+    return this.request<{
+      ok?: boolean
+      sessionId?: string
+      mode?: string
+      agentId?: string
+      runId?: string
+      status?: string
+      answer?: string
+      model?: string
+      cwd?: string
+      error?: string
+    }>('/cursor-ask/chat', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async cursorAskReset(sessionId?: string, mode?: 'ask' | 'k8s') {
+    return this.request<{ ok: boolean }>('/cursor-ask/reset', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId: sessionId || '', mode: mode || '' })
+    })
+  }
+
+  /** 环境搭建：读取 k8s-config/{biz}/test/{service}/ 下部署文件 */
+  async listEnvSetupK8sFiles(bizLine: string, serviceName: string) {
+    const q = new URLSearchParams({ bizLine, serviceName })
+    return this.request<{
+      bizLine: string
+      serviceName: string
+      dir: string
+      exists: boolean
+      files: Array<{ name: string; content: string; size: number }>
+    }>(`/env-setup/k8s-files?${q}`)
+  }
+
+  /** 环境搭建：保存单个部署文件（人工改 yaml 等） */
+  async saveEnvSetupK8sFile(body: {
+    bizLine: string
+    serviceName: string
+    fileName: string
+    content: string
+  }) {
+    return this.request<{ ok: boolean; dir: string; name: string; size: number }>(
+      '/env-setup/k8s-files',
+      {
+        method: 'PUT',
+        body: JSON.stringify(body)
+      }
+    )
   }
 
   async codeWordsChat(body: { message: string; sessionId?: string }) {
@@ -2911,6 +3654,47 @@ class ApiClient {
    * 把这次抓包用的 token 存到测试环境。
    * 用例里不写死 token——它会过期，写死的话过期那天所有用例集体变红。
    */
+  /** 抓到的接口收进接口清单；project 只给路径认不出归属的接口兜底 */
+  async saveCaptureEndpoints(body: {
+    sessionId?: string
+    project?: string
+    flows: Array<{ seq?: number; method: string; path: string; query?: string }>
+  }) {
+    return this.request<{
+      saved: number
+      unresolved: number
+      items: Array<{
+        seq?: number
+        method: string
+        path: string
+        project?: string | null
+        endpointId?: string
+        level?: ApiEndpointLevel | null
+        caseCount?: number
+        message?: string
+      }>
+    }>('/packet-capture/save-endpoints', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  /** 抓包待归类的接口归到指定项目 */
+  async classifyApiEndpoints(ids: string[], project: string) {
+    return this.request<{ moved: number; merged: number; project: string }>('/api-endpoints/classify', {
+      method: 'POST',
+      body: JSON.stringify({ ids, project })
+    })
+  }
+
+  /** 按抓包样本生成用例到项目全量集合（仅测试环境），只建不跑 */
+  async generateLiveCasesFromEndpoints(ids: string[]) {
+    return this.request<{
+      created: number
+      reused: number
+      failed: number
+      collections: Array<{ id: string; name: string; project: string }>
+      items: Array<{ endpointId: string; status: string; caseId?: string; message?: string }>
+    }>('/api-endpoints/generate-live-cases', { method: 'POST', body: JSON.stringify({ ids }) })
+  }
+
   async saveCaptureToken(sessionId: string, environment = 'TEST') {
     return this.request<{ ok?: boolean; message: string }>(
       `/packet-capture/${encodeURIComponent(sessionId)}/save-token`,
@@ -3162,6 +3946,71 @@ class ApiClient {
     return this.request<{ success: boolean }>(`/issue-tracking/${encodeURIComponent(id)}`, {
       method: 'DELETE'
     })
+  }
+
+  async getAppPackOptions() {
+    return this.request<AppPackOptions>('/app-packs/options')
+  }
+
+  async listAppPacks(platform?: string) {
+    const q = platform ? `?platform=${encodeURIComponent(platform)}` : ''
+    return this.request<{ jobs: AppPackJob[] }>(`/app-packs${q}`)
+  }
+
+  async getAppPack(id: string) {
+    return this.request<AppPackJob>(`/app-packs/${encodeURIComponent(id)}`)
+  }
+
+  async startAppPack(body: {
+    platform: string
+    product: string
+    outputType: string
+    deviceId?: string
+    branch?: string
+  }) {
+    return this.request<{ id: string }>('/app-packs', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async installAppPack(id: string, deviceId: string) {
+    return this.request<{ success: boolean }>(`/app-packs/${encodeURIComponent(id)}/install`, {
+      method: 'POST',
+      body: JSON.stringify({ deviceId })
+    })
+  }
+
+  async cancelAppPack(id: string) {
+    return this.request<{ success: boolean }>(`/app-packs/${encodeURIComponent(id)}/cancel`, {
+      method: 'POST'
+    })
+  }
+
+  async deleteAppPack(id: string) {
+    return this.request<{ ok: boolean }>(`/app-packs/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    })
+  }
+
+  async downloadAppPackArtifact(id: string, fallbackName?: string | null) {
+    const res = await authFetch(this.endpointUrl(`/app-packs/${encodeURIComponent(id)}/artifact`))
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: '下载失败' }))
+      throw new Error((err as { message?: string }).message || `HTTP ${res.status}`)
+    }
+    const blob = await res.blob()
+    if (!blob.size) throw new Error('产物文件是空的')
+    const header = res.headers.get('content-disposition') || ''
+    const star = /filename\*=UTF-8''([^;]+)/i.exec(header)
+    const plain = /filename="?([^"]+)"?/i.exec(header)
+    const name = decodeURIComponent(star?.[1] || plain?.[1] || fallbackName || 'app-pack.bin')
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = name
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   async syncIssueTrackingWiki(id?: string) {
@@ -3848,6 +4697,22 @@ class ApiClient {
         /** 帧率 FPS */
         fps?: { peak?: number; min?: number; avg?: number }
       }
+      /**
+       * 内存泄漏分析。流程里没打过 MEMORY_CHECKPOINT 时为 undefined。
+       * undefined 表示<b>没测</b>，不是「没泄漏」——这两种在界面上必须长得不一样
+       */
+      memoryLeak?: {
+        verdict: 'LEAKING' | 'STABLE' | 'INSUFFICIENT'
+        summary: string
+        slopeKbPerRound: number
+        rSquared: number
+        growthKb: number
+        /** 每轮打点的 PSS（KB），含预热轮 */
+        checkpointsKb: number[]
+        /** 真正参与趋势计算的（已去掉预热轮） */
+        effectiveKb: number[]
+        notes: string[]
+      }
       issueSummary: {
         responseDelayCount?: number
         completionDelayCount?: number
@@ -3980,7 +4845,7 @@ class ApiClient {
     enableOverseasProxy?: boolean
     /** PROD（默认，线上回归）/ TEST（测试环境发版前回归） */
     environment?: string
-    /** REGRESSION（默认）/ AUTOMATION（按前置依赖拓扑排序执行） */
+    /** REGRESSION（默认）/ AUTOMATION（按前置依赖拓扑排序执行）/ COMPATIBILITY（核心流程 × 多设备） */
     track?: string
     /** 复位流程：每条用例前先跑一次，把设备带回已知起点 */
     resetFlowId?: string
@@ -3997,6 +4862,8 @@ class ApiClient {
      * 账号池分配的手机号验证码优先级更高，不会被它覆盖。
      */
     params?: Record<string, string>
+    /** 兼容性测试的系统设置差异：DARK_MODE / LARGE_FONT，每台 Android 机切过去再跑一遍 */
+    deviceSettings?: string[]
   }) {
     return this.request<{
       id: string
@@ -4223,6 +5090,114 @@ class ApiClient {
     return this.request<any>(`/requirements/${encodeURIComponent(requirementNo)}`, { method: 'DELETE' })
   }
 
+  async listKnowledgeNotes(params: { moduleId?: string; requirementNo?: string; status?: string; q?: string } = {}) {
+    const qs = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => { if (v) qs.set(k, String(v)) })
+    const q = qs.toString()
+    return this.request<{ notes: Array<Record<string, any>> }>(`/knowledge-notes${q ? '?' + q : ''}`)
+  }
+
+  async createKnowledgeNote(body: Record<string, unknown>) {
+    return this.request<{ id: string }>('/knowledge-notes', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async updateKnowledgeNote(id: string, body: Record<string, unknown>) {
+    return this.request<{ success: boolean }>(`/knowledge-notes/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async deleteKnowledgeNote(id: string) {
+    return this.request<{ success: boolean }>(`/knowledge-notes/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    })
+  }
+
+  async uploadKnowledgeNoteImages(files: File[]) {
+    const form = new FormData()
+    files.forEach((f) => form.append('files', f))
+    const response = await authFetch(`${this.baseURL}/knowledge-notes/images`, {
+      method: 'POST',
+      body: form
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ message: '上传失败' }))
+      throw new Error(err.message || `HTTP ${response.status}`)
+    }
+    return response.json() as Promise<{ urls: string[] }>
+  }
+
+  async listIncidentPlaybooks(params: { category?: string; toolStatus?: string; q?: string } = {}) {
+    const qs = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => { if (v) qs.set(k, String(v)) })
+    const q = qs.toString()
+    return this.request<{
+      incidents: Array<Record<string, any>>
+      categoryCounts: Record<string, number>
+      toolCounts: Record<string, number>
+    }>(`/incident-playbooks${q ? '?' + q : ''}`)
+  }
+
+  async createIncidentPlaybook(body: Record<string, unknown>) {
+    return this.request<{ id: string }>('/incident-playbooks', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async updateIncidentPlaybook(id: string, body: Record<string, unknown>) {
+    return this.request<{ success: boolean }>(`/incident-playbooks/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async deleteIncidentPlaybook(id: string) {
+    return this.request<{ success: boolean }>(`/incident-playbooks/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    })
+  }
+
+  async getMavenCacheOptions() {
+    return this.request<{
+      ready: boolean
+      host?: string
+      user?: string
+      hint?: string
+      defaultGroupId?: string
+      defaultArtifactId?: string
+      defaultVersion?: string
+    }>('/incident-playbooks/tools/maven-cache')
+  }
+
+  async inspectMavenCache(body: { groupId: string; artifactId: string; version: string }) {
+    return this.request<Record<string, any>>('/incident-playbooks/tools/maven-cache/inspect', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async cleanMavenCache(body: { groupId: string; artifactId: string; version: string }) {
+    return this.request<Record<string, any>>('/incident-playbooks/tools/maven-cache/clean', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  // ---------- 源码约定检查（产出风险，不进用例通过率） ----------
+  async runConventionCheck() {
+    return this.request<ConventionReport>('/convention-check/run')
+  }
+
+  async lockConventionBaseline(body: { ruleIds?: string[]; force?: boolean; reason?: string } = {}) {
+    return this.request<{ locked: string[]; refused: string[]; report: ConventionReport }>(
+      '/convention-check/baseline', { method: 'POST', body: JSON.stringify(body) })
+  }
+
   // ---------- PVP 接口签名 ----------
   async pvpSign(body: { environment?: string; r?: string; t?: string; params: Record<string, string> }) {
     return this.request<{ a: string; r: string; t: string; s: string; signedRequest: string }>(
@@ -4308,6 +5283,98 @@ export interface AiTestCaseDto {
   lastRunAt?: string
   createdAt?: string
   updatedAt?: string
+}
+
+export interface AppPackProductOption {
+  id: string
+  label: string
+  signingReady?: boolean
+  hint?: string
+}
+
+export interface AppPackOptions {
+  platforms: Array<{ id: string; label: string; ready: boolean; hint?: string }>
+  busy: boolean
+  harmony: {
+    ready: boolean
+    projectDir: string
+    projectExists: boolean
+    hvigorw?: string | null
+    nodeHome?: string | null
+    branch?: string | null
+    branches?: string[]
+    gitDir?: string | null
+    versionName?: string | null
+    versionCode?: string | null
+    products: AppPackProductOption[]
+    outputTypes: Array<{ id: string; label: string }>
+    hint?: string
+  }
+  android?: {
+    ready: boolean
+    label?: string
+    projectDir: string
+    projectExists: boolean
+    gitDir?: string | null
+    branch: string
+    product: string
+    outputType: string
+    gradlew?: string | null
+    androidHome?: string | null
+    javaHome?: string | null
+    signingReady?: boolean
+    versionName?: string | null
+    versionCode?: string | null
+    hint?: string
+  }
+}
+
+export interface AppPackJob {
+  id: string
+  platform: string
+  product: string
+  outputType: string
+  status: string
+  versionName?: string | null
+  versionCode?: string | null
+  createdBy?: string | null
+  command?: string | null
+  artifactName?: string | null
+  errorMessage?: string | null
+  gitBranch?: string | null
+  installDeviceId?: string | null
+  installStatus?: string | null
+  installMessage?: string | null
+  logText?: string | null
+  startedAt?: string | null
+  finishedAt?: string | null
+  createdAt?: string | null
+  updatedAt?: string | null
+}
+
+export interface AiComposeRequest {
+  appId: string
+  platform: string
+  /** 按流程走的顺序，值是 UiPage.pageId */
+  pageIds: string[]
+  intent: string
+  flowName?: string
+  knownVars?: string[]
+  /** TEST | PROD，不传默认 TEST */
+  environment?: string
+  /** AUTOMATION | ONLINE | SHARED | PERFORMANCE，不传默认 AUTOMATION */
+  catalog?: string
+  /** TESTING 本版新功能 | ONLINE 已上线，不传默认 TESTING */
+  releaseStage?: string
+}
+
+export interface AiComposeResponse {
+  flowId: string
+  flowName: string
+  steps: number
+  /** 平台替它改了什么 / 还差什么，一定要展示 */
+  notes: string[]
+  message: string
 }
 
 export const apiClient = new ApiClient(resolveApiBaseUrl(), resolveWorkerBaseUrl())

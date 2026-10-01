@@ -159,7 +159,7 @@ function onAppChange(appId: string) {
   gap: 4px;
 }
 .launch-help-icon {
-  color: #c0c4cc;
+  color: var(--el-text-color-disabled);
   cursor: pointer;
   font-size: 14px;
 }
@@ -169,7 +169,7 @@ function onAppChange(appId: string) {
 .launch-help-pop {
   font-size: 12px;
   line-height: 1.65;
-  color: #606266;
+  color: var(--app-text-regular);
 }
 .launch-hint.inline {
   display: inline;

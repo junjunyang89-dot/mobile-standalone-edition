@@ -1,308 +1,180 @@
 <template>
-  <div class="xk-input-block">
-    <div class="xk-chips">
+  <div class="ask-input-block">
+    <div class="ask-quick">
+      <span class="ask-quick-label">常问:</span>
       <button
-        v-for="c in chips"
-        :key="c.id"
+        v-for="q in QUICK_PROMPTS"
+        :key="q"
         type="button"
-        class="xk-chip"
-        :class="{ primary: c.id === 'cases' }"
-        @click="$emit('chip', c.id)"
+        class="ask-chip"
+        :disabled="loading || !configured"
+        @click="$emit('quick', q)"
       >
-        {{ c.label }}
+        {{ q }}
       </button>
     </div>
 
-    <div
-      class="xk-drop"
-      :class="{ active: dragOver, hasFiles: pendingFiles.length > 0 }"
-      @dragenter.prevent="$emit('update:dragOver', true)"
-      @dragover.prevent="$emit('update:dragOver', true)"
-      @dragleave.prevent="onDragLeave"
-      @drop.prevent="$emit('drop', $event)"
-      @paste="$emit('paste', $event)"
-    >
-      <input
-        ref="fileInputRef"
-        type="file"
-        class="xk-file-input"
-        multiple
-        accept=".txt,.md,.markdown,.docx,.pdf,.xlsx,.xls,.json,.csv,.html,.htm,.png,.jpg,.jpeg,.gif,.webp,.bmp,image/*"
-        @change="$emit('file-pick', $event)"
-      />
-      <div v-if="pendingFiles.length === 0" class="xk-drop-hint" @click="fileInputRef?.click()">
-        <span>📎 上传文件 / 粘贴图片</span>
-        <span class="muted">拖拽或 Ctrl/Cmd+V · 文档 + png/jpg/gif/webp</span>
-      </div>
-      <div v-else class="xk-file-list">
-        <div v-for="(f, i) in pendingFiles" :key="f.file.name + i" class="xk-file-row">
-          <img v-if="f.previewUrl" :src="f.previewUrl" class="xk-file-thumb" alt="" />
-          <div class="xk-file-meta">
-            <span class="xk-file-name">{{ f.file.name }}</span>
-            <span class="xk-file-size">{{ formatSize(f.file.size) }}{{ f.isImage ? ' · 图片' : '' }}</span>
-          </div>
-          <button type="button" class="xk-file-rm" title="移除" @click="$emit('remove-file', i)">✕</button>
-        </div>
-        <div class="xk-file-actions">
-          <button type="button" class="xk-chip" @click="fileInputRef?.click()">继续添加</button>
-          <button
-            type="button"
-            class="xk-chip primary"
-            :disabled="uploading || loading || !configured"
-            @click="$emit('chip', 'cases')"
-          >
-            生成测试用例
-          </button>
-          <button
-            type="button"
-            class="xk-chip accent"
-            :disabled="uploading || !configured"
-            @click="$emit('upload')"
-          >
-            {{ uploading ? '入库中…' : '上传并入库' }}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div class="xk-composer">
+    <div class="ask-composer">
       <textarea
         :value="modelValue"
-        class="xk-input"
-        rows="2"
-        placeholder="输入消息，或 Ctrl/Cmd+V 粘贴截图…"
-        :disabled="loading || uploading || !configured"
+        class="ask-input"
+        rows="3"
+        placeholder="问代码在哪、某字段怎么判断、环境怎么搭… Shift+Enter 换行，Enter 发送"
+        :disabled="loading || !configured"
         @input="$emit('update:modelValue', ($event.target as HTMLTextAreaElement).value)"
         @keydown="onKeydown"
-        @paste="$emit('paste', $event)"
       />
-      <button
-        type="button"
-        class="xk-send"
-        :disabled="loading || uploading || !configured || (!modelValue.trim() && pendingFiles.length === 0)"
-        @click="$emit('send')"
-      >
-        发送
-      </button>
+      <div class="ask-composer-foot">
+        <span class="ask-hint">Enter 发送 · Shift+Enter 换行</span>
+        <button
+          type="button"
+          class="ask-send"
+          :disabled="loading || !configured || !modelValue.trim()"
+          @click="$emit('send')"
+        >
+          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M3.4 20.6 21 12 3.4 3.4l.1 6.6L14 12 3.5 14z"
+            />
+          </svg>
+          <span>{{ loading ? '发送中' : '发送' }}</span>
+        </button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { formatSize, type PendingFile } from './types'
+import { QUICK_PROMPTS } from './composables/useCursorAsk'
 
-defineProps<{
+const props = defineProps<{
   modelValue: string
-  pendingFiles: PendingFile[]
-  dragOver: boolean
-  uploading: boolean
   loading: boolean
   configured: boolean
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [v: string]
-  'update:dragOver': [v: boolean]
-  chip: [id: string]
-  drop: [e: DragEvent]
-  paste: [e: ClipboardEvent]
-  'file-pick': [e: Event]
-  'remove-file': [i: number]
-  upload: []
   send: []
+  quick: [q: string]
 }>()
-
-const fileInputRef = ref<HTMLInputElement | null>(null)
-
-const chips = [
-  { id: 'cases', label: '生成测试用例' },
-  { id: 'save', label: '存入流程' },
-  { id: 'monitor', label: '监控页面' },
-  { id: 'query', label: '查询知识' },
-  { id: 'report', label: '生成报告' },
-  { id: 'run', label: '运行工作流' }
-]
-
-function onDragLeave(e: DragEvent) {
-  const el = e.currentTarget as HTMLElement
-  if (!el.contains(e.relatedTarget as Node)) emit('update:dragOver', false)
-}
 
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
-    emit('send')
+    if (!props.loading && props.configured && props.modelValue.trim()) {
+      emit('send')
+    }
   }
 }
 </script>
 
 <style scoped>
-.xk-input-block {
-  --panel: #eceff3;
-  --panel-2: #e2e6eb;
-  --line: #cdd3dc;
-  --text: var(--app-text);
-  --muted: var(--app-text-secondary);
-  --accent: var(--app-primary);
-  --accent-2: #337ecc;
-  --danger: var(--app-danger);
-  flex-shrink: 0;
-  background: #e8ebef;
-  border-top: 1px solid var(--line);
+.ask-input-block {
+  padding-top: 8px;
 }
-.xk-chips {
+
+.ask-quick {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
-  padding: 8px 22px;
-  flex-shrink: 0;
+  margin-bottom: 12px;
 }
-.xk-drop {
-  margin: 0 22px 8px;
-  border: 1px dashed var(--line);
-  border-radius: 12px;
-  background: var(--panel-2);
-  padding: 10px 12px;
-  transition: border-color 0.15s, background 0.15s;
-  position: relative;
-  flex-shrink: 0;
-}
-.xk-drop.active {
-  border-color: var(--accent);
-  background: rgba(24, 144, 255, 0.08);
-}
-.xk-drop.hasFiles {
-  border-style: solid;
-}
-.xk-file-input {
-  display: none;
-}
-.xk-drop-hint {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-items: flex-start;
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--text);
-}
-.xk-drop-hint .muted {
-  color: var(--muted);
+
+.ask-quick-label {
+  flex: none;
   font-size: 12px;
+  color: var(--el-text-color-disabled);
+  font-weight: 500;
 }
-.xk-file-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+
+.ask-chip {
+  border: 1px solid var(--el-border-color);
+  background: #fff;
+  color: var(--app-text-regular);
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  line-height: 1.3;
 }
-.xk-file-row {
+
+.ask-chip:hover:not(:disabled) {
+  border-color: var(--el-color-primary-light-7);
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary-dark-2);
+}
+
+.ask-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ask-composer {
+  background: #fff;
+  border: 1px solid #dbe3ef;
+  border-radius: 14px;
+  padding: 12px 14px 10px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.ask-input {
+  width: 100%;
+  border: none;
+  outline: none;
+  resize: none;
+  font-size: 14px;
+  line-height: 1.55;
+  font-family: inherit;
+  background: transparent;
+  min-height: 72px;
+  color: var(--el-text-color-primary);
+}
+
+.ask-input::placeholder {
+  color: var(--el-text-color-disabled);
+}
+
+.ask-composer-foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  background: #e8ebef;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px 10px;
+  gap: 12px;
+  padding-top: 6px;
 }
-.xk-file-thumb {
-  width: 40px;
-  height: 40px;
-  border-radius: 6px;
-  object-fit: cover;
-  flex-shrink: 0;
-  border: 1px solid var(--line);
-}
-.xk-file-meta {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  flex: 1;
-}
-.xk-file-name {
-  font-size: 13px;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.xk-file-size {
-  font-size: 11px;
-  color: var(--muted);
-}
-.xk-file-rm {
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 14px;
-  padding: 4px 6px;
-}
-.xk-file-rm:hover {
-  color: var(--danger);
-}
-.xk-file-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.xk-chip {
-  border: 1px solid var(--line);
-  background: #eceff3;
-  color: var(--muted);
-  border-radius: 999px;
-  padding: 5px 12px;
+
+.ask-hint {
   font-size: 12px;
-  cursor: pointer;
+  color: var(--el-text-color-disabled);
 }
-.xk-chip:hover,
-.xk-chip.accent {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-.xk-chip.primary {
-  color: #fff;
-  background: var(--accent);
-  border-color: var(--accent);
-}
-.xk-chip.primary:hover {
-  background: var(--accent-2);
-  border-color: var(--accent-2);
-  color: #fff;
-}
-.xk-composer {
-  display: flex;
-  gap: 10px;
-  padding: 10px 22px 16px;
-  align-items: flex-end;
-  flex-shrink: 0;
-}
-.xk-input {
-  flex: 1;
-  resize: none;
-  background: var(--app-surface);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  color: var(--text);
-  padding: 12px 14px;
-  font: inherit;
-  font-size: 14px;
-  outline: none;
-  min-height: 56px;
-}
-.xk-input:focus { border-color: var(--accent); }
-.xk-input:disabled { opacity: 0.5; }
-.xk-send {
-  height: 40px;
-  padding: 0 18px;
+
+.ask-send {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
   border: none;
   border-radius: 10px;
-  background: var(--accent);
-  color: #ffffff;
-  font-weight: 650;
+  background: var(--el-fill-color-dark);
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
 }
-.xk-send:disabled { opacity: 0.4; cursor: not-allowed; }
-.xk-send:not(:disabled):hover { background: var(--accent-2); }
+
+.ask-send:not(:disabled) {
+  background: var(--el-color-primary);
+  color: #fff;
+}
+
+.ask-send:not(:disabled):hover {
+  background: var(--el-color-primary-dark-2);
+}
+
+.ask-send:disabled {
+  cursor: not-allowed;
+}
 </style>

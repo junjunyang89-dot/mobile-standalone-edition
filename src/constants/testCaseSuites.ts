@@ -40,6 +40,12 @@ export const TEST_CASE_SUITES: TestCaseSuite[] = [
     hint: '电竞 App Android 功能用例'
   },
   {
+    key: 'wmpvp-h5',
+    title: '电竞（H5）',
+    fullTitle: '完美世界电竞 H5',
+    hint: '电竞 App 内 H5 页面功能用例'
+  },
+  {
     key: 'pogpog-ios',
     title: 'PogPog（iOS）',
     hint: 'PogPog iOS 用例'

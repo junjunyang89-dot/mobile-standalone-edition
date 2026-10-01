@@ -1,322 +1,360 @@
 <template>
-  <div class="reports-page">
-    <!-- 设计稿：深蓝顶栏 -->
-    <header class="rp-topbar">
-      <h1 class="rp-topbar-title">执行报告</h1>
-      <div v-if="user" class="rp-topbar-user">
-        <span class="rp-role-badge">{{ user.roleLabel }}</span>
-        <el-dropdown trigger="click" @command="onUserCommand">
-          <span class="rp-user-trigger">
-            {{ user.displayName || user.username }}
-            <el-icon><ArrowDown /></el-icon>
-          </span>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item v-if="!user.bootstrapping" command="logout">退出登录</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+  <div class="reports-page" v-loading="loading">
+    <!-- 顶栏：环境 + 时间 + 刷新/导出 -->
+    <header class="rp-toolbar">
+      <div class="env-seg">
+        <button
+          v-for="s in SCOPES"
+          :key="s.key"
+          type="button"
+          class="env-seg-btn"
+          :class="{ active: scope === s.key }"
+          @click="scope = s.key"
+        >
+          <span class="env-dot" :class="s.dot" />
+          {{ s.label }}
+          <span class="env-count">{{ scopeCount(s.key) }}</span>
+        </button>
       </div>
+      <span class="tb-label">时间</span>
+      <div class="range-pills">
+        <button
+          v-for="r in RANGES"
+          :key="r.days"
+          type="button"
+          class="range-pill"
+          :class="{ active: days === r.days }"
+          @click="days = r.days"
+        >{{ r.label }}</button>
+      </div>
+      <span class="tb-spacer" />
+      <button type="button" class="tb-btn" :disabled="loading" @click="load">
+        <el-icon><Refresh /></el-icon>刷新
+      </button>
+      <button type="button" class="tb-btn" @click="exportCsv">
+        <el-icon><Download /></el-icon>导出
+      </button>
     </header>
 
-    <div class="rp-main" v-loading="loading">
-      <!-- KPI + 左右分栏：同一白色容器 -->
-      <div class="page-shell">
-        <section class="kpi-bar">
-          <div class="kpi-cards">
-            <div class="kpi-card">
-              <div class="kpi-icon is-green"><el-icon><CircleCheck /></el-icon></div>
-              <div class="kpi-body">
-                <div class="kpi-label">通过率（{{ days }}天）</div>
-                <div class="kpi-value is-green">{{ summary.total ? summary.rate + '%' : '—' }}</div>
-              </div>
-            </div>
-            <div class="kpi-card">
-              <div class="kpi-icon is-blue"><el-icon><Clock /></el-icon></div>
-              <div class="kpi-body">
-                <div class="kpi-label">执行次数</div>
-                <div class="kpi-value is-blue">{{ summary.runs }}</div>
-                <div class="kpi-sub">
-                  <span class="ok">{{ summary.passed }} 通过</span>
-                  <span class="bad">{{ summary.failed }} 失败</span>
-                </div>
-              </div>
-            </div>
-            <div class="kpi-card">
-              <div class="kpi-icon is-orange"><el-icon><TrendCharts /></el-icon></div>
-              <div class="kpi-body">
-                <div class="kpi-label">平均耗时</div>
-                <div class="kpi-value is-orange">{{ avgDuration }}</div>
-                <div class="kpi-sub muted">每次执行</div>
-              </div>
-            </div>
+    <!-- KPI -->
+    <section class="kpi-row">
+      <div class="kpi">
+        <span class="kpi-ico is-green"><el-icon><Check /></el-icon></span>
+        <div>
+          <div class="kpi-val is-green">
+            <template v-if="kpi.total">{{ kpi.passed }}<span class="kpi-of"> / {{ kpi.total }}</span></template>
+            <template v-else>—</template>
           </div>
-          <el-select v-model="days" class="kpi-filter" @change="loadTrend">
-            <el-option :value="7" label="近7天" />
-            <el-option :value="30" label="近30天" />
-            <el-option :value="90" label="近90天" />
-          </el-select>
-        </section>
-
-        <div class="page-split">
-          <aside class="nav-panel">
-            <div class="scope-tabs">
-              <button type="button" class="scope-tab" :class="{ active: scope === 'TEST' }" @click="scope = 'TEST'">
-                测试环境
-              </button>
-              <button type="button" class="scope-tab" :class="{ active: scope === 'LIVE' }" @click="scope = 'LIVE'">
-                生产环境
-              </button>
-            </div>
-            <div class="nav-tree-wrap">
-              <el-tree
-                v-if="treeData.length"
-                ref="treeRef"
-                :data="treeData"
-                node-key="nodeKey"
-                :props="treeProps"
-            highlight-current
-            :expand-on-click-node="false"
-            class="report-tree"
-                @node-click="onTreeClick"
-              >
-                <template #default="{ data }">
-                  <span class="tree-row" :class="{ 'is-leaf': !data.isFolder, 'is-active': selectedNodeKey === data.nodeKey }">
-                    <span v-if="!data.isFolder" class="tree-dot" />
-                    <el-icon v-if="data.isFolder" class="tree-folder"><Folder /></el-icon>
-                    <span class="tree-text" :title="data.label">{{ data.label }}</span>
-                    <span
-                      v-if="(!data.isFolder && data.meta != null) || (data.isFolder && Number(data.meta) > 0)"
-                      class="tree-badge"
-                    >{{ data.meta }}</span>
-                  </span>
-                </template>
-              </el-tree>
-              <div v-else-if="!loading" class="nav-empty">暂无用例集合</div>
-            </div>
-          </aside>
-
-          <main class="detail-panel">
-            <template v-if="selectedInterface">
-              <div class="detail-head">
-                <div class="head-main">
-                  <h2 class="iface-title">{{ selectedPathDisplay }}</h2>
-                  <div class="head-tags">
-                    <span class="tag tag-method">{{ selectedInterface.method || 'GET' }}</span>
-                    <span class="tag tag-env">{{ scope === 'TEST' ? '测试环境' : '生产环境' }}</span>
-                    <span class="tag tag-proj">{{ selectedInterface.project }}</span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  class="btn-batch-del"
-                  :disabled="!selectedRunIds.length || batchDeleting"
-                  @click="batchDelete"
-                >
-                  {{ batchDeleting ? '删除中…' : '批量删除' }}
-                </button>
-              </div>
-
-              <div class="run-table-wrap">
-                <table class="run-table">
-                  <thead>
-                    <tr>
-                      <th class="col-check">
-                        <el-checkbox
-                          :model-value="allVisibleSelected"
-                          :indeterminate="someVisibleSelected && !allVisibleSelected"
-                          @change="toggleSelectAll"
-                        />
-                      </th>
-                      <th class="col-report">报告</th>
-                      <th class="col-time">时间</th>
-                      <th class="col-result">结果</th>
-                      <th class="col-rate">通过率</th>
-                      <th class="col-dur">耗时</th>
-                      <th class="col-ops">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-if="!visibleRuns.length">
-                      <td colspan="7" class="empty-tip">该接口下还没有执行记录</td>
-                    </tr>
-                    <tr v-for="row in visibleRuns" :key="row.id">
-                      <td class="col-check">
-                        <el-checkbox
-                          :model-value="selectedRunIds.includes(row.id)"
-                          @change="(v: boolean) => toggleRun(row.id, v)"
-                        />
-                      </td>
-                      <td class="col-report">
-                        <div class="report-title">{{ runReportLabel(row) }}</div>
-                        <div class="report-sub">{{ runReportSub(row) }}</div>
-                      </td>
-                      <td class="col-time">{{ fmt(row.createdAt) }}</td>
-                      <td class="col-result">
-                        <span class="result-cell" :class="row.failed ? 'is-fail' : 'is-ok'">
-                          <el-icon><CircleCheck v-if="!row.failed" /><Close v-else /></el-icon>
-                          {{ row.passed }}/{{ row.total }}
-                        </span>
-                      </td>
-                      <td class="col-rate">
-                        <div class="rate-cell">
-                          <div class="rate-bar">
-                            <div
-                              class="rate-fill"
-                              :class="rateClass(ifacePct(row))"
-                              :style="{ width: ifacePct(row) + '%' }"
-                            />
-                          </div>
-                          <span class="rate-pct">{{ ifacePct(row) }}%</span>
-                        </div>
-                      </td>
-                      <td class="col-dur">{{ dur(row.durationMs) }}</td>
-                      <td class="col-ops">
-                        <button type="button" class="op-view" @click="openRun(row)">查看</button>
-                        <button type="button" class="op-del" @click="deleteOne(row)">删除</button>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </template>
-
-            <div v-else class="panel-empty">
-              在左侧选中一个接口，查看该接口的执行报告
-            </div>
-          </main>
+          <div class="kpi-label">用例通过</div>
+          <div
+            class="kpi-sub"
+            title="分支用例挂了是这次改动有问题，回归用例挂了是回归了。两类混在一个分母里算出的百分比看不出该找谁，后端按用例类型拆开统计后再显示通过率"
+          >{{ rangeLabel }} · 跑到的用例 · 暂不算百分比</div>
         </div>
       </div>
-    </div>
-
-    <el-drawer
-      v-model="drawer"
-      size="720px"
-      :show-close="false"
-      destroy-on-close
-      class="report-drawer"
-    >
-      <template #header>
-        <div class="rp-header">
-          <div class="rp-header-main">
-            <h2 class="rp-title">报告详情</h2>
-            <p v-if="detail?.run" class="rp-meta">
-              <span>{{ fmt(detail.run.createdAt) }}</span>
-              <span class="rp-meta-dot">·</span>
-              <span>{{ detail.run.environment || 'TEST' }}</span>
-              <span class="rp-meta-dot">·</span>
-              <span class="rp-meta-pass">通过 {{ detail.run.passed }}/{{ detail.run.total }}</span>
-              <span class="rp-meta-dot">·</span>
-              <span>{{ dur(detail.run.durationMs) }}</span>
-            </p>
+      <div class="kpi">
+        <span class="kpi-ico is-blue"><el-icon><RefreshRight /></el-icon></span>
+        <div>
+          <div class="kpi-val">{{ kpi.runs }}</div>
+          <div class="kpi-label">执行次数</div>
+          <div class="kpi-sub">
+            {{ kpi.okRuns }} 通过 · {{ kpi.badRuns }} 失败<template v-if="kpi.blockedRuns"> · <span class="is-amber">{{ kpi.blockedRuns }} 没跑成</span></template>
           </div>
-          <button type="button" class="rp-close" aria-label="关闭" @click="drawer = false">✕</button>
         </div>
-      </template>
-
-      <div v-loading="detailLoading" class="rp-body">
-        <div v-for="c in detail?.cases || []" :key="c.id" class="rp-case">
-          <div class="rp-status-bar" :class="c.status === 'PASSED' ? 'is-pass' : 'is-fail'">
-            <span class="rp-pill rp-pill-status">{{ c.status === 'PASSED' ? '通过' : '失败' }}</span>
-            <span class="rp-pill rp-pill-method">{{ (c.method || 'GET').toUpperCase() }}</span>
-            <span class="rp-case-title">{{ caseIfaceTitle(c) }}</span>
-            <span class="rp-spacer" />
-            <span v-if="c.httpStatus" class="rp-http" :class="c.status === 'PASSED' ? 'is-ok' : 'is-bad'">
-              HTTP {{ c.httpStatus }}
-            </span>
-            <span class="rp-duration">{{ c.durationMs }}ms</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-ico is-orange"><el-icon><Timer /></el-icon></span>
+        <div>
+          <div class="kpi-val is-orange">{{ kpi.runs ? dur(kpi.avgMs) : '—' }}</div>
+          <div class="kpi-label">平均耗时</div>
+          <div class="kpi-sub">每次执行</div>
+        </div>
+      </div>
+      <div class="kpi">
+        <span class="kpi-ico is-red"><el-icon><Close /></el-icon></span>
+        <div>
+          <div class="kpi-val" :class="{ 'is-red': kpi.badRuns }">{{ kpi.badRuns }}</div>
+          <div class="kpi-label">失败批次</div>
+          <div class="kpi-sub">
+            共 {{ kpi.failedCases }} 条用例失败<template v-if="kpi.blockedCases"> · <span class="is-amber">另有 {{ kpi.blockedCases }} 条没跑成</span></template>
           </div>
+        </div>
+      </div>
+    </section>
 
-          <div v-if="c.url" class="rp-url-box">
-            <el-icon class="rp-url-icon"><Link /></el-icon>
-            <a class="rp-url-text" :href="c.url" target="_blank" rel="noopener noreferrer">{{ c.url }}</a>
-            <button type="button" class="rp-copy-btn" @click="copyText(c.url)">复制</button>
-          </div>
-
-          <div v-if="c.error" class="rp-error">{{ c.error }}</div>
-
-          <div v-if="parseAssertions(c).length" class="rp-asserts">
-            <div
-              v-for="(a, idx) in parseAssertions(c)"
-              :key="c.id + '-a-' + idx"
-              class="rp-assert-row"
-            >
-              <span class="rp-assert-icon" :class="a.ok ? 'is-ok' : 'is-fail'">
-                {{ a.ok ? '✓' : '✕' }}
+    <div class="rp-split">
+      <!-- 左：接口树 -->
+      <aside class="nav-panel">
+        <div class="nav-search">
+          <el-input v-model="treeKeyword" placeholder="搜索接口名或路径…" clearable size="small">
+            <template #prefix><el-icon><Search /></el-icon></template>
+          </el-input>
+        </div>
+        <div class="nav-filter">
+          <el-switch v-model="onlyWithRuns" size="small" />
+          <span class="nav-filter-text" @click="onlyWithRuns = !onlyWithRuns">只看有执行的</span>
+          <span v-if="onlyWithRuns && hiddenEmptyCount" class="nav-filter-hint">已收起 {{ hiddenEmptyCount }} 个</span>
+        </div>
+        <div class="nav-tree-wrap">
+          <el-tree
+            v-if="treeData.length"
+            ref="treeRef"
+            :data="treeData"
+            node-key="nodeKey"
+            :props="treeProps"
+            :indent="10"
+            :expand-on-click-node="true"
+            :filter-node-method="filterNode"
+            class="report-tree"
+            @node-click="onTreeClick"
+          >
+            <template #default="{ data }">
+              <span
+                class="tree-row"
+                :class="[
+                  'k-' + data.kind,
+                  { 'is-active': selectedNodeKey === data.nodeKey }
+                ]"
+                :title="data.path || data.label"
+              >
+                <template v-if="data.kind === 'category'">
+                  <span class="cat-dot" :class="catDotClass(data.label)" />
+                  <span class="tree-text">{{ data.label }}</span>
+                </template>
+                <template v-else-if="data.isFolder">
+                  <span class="tree-text">{{ data.label }}</span>
+                </template>
+                <template v-else>
+                  <span class="m-tag" :class="methodClass(data.method)">{{ data.method }}</span>
+                  <span class="tree-text leaf-path">
+                    <span v-if="pathParts(data.path).prefix" class="leaf-prefix">{{ pathParts(data.path).prefix }}</span>{{ pathParts(data.path).last }}
+                  </span>
+                  <span v-if="data.last === 'fail'" class="state-dot is-fail" title="最近一次执行这个接口有用例失败" />
+                  <span v-else-if="data.last === 'blocked'" class="state-dot is-blocked" title="最近一次执行这个接口没跑成（连不上/超时/登录失败），先看服务" />
+                </template>
+                <span class="tree-count" :class="{ 'is-zero': !Number(data.meta) }">{{ Number(data.meta) || 0 }}</span>
               </span>
-              <span class="rp-assert-expr">{{ a.expr }}</span>
-              <template v-if="a.actual">
-                <span class="rp-assert-sep">|</span>
-                <span class="rp-assert-label">Actual:</span>
-                <span class="rp-assert-val" :class="a.ok ? 'is-ok' : 'is-fail'">{{ a.actual }}</span>
+            </template>
+          </el-tree>
+          <div v-else-if="!loading" class="nav-empty">
+            {{ onlyWithRuns && fullTree.length ? `${rangeLabel}这个环境下还没有执行记录` : '暂无用例集合' }}
+          </div>
+        </div>
+      </aside>
+
+      <!-- 右：接口报告 -->
+      <main class="detail-panel">
+        <template v-if="selectedInterface">
+          <div class="d-head">
+            <div class="d-crumb">
+              <template v-for="(c, i) in breadcrumb" :key="i">
+                <span v-if="i" class="crumb-sep">›</span>
+                <span>{{ c }}</span>
               </template>
             </div>
-          </div>
-
-          <div v-if="hasCaseDetail(c)" class="rp-detail">
-            <button type="button" class="rp-detail-toggle" @click="toggleCaseDetail(c.id)">
-              <span class="rp-detail-arrow" :class="{ open: isCaseDetailOpen(c.id) }">▾</span>
-              请求 / 响应明细
-            </button>
-
-            <div v-if="isCaseDetailOpen(c.id)" class="rp-detail-body">
-              <div v-if="headerEntries(c.reqHeaders).length" class="rp-block">
-                <div class="rp-block-title">请求头</div>
-                <div class="rp-kv-list">
-                  <div v-for="row in headerEntries(c.reqHeaders)" :key="row.key" class="rp-kv-line">
-                    <span class="rp-k">{{ row.key }}</span><span class="rp-kv-sep">:</span>
-                    <span class="rp-v">{{ maskHeaderValue(row.key, row.value) }}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div v-if="c.reqBody" class="rp-block">
-                <div class="rp-block-title">请求体</div>
-                <pre class="rp-json-pre">{{ pretty(c.reqBody) }}</pre>
-              </div>
-
-              <div v-if="headerEntries(c.respHeaders).length" class="rp-block">
-                <div class="rp-block-head-row">
-                  <div class="rp-block-title">响应头</div>
-                  <button
-                    type="button"
-                    class="rp-expand-link"
-                    @click="toggleRespHeaders(c.id)"
-                  >
-                    {{ isRespHeadersOpen(c.id) ? '收起' : '展开' }}
-                  </button>
-                </div>
-                <div class="rp-kv-list">
-                  <div
-                    v-for="row in visibleRespHeaders(c)"
-                    :key="'resp-' + row.key"
-                    class="rp-kv-line"
-                  >
-                    <span class="rp-k">{{ row.key }}</span><span class="rp-kv-sep">:</span>
-                    <span class="rp-v">{{ row.value }}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div v-if="c.bodyPreview" class="rp-block">
-                <div class="rp-block-title">响应体</div>
-                <pre class="rp-json-pre" v-html="highlightJson(pretty(c.bodyPreview))" />
-              </div>
+            <div class="d-title-row">
+              <span class="m-tag m-tag-lg" :class="methodClass(selectedInterface.method)">{{ selectedInterface.method }}</span>
+              <h2 class="d-title">{{ selectedInterface.path }}</h2>
+              <span class="tb-spacer" />
+              <button type="button" class="btn-run" :disabled="runningNow" @click="runNow">
+                <el-icon><VideoPlay /></el-icon>{{ runningNow ? '执行中…' : '立即执行' }}
+              </button>
+            </div>
+            <div class="d-tags">
+              <span class="d-tag" :class="scope === 'LIVE' ? 'is-prod' : 'is-test'">{{ scope === 'LIVE' ? '生产环境' : '测试环境' }}</span>
+              <span class="d-tag is-proj">{{ selectedInterface.project }}</span>
             </div>
           </div>
-        </div>
-      </div>
-    </el-drawer>
+
+          <div class="i-stats">
+            <div class="i-stat">
+              <span class="i-num is-green">{{ ifaceStats.passed }}</span>
+              <span class="i-lab">通过次数<br /><em>{{ rangeLabel }}</em></span>
+            </div>
+            <div class="i-stat">
+              <span class="i-num" :class="{ 'is-red': ifaceStats.failed }">{{ ifaceStats.failed }}</span>
+              <span class="i-lab">失败次数<br />
+                <em v-if="ifaceStats.blocked" class="is-amber">另有 {{ ifaceStats.blocked }} 次没跑成</em>
+                <em v-else>{{ ifaceStats.failed ? '需排查' : '无' }}</em>
+              </span>
+            </div>
+            <div class="i-stat">
+              <span class="i-num">{{ ifaceRuns.length ? dur(ifaceStats.avgMs) : '—' }}</span>
+              <span class="i-lab">平均耗时<br /><em>{{ ifaceRuns.length ? '最长 ' + dur(ifaceStats.maxMs) : '—' }}</em></span>
+            </div>
+            <div class="i-stat">
+              <span class="i-num" :class="httpClass(ifaceStats.lastHttp)">{{ ifaceStats.lastHttp || '—' }}</span>
+              <span class="i-lab">最近 HTTP<br /><em>{{ ifaceStats.lastAt ? shortTime(ifaceStats.lastAt) : '—' }}</em></span>
+            </div>
+          </div>
+
+          <div class="r-filter">
+            <el-input v-model="runKeyword" placeholder="搜索批次或时间…" clearable size="small" class="r-search">
+              <template #prefix><el-icon><Search /></el-icon></template>
+            </el-input>
+            <button
+              v-for="f in RUN_FILTERS.filter((x) => x.key !== 'BLOCKED' || filterCount('BLOCKED'))"
+              :key="f.key"
+              type="button"
+              class="r-chip"
+              :class="{ active: runFilter === f.key }"
+              @click="runFilter = f.key"
+            >
+              {{ f.label }}<span class="r-chip-n">{{ filterCount(f.key) }}</span>
+            </button>
+            <span class="tb-spacer" />
+            <el-checkbox
+              :model-value="allVisibleSelected"
+              :indeterminate="someVisibleSelected && !allVisibleSelected"
+              :disabled="!visibleRuns.length"
+              @change="toggleSelectAll"
+            >全选</el-checkbox>
+            <button
+              type="button"
+              class="btn-del"
+              :disabled="!selectedRunIds.length || batchDeleting"
+              @click="batchDelete"
+            >{{ batchDeleting ? '删除中…' : '批量删除' }}</button>
+          </div>
+
+          <div class="r-table-wrap">
+            <table class="r-table">
+              <colgroup>
+                <col style="width: 40px" />
+                <col />
+                <col style="width: 84px" />
+                <col style="width: 108px" />
+                <col style="width: 72px" />
+                <col style="width: 128px" />
+                <col style="width: 76px" />
+                <col style="width: 92px" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th />
+                  <th>报告</th>
+                  <th>触发</th>
+                  <th>时间</th>
+                  <th>结果</th>
+                  <th>通过 / 跑到</th>
+                  <th>耗时</th>
+                  <th class="t-right">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="!visibleRuns.length">
+                  <td colspan="8" class="empty-tip">
+                    {{ ifaceRuns.length ? '没有符合筛选条件的报告' : `${rangeLabel}该接口还没有执行记录` }}
+                  </td>
+                </tr>
+                <template v-for="row in visibleRuns" :key="row.id">
+                  <tr
+                    class="r-row"
+                    :class="['is-' + rowState(row), { 'is-checked': selectedRunIds.includes(row.id), 'has-err': !!errorOf(row) }]"
+                  >
+                    <td class="t-center">
+                      <el-checkbox
+                        :model-value="selectedRunIds.includes(row.id)"
+                        @change="(v: boolean) => toggleRun(row.id, v)"
+                      />
+                    </td>
+                    <td>
+                      <div class="r-title">{{ runReportLabel(row) }}</div>
+                      <div class="r-sub">{{ triggerText(row) }}触发 · {{ row.total }} 个用例</div>
+                    </td>
+                    <td>
+                      <span class="trig" :class="row.triggerType === 'SCHEDULE' ? 'is-sched' : 'is-manual'">
+                        <el-icon><AlarmClock v-if="row.triggerType === 'SCHEDULE'" /><User v-else /></el-icon>
+                        {{ triggerText(row) }}
+                      </span>
+                    </td>
+                    <td>
+                      <div class="mono r-time">{{ shortTime(row.createdAt) }}</div>
+                      <div class="r-sub">{{ relDay(row.createdAt) }}</div>
+                    </td>
+                    <td>
+                      <span class="res" :class="'is-' + rowState(row)">{{ STATE_TEXT[rowState(row)] }}</span>
+                    </td>
+                    <td>
+                      <div v-if="ranOf(row) > 0" class="rate">
+                        <span class="rate-pct mono" :class="Number(row.failed || 0) ? 'bad' : 'good'">
+                          {{ row.passed || 0 }} / {{ ranOf(row) }}
+                        </span>
+                        <span v-if="Number(row.failed || 0)" class="r-sub is-red">{{ row.failed }} 条失败</span>
+                      </div>
+                      <div v-else class="rate">
+                        <span class="rate-pct mono is-none" title="这批用例一条都没跑到断言">—</span>
+                      </div>
+                      <div v-if="Number(row.blocked || 0) > 0 && ranOf(row) > 0" class="r-sub is-amber">{{ row.blocked }} 条没跑成未计入</div>
+                    </td>
+                    <td class="mono r-dur">{{ dur(row.durationMs) }}</td>
+                    <td class="t-right">
+                      <button type="button" class="op op-view" @click="openRun(row)">查看</button>
+                      <button type="button" class="op op-del" @click="deleteOne(row)">删除</button>
+                    </td>
+                  </tr>
+                  <tr v-if="errorOf(row)" class="r-err-row" :class="'is-' + rowState(row)">
+                    <td />
+                    <td colspan="7">
+                      <div class="r-err" :title="errorOf(row)">
+                        <span class="r-err-ico">!</span>
+                        <span v-if="rowState(row) === 'blocked'" class="r-err-kind">没跑成，先看服务：</span>
+                        <span class="r-err-text">{{ errorOf(row) }}</span>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+
+          <footer class="r-foot">
+            <span>共 <b>{{ visibleRuns.length }}</b> 条报告</span>
+            <span class="r-foot-sep" />
+            <span>已选 <b>{{ selectedRunIds.length }}</b> 条</span>
+            <span class="tb-spacer" />
+            <span class="r-foot-hint">统计范围：{{ rangeLabel }}</span>
+          </footer>
+        </template>
+
+        <div v-else class="panel-empty">在左侧选中一个接口，查看该接口的执行报告</div>
+      </main>
+    </div>
+
+    <ApiRunReportDialog v-model="drawer" :run-id="detailRunId" @changed="onReportChanged" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowDown, CircleCheck, Clock, Close, Folder, Link, TrendCharts } from '@element-plus/icons-vue'
+import {
+  AlarmClock,
+  Check,
+  Close,
+  Download,
+  Refresh,
+  RefreshRight,
+  Search,
+  Timer,
+  User,
+  VideoPlay
+} from '@element-plus/icons-vue'
 import { apiClient } from '../api'
-import { logout, user } from '../stores/auth'
+import ApiRunReportDialog from '../components/ApiRunReportDialog.vue'
+import { guardProdRun, type CaseRef } from '../utils/writeEffect'
+
+type RunIface = {
+  project: string
+  method: string
+  path: string
+  caseCount?: number
+  failedCount?: number
+  blockedCount?: number
+  error?: string | null
+  httpStatus?: number | null
+}
 
 type RunRow = {
   id: string
@@ -329,9 +367,13 @@ type RunRow = {
   total: number
   passed: number
   failed: number
+  blocked?: number
   durationMs: number
+  message?: string
+  triggerType?: string | null
+  createdBy?: string | null
   createdAt: string
-  interfaces: Array<{ project: string; method: string; path: string }>
+  interfaces: RunIface[]
 }
 
 type TreeNode = {
@@ -351,8 +393,27 @@ type TreeNode = {
   method?: string
   path?: string
   meta?: number
+  /** 最近一次执行这个接口的结果，用来画红/橙点 */
+  last?: 'pass' | 'fail' | 'blocked'
   children?: TreeNode[]
 }
+
+const SCOPES = [
+  { key: 'TEST' as const, label: '测试环境', dot: 'is-green' },
+  { key: 'LIVE' as const, label: '生产环境', dot: 'is-red' }
+]
+const RANGES = [
+  { days: 1, label: '今天' },
+  { days: 7, label: '近 7 天' },
+  { days: 30, label: '近 30 天' },
+  { days: 90, label: '近 90 天' }
+]
+const RUN_FILTERS = [
+  { key: 'ALL' as const, label: '全部' },
+  { key: 'FAIL' as const, label: '有失败' },
+  { key: 'BLOCKED' as const, label: '没跑成' },
+  { key: 'PASS' as const, label: '全部通过' }
+]
 
 const APP_ALIASES: Record<string, string> = {
   'data-center': 'app-data-center',
@@ -379,7 +440,6 @@ function projectsMatch(a: string, b: string): boolean {
   return (!!ca && ca === cb) || String(a || '').trim() === String(b || '').trim()
 }
 
-
 function categoryTreeLabel(cat: { key?: string; label?: string }) {
   if (cat.key === 'APP') return 'APP'
   if (cat.key === 'PVP') return 'PWA'
@@ -387,42 +447,106 @@ function categoryTreeLabel(cat: { key?: string; label?: string }) {
   return cat.label || cat.key || ''
 }
 
-function interfaceTreeLabel(path?: string) {
-  const p = String(path || '').trim()
-  return p || '—'
-}
-
-function onUserCommand(cmd: string) {
-  if (cmd === 'logout') {
-    logout()
-    router.replace('/login')
-  }
-}
-
 const route = useRoute()
-const router = useRouter()
 const allRuns = ref<RunRow[]>([])
 const collectionCategories = ref<any[]>([])
-const trendRows = ref<any[]>([])
-const days = ref(7)
+const days = ref(Number(localStorage.getItem('apiReports.days')) || 7)
 const loading = ref(false)
 const scope = ref<'TEST' | 'LIVE'>('TEST')
 const selectedNodeKey = ref('')
 const selectedRunIds = ref<string[]>([])
 const batchDeleting = ref(false)
 const treeRef = ref<any>(null)
+const treeKeyword = ref('')
+const runKeyword = ref('')
+const runFilter = ref<'ALL' | 'FAIL' | 'BLOCKED' | 'PASS'>('ALL')
+const runningNow = ref(false)
 
 const drawer = ref(false)
-const detailLoading = ref(false)
-const detail = ref<any>(null)
-const caseDetailOpen = ref<Record<string, boolean>>({})
-const respHeadersOpen = ref<Record<string, boolean>>({})
+const detailRunId = ref('')
 
 const treeProps = { children: 'children', label: 'label' }
+
+watch(days, (v) => localStorage.setItem('apiReports.days', String(v)))
+
+const rangeLabel = computed(() => RANGES.find((r) => r.days === days.value)?.label.replace(/\s/g, '') || `近${days.value}天`)
+
+function parseTime(s?: string): Date | null {
+  if (!s) return null
+  const d = new Date(String(s).replace(' ', 'T'))
+  return isNaN(d.getTime()) ? null : d
+}
+
+const windowStart = computed(() => {
+  const now = new Date()
+  if (days.value <= 1) return new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  return new Date(now.getTime() - days.value * 86400000)
+})
+
+function inWindow(run: RunRow) {
+  const t = parseTime(run.createdAt)
+  return !!t && t >= windowStart.value
+}
 
 function runScope(run: RunRow): 'TEST' | 'LIVE' {
   return String(run.environment || '').toUpperCase() === 'PROD' ? 'LIVE' : 'TEST'
 }
+
+function scopeCount(s: 'TEST' | 'LIVE') {
+  return allRuns.value.filter((r) => runScope(r) === s && inWindow(r)).length
+}
+
+/** 当前环境 + 时间范围内的执行，按时间倒序 */
+const windowRuns = computed(() =>
+  allRuns.value
+    .filter((r) => runScope(r) === scope.value && inWindow(r))
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+)
+
+type RunState = 'pass' | 'fail' | 'blocked'
+
+/** 有真失败 → 失败；只是没跑成（连不上/超时/登录失败）→ 没跑成。两者不能混：后者该去看服务，不是查用例 */
+function stateOf(failed: number, blocked: number): RunState {
+  if (failed > 0) return 'fail'
+  if (blocked > 0) return 'blocked'
+  return 'pass'
+}
+
+function runState(r: RunRow): RunState {
+  return stateOf(Number(r.failed || 0), Number(r.blocked || 0))
+}
+
+const kpi = computed(() => {
+  const list = windowRuns.value
+  let ran = 0
+  let passed = 0
+  let failedCases = 0
+  let blockedCases = 0
+  let ms = 0
+  let badRuns = 0
+  let blockedRuns = 0
+  for (const r of list) {
+    ran += Number(r.total || 0) - Number(r.blocked || 0)
+    passed += Number(r.passed || 0)
+    failedCases += Number(r.failed || 0)
+    blockedCases += Number(r.blocked || 0)
+    ms += Number(r.durationMs || 0)
+    const s = runState(r)
+    if (s === 'fail') badRuns++
+    else if (s === 'blocked') blockedRuns++
+  }
+  return {
+    runs: list.length,
+    total: ran,
+    passed,
+    okRuns: list.length - badRuns - blockedRuns,
+    badRuns,
+    blockedRuns,
+    failedCases,
+    blockedCases,
+    avgMs: list.length ? ms / list.length : 0
+  }
+})
 
 function sourceKeyOf(run: RunRow): string {
   const req = String(run.requirementNo || '').trim()
@@ -443,10 +567,14 @@ function ifaceKey(method: string, path: string) {
   return `${String(method || '').toUpperCase()}:${pathBase(path)}`
 }
 
-function treeIfaceLabel(method: string, path: string): string {
-  return pathBase(path) || String(path || '').trim() || '(未知路径)'
+/** 树上只显示最后两段：倒数第二段灰色，最后一段正常色；完整路径放 title */
+function pathParts(path?: string) {
+  const segs = pathBase(path).split('/').filter(Boolean)
+  if (!segs.length) return { prefix: '', last: path || '—' }
+  const last = segs[segs.length - 1]
+  const prefix = segs.length >= 2 ? segs[segs.length - 2] + '/' : ''
+  return { prefix, last }
 }
-
 
 function runReportLabel(row: RunRow) {
   if (row.collectionName) return row.collectionName
@@ -456,63 +584,63 @@ function runReportLabel(row: RunRow) {
   return '单次执行'
 }
 
-function runReportSub(row: RunRow): string {
-  const mode = row.collectionName ? '集合执行' : '手动执行'
-  return `${mode}，${row.total} 个用例`
+function triggerText(row: RunRow) {
+  return row.triggerType === 'SCHEDULE' ? '定时' : '手动'
 }
 
-function runMatchesInterface(run: RunRow, project: string, method: string, path: string) {
+function ifaceOf(run: RunRow, project: string, method: string, path: string): RunIface | undefined {
   const pk = ifaceKey(method, path)
-  return (run.interfaces || []).some(
-    (it) => projectsMatch(it.project, project) && ifaceKey(it.method, it.path) === pk
-  )
+  return (run.interfaces || []).find((it) => projectsMatch(it.project, project) && ifaceKey(it.method, it.path) === pk)
 }
 
-function scopedRuns() {
-  return allRuns.value.filter((r) => runScope(r) === scope.value)
+function ifaceStateOf(it?: RunIface): RunState {
+  return stateOf(Number(it?.failedCount || 0), Number(it?.blockedCount || 0))
 }
 
-const runCountByIface = computed(() => {
-  const m = new Map<string, number>()
-  for (const run of scopedRuns()) {
+/** 每个接口在当前范围内：执行次数 + 最近一次的结果 */
+const ifaceIndex = computed(() => {
+  const m = new Map<string, { count: number; last: RunState }>()
+  for (const run of windowRuns.value) {
     for (const it of run.interfaces || []) {
       const k = `${canonicalProjectKey(it.project)}:${ifaceKey(it.method, it.path)}`
-      m.set(k, (m.get(k) || 0) + 1)
+      const hit = m.get(k)
+      if (hit) hit.count++
+      else m.set(k, { count: 1, last: ifaceStateOf(it) })
     }
   }
   return m
 })
 
-function runCountFor(project: string, method: string, path: string): number {
-  const k = `${canonicalProjectKey(project)}:${ifaceKey(method, pathBase(path))}`
-  return runCountByIface.value.get(k) || 0
+function ifaceInfo(project: string, method: string, path: string) {
+  return ifaceIndex.value.get(`${canonicalProjectKey(project)}:${ifaceKey(method, pathBase(path))}`)
 }
 
-function interfaceNodesFromCol(col: any, projectCode: string, parentNodeKey: string): TreeNode[] {
-  return (col.interfaces || [])
-    .map((item: any) => {
-      const path = pathBase(item.path)
-      if (!path) return null
-      const method = String(item.method || 'GET').toUpperCase()
-      return {
-        nodeKey: `if:${parentNodeKey}:${ifaceKey(method, path)}`,
-        label: interfaceTreeLabel(path),
-        kind: 'interface' as const,
-        isFolder: false,
-        method,
-        path,
-        project: projectCode,
-        meta: runCountFor(projectCode, method, path)
-      }
-    })
-    .filter(Boolean) as TreeNode[]
+function leafNode(nodeKey: string, project: string, rawMethod: string, rawPath: string, kind: 'interface' | 'endpoint'): TreeNode | null {
+  const path = pathBase(rawPath)
+  if (!path) return null
+  const method = String(rawMethod || 'GET').toUpperCase()
+  const info = ifaceInfo(project, method, path)
+  return {
+    nodeKey: `${nodeKey}:${ifaceKey(method, path)}`,
+    label: path,
+    kind,
+    isFolder: false,
+    method,
+    path,
+    project,
+    meta: info?.count || 0,
+    last: info?.last
+  }
+}
+
+/** 同一接口多条用例（或 query 不同）会出现多次，树上只留一个叶子，否则 node-key 冲突 */
+function uniqLeaves(nodes: Array<TreeNode | null>): TreeNode[] {
+  const seen = new Set<string>()
+  return nodes.filter((n): n is TreeNode => !!n && !seen.has(n.nodeKey) && !!seen.add(n.nodeKey))
 }
 
 function bubbleUpMeta(node: TreeNode): number {
-  if (node.kind === 'interface' || node.kind === 'endpoint') {
-    node.meta = node.meta ?? 0
-    return Number(node.meta)
-  }
+  if (!node.isFolder) return Number(node.meta || 0)
   const sum = (node.children || []).reduce((s, c) => s + bubbleUpMeta(c), 0)
   node.meta = sum
   return sum
@@ -520,7 +648,7 @@ function bubbleUpMeta(node: TreeNode): number {
 
 /** 与 ApiCollections 相同的用例集合树，接口节点 meta 为执行报告数 */
 function buildCollectionTree(categories: any[]): TreeNode[] {
-  let root: TreeNode[] = []
+  let root: TreeNode[]
 
   if (scope.value === 'LIVE') {
     root = (categories || []).map((cat) => ({
@@ -529,39 +657,27 @@ function buildCollectionTree(categories: any[]): TreeNode[] {
       kind: 'category' as const,
       isFolder: true,
       meta: 0,
-      children: (cat.projects || []).flatMap((proj: any) => {
-        const projectNode: TreeNode = {
-          nodeKey: `proj:${cat.key}:${proj.code}`,
-          label: proj.code || proj.label,
-          kind: 'project',
+      children: (cat.projects || []).map((proj: any) => ({
+        nodeKey: `proj:${cat.key}:${proj.code}`,
+        label: proj.code || proj.label,
+        kind: 'project' as const,
+        isFolder: true,
+        project: proj.code,
+        meta: 0,
+        children: (proj.controllers || []).map((ctrl: any) => ({
+          nodeKey: `ctrl:${proj.code}:${ctrl.label}`,
+          label: ctrl.label,
+          kind: 'controller' as const,
           isFolder: true,
           project: proj.code,
           meta: 0,
-          children: (proj.controllers || []).map((ctrl: any) => ({
-            nodeKey: `ctrl:${proj.code}:${ctrl.label}`,
-            label: ctrl.label,
-            kind: 'controller' as const,
-            isFolder: true,
-            project: proj.code,
-            meta: 0,
-            children: (ctrl.previews || []).map((p: any) => {
-              const path = pathBase(p.path)
-              const method = String(p.method || 'GET').toUpperCase()
-              return {
-                nodeKey: `ep:${proj.code}:${ctrl.label}:${ifaceKey(method, path)}`,
-                label: interfaceTreeLabel(path),
-                kind: 'endpoint' as const,
-                isFolder: false,
-                method,
-                path,
-                project: proj.code,
-                meta: runCountFor(proj.code, method, path)
-              }
-            })
-          }))
-        }
-        return [projectNode]
-      })
+          children: uniqLeaves(
+            (ctrl.previews || []).map((p: any) =>
+              leafNode(`ep:${proj.code}:${ctrl.label}`, proj.code, p.method, p.path, 'endpoint')
+            )
+          )
+        }))
+      }))
     }))
   } else {
     root = (categories || []).map((cat) => ({
@@ -577,31 +693,32 @@ function buildCollectionTree(categories: any[]): TreeNode[] {
         isFolder: true,
         project: proj.code,
         meta: 0,
-        children: (proj.groups || []).flatMap((g: any) => {
-          const groupNode: TreeNode = {
-            nodeKey: g.key || `grp:${proj.code}:${g.label}`,
-            label: g.label,
-            kind: (g.kind || 'req-group') as TreeNode['kind'],
-            isFolder: true,
-            project: proj.code,
-            meta: 0,
-            children: (g.collections || []).map((col: any) => {
-              const nodeKey = col.id
-                ? `col:${col.id}`
-                : `leaf:${proj.code}:${col.requirementNo || col.sourceBranch || col.label}`
-              return {
-                nodeKey,
-                label: col.label || col.requirementNo || col.sourceBranch || col.name,
-                kind: 'collection' as const,
-                isFolder: true,
-                project: proj.code,
-                meta: 0,
-                children: interfaceNodesFromCol(col, proj.code, nodeKey)
-              }
-            })
-          }
-          return [groupNode]
-        })
+        children: (proj.groups || []).map((g: any) => ({
+          nodeKey: g.key || `grp:${proj.code}:${g.label}`,
+          label: g.label,
+          kind: (g.kind || 'req-group') as TreeNode['kind'],
+          isFolder: true,
+          project: proj.code,
+          meta: 0,
+          children: (g.collections || []).map((col: any) => {
+            const nodeKey = col.id
+              ? `col:${col.id}`
+              : `leaf:${proj.code}:${col.requirementNo || col.sourceBranch || col.label}`
+            return {
+              nodeKey,
+              label: col.label || col.requirementNo || col.sourceBranch || col.name,
+              kind: 'collection' as const,
+              isFolder: true,
+              project: proj.code,
+              meta: 0,
+              children: uniqLeaves(
+                (col.interfaces || []).map((it: any) =>
+                  leafNode(`if:${nodeKey}`, proj.code, it.method, it.path, 'interface')
+                )
+              )
+            }
+          })
+        }))
       }))
     }))
   }
@@ -610,18 +727,11 @@ function buildCollectionTree(categories: any[]): TreeNode[] {
   return root
 }
 
-function findInterfaceNodeKey(
-  nodes: TreeNode[],
-  project: string,
-  method: string,
-  path: string
-): string | null {
+function findInterfaceNodeKey(nodes: TreeNode[], project: string, method: string, path: string): string | null {
   const pk = ifaceKey(method, path)
   for (const n of nodes) {
-    if ((n.kind === 'interface' || n.kind === 'endpoint') && n.path) {
-      if (projectsMatch(n.project || '', project) && ifaceKey(n.method || 'GET', n.path) === pk) {
-        return n.nodeKey
-      }
+    if (!n.isFolder && n.path && projectsMatch(n.project || '', project) && ifaceKey(n.method || 'GET', n.path) === pk) {
+      return n.nodeKey
     }
     if (n.children?.length) {
       const hit = findInterfaceNodeKey(n.children, project, method, path)
@@ -631,37 +741,134 @@ function findInterfaceNodeKey(
   return null
 }
 
-const treeData = computed(() => buildCollectionTree(collectionCategories.value))
+const onlyWithRuns = ref(localStorage.getItem('apiReports.onlyWithRuns') !== '0')
+watch(onlyWithRuns, (v) => localStorage.setItem('apiReports.onlyWithRuns', v ? '1' : '0'))
+
+const fullTree = computed(() => buildCollectionTree(collectionCategories.value))
+
+/** 去掉 0 次执行的分支。不能依赖选中项：选中一变 data 就重建，el-tree 的展开状态会全丢 */
+function pruneEmpty(nodes: TreeNode[]): TreeNode[] {
+  const out: TreeNode[] = []
+  for (const n of nodes) {
+    const children = n.children?.length ? pruneEmpty(n.children) : n.children
+    if (Number(n.meta) > 0 || children?.length) out.push({ ...n, children })
+  }
+  return out
+}
+
+function countNodes(nodes: TreeNode[]): number {
+  return nodes.reduce((s, n) => s + 1 + countNodes(n.children || []), 0)
+}
+
+const treeData = computed(() => (onlyWithRuns.value ? pruneEmpty(fullTree.value) : fullTree.value))
+const hiddenEmptyCount = computed(() =>
+  onlyWithRuns.value ? countNodes(fullTree.value) - countNodes(treeData.value) : 0
+)
+
+function filterNode(kw: string, data: TreeNode) {
+  if (!kw) return true
+  const k = kw.toLowerCase()
+  return String(data.label || '').toLowerCase().includes(k) || String(data.path || '').toLowerCase().includes(k)
+}
+
+watch(treeKeyword, (kw) => treeRef.value?.filter(kw.trim()))
+
+function findPath(nodes: TreeNode[], key: string, trail: TreeNode[] = []): TreeNode[] | null {
+  for (const n of nodes) {
+    const next = [...trail, n]
+    if (n.nodeKey === key) return next
+    if (n.children?.length) {
+      const hit = findPath(n.children, key, next)
+      if (hit) return hit
+    }
+  }
+  return null
+}
+
+const selectedTrail = computed(() => (selectedNodeKey.value ? findPath(treeData.value, selectedNodeKey.value) : null))
 
 const selectedInterface = computed(() => {
-  if (!selectedNodeKey.value) return null
-  const find = (nodes: TreeNode[]): TreeNode | null => {
-    for (const n of nodes) {
-      if (n.nodeKey === selectedNodeKey.value && (n.kind === 'interface' || n.kind === 'endpoint')) return n
-      if (n.children?.length) {
-        const hit = find(n.children)
-        if (hit) return hit
-      }
-    }
-    return null
-  }
-  const node = find(treeData.value)
-  if (!node?.project || !node.path) return null
+  const node = selectedTrail.value?.[selectedTrail.value.length - 1]
+  if (!node || node.isFolder || !node.project || !node.path) return null
   return { project: node.project, method: node.method || 'GET', path: node.path }
 })
 
-const selectedPathDisplay = computed(() => {
-  const sel = selectedInterface.value
-  if (!sel) return ''
-  return treeIfaceLabel(sel.method || 'GET', sel.path || '')
-})
+const breadcrumb = computed(() => (selectedTrail.value || []).slice(0, -1).map((n) => n.label))
 
-const visibleRuns = computed(() => {
+/** 选中接口在当前范围内的执行记录 */
+const ifaceRuns = computed(() => {
   const sel = selectedInterface.value
   if (!sel) return []
-  return scopedRuns()
-    .filter((run) => runMatchesInterface(run, sel.project, sel.method, sel.path))
-    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+  return windowRuns.value.filter((run) => !!ifaceOf(run, sel.project, sel.method, sel.path))
+})
+
+function selIface(run: RunRow) {
+  const sel = selectedInterface.value
+  return sel ? ifaceOf(run, sel.project, sel.method, sel.path) : undefined
+}
+
+/** 「结果」看的是这个接口在那次执行里的结果；通过率仍是整批的 */
+function rowState(run: RunRow): RunState {
+  return ifaceStateOf(selIface(run))
+}
+
+const STATE_TEXT: Record<RunState, string> = { pass: '通过', fail: '失败', blocked: '没跑成' }
+
+function errorOf(run: RunRow): string {
+  if (rowState(run) === 'pass') return ''
+  return String(selIface(run)?.error || run.message || '').trim()
+}
+
+const ifaceStats = computed(() => {
+  const list = ifaceRuns.value
+  let failed = 0
+  let blocked = 0
+  let ms = 0
+  let maxMs = 0
+  for (const r of list) {
+    const s = rowState(r)
+    if (s === 'fail') failed++
+    else if (s === 'blocked') blocked++
+    const d = Number(r.durationMs || 0)
+    ms += d
+    if (d > maxMs) maxMs = d
+  }
+  const latest = list[0]
+  return {
+    passed: list.length - failed - blocked,
+    failed,
+    blocked,
+    avgMs: list.length ? ms / list.length : 0,
+    maxMs,
+    lastHttp: latest ? Number(selIface(latest)?.httpStatus || 0) : 0,
+    lastAt: latest?.createdAt || ''
+  }
+})
+
+type RunFilter = 'ALL' | 'FAIL' | 'BLOCKED' | 'PASS'
+
+function matchesRunFilter(r: RunRow, f: RunFilter) {
+  if (f === 'FAIL') return rowState(r) === 'fail'
+  if (f === 'BLOCKED') return rowState(r) === 'blocked'
+  if (f === 'PASS') return rowState(r) === 'pass'
+  return true
+}
+
+function filterCount(f: RunFilter) {
+  return ifaceRuns.value.filter((r) => matchesRunFilter(r, f)).length
+}
+
+const visibleRuns = computed(() => {
+  const kw = runKeyword.value.trim().toLowerCase()
+  return ifaceRuns.value.filter((r) => {
+    if (!matchesRunFilter(r, runFilter.value)) return false
+    if (!kw) return true
+    return (
+      runReportLabel(r).toLowerCase().includes(kw) ||
+      fmt(r.createdAt).includes(kw) ||
+      String(r.createdBy || '').toLowerCase().includes(kw)
+    )
+  })
 })
 
 const allVisibleSelected = computed(
@@ -669,40 +876,32 @@ const allVisibleSelected = computed(
 )
 const someVisibleSelected = computed(() => visibleRuns.value.some((r) => selectedRunIds.value.includes(r.id)))
 
-const summary = computed(() => {
-  let runsN = 0
-  let total = 0
-  let passed = 0
-  let failed = 0
-  for (const r of trendRows.value) {
-    runsN += Number(r.runs || 0)
-    total += Number(r.total || 0)
-    passed += Number(r.passed || 0)
-    failed += Number(r.failed || 0)
-  }
-  return { runs: runsN, total, passed, failed, rate: total ? Math.round((passed * 100) / total) : 0 }
-})
-
-const avgDuration = computed(() => {
-  const list = scopedRuns()
-  if (!list.length) return '—'
-  const ms = list.reduce((n, r) => n + Number(r.durationMs || 0), 0) / list.length
-  return dur(ms)
-})
-
-function ifacePct(row: RunRow) {
-  return pct(row)
+/** 没跑成的不进分母；全部没跑成时返回 null（显示「—」），不是 0% */
+/** 分支 / 回归还没拆开统计，只给原始数，不算百分比 */
+function ranOf(row: RunRow): number {
+  return Math.max(0, Number(row.total || 0) - Number(row.blocked || 0))
 }
 
-function pct(row: any) {
-  const t = Number(row.total || 0)
-  return t ? Math.round((Number(row.passed || 0) * 100) / t) : 0
+function httpClass(code: number) {
+  if (!code) return ''
+  return code >= 200 && code < 400 ? 'is-green' : 'is-red'
 }
 
-function rateClass(rate: number) {
-  if (rate >= 95) return 'good'
-  if (rate >= 80) return 'warn'
-  return 'bad'
+function methodClass(m?: string) {
+  const k = String(m || 'GET').toUpperCase()
+  return {
+    GET: 'is-get',
+    POST: 'is-post',
+    PUT: 'is-put',
+    PATCH: 'is-patch',
+    DELETE: 'is-delete'
+  }[k] || 'is-get'
+}
+
+function catDotClass(label: string) {
+  if (label === 'APP') return 'is-green'
+  if (label === 'PWA') return 'is-blue'
+  return 'is-orange'
 }
 
 function fmt(s: string) {
@@ -710,166 +909,36 @@ function fmt(s: string) {
   return String(s).replace('T', ' ').slice(0, 16)
 }
 
+function shortTime(s: string) {
+  return fmt(s).slice(5)
+}
+
+function relDay(s: string) {
+  const t = parseTime(s)
+  if (!t) return ''
+  const today = new Date()
+  const d0 = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()
+  const d1 = new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime()
+  const diff = Math.round((d0 - d1) / 86400000)
+  if (diff === 0) return '今天'
+  if (diff === 1) return '昨天'
+  if (diff < 7) return `${diff} 天前`
+  return fmt(s).slice(0, 10)
+}
+
 function dur(ms: number) {
   const n = Number(ms || 0)
   if (n < 1000) return Math.round(n) + 'ms'
   if (n < 60000) return (n / 1000).toFixed(1) + 's'
-  return Math.floor(n / 60000) + 'm ' + Math.round((n % 60000) / 1000) + 's'
-}
-
-function kv(h?: string | Record<string, string>) {
-  if (!h) return ''
-  const o = typeof h === 'string' ? safeParse(h) : h
-  if (!o) return typeof h === 'string' ? h : ''
-  return Object.entries(o)
-    .map(([k, v]) => `${k}: ${v}`)
-    .join('\n')
-}
-
-function safeParse(raw: string): Record<string, string> | null {
-  try {
-    const o = JSON.parse(raw)
-    return o && typeof o === 'object' ? o : null
-  } catch {
-    return null
-  }
-}
-
-function assertLines(raw?: string | string[]) {
-  if (!raw) return []
-  return Array.isArray(raw) ? raw : raw.split('\n').filter(Boolean)
-}
-
-type ParsedAssert = { ok: boolean; expr: string; actual: string }
-
-function parseAssertions(c: any): ParsedAssert[] {
-  return assertLines(c?.assertionResults)
-    .filter((line) => !line.startsWith('WARN'))
-    .map((line) => {
-      const ok = line.startsWith('OK')
-      const body = line.replace(/^(OK|FAIL)\s+/, '').trim()
-      const idx = body.indexOf(' 实际=')
-      if (idx >= 0) {
-        return {
-          ok,
-          expr: formatAssertExpr(body.slice(0, idx).trim()),
-          actual: body.slice(idx + 4).trim()
-        }
-      }
-      if (body.includes('exists=')) {
-        const m = body.match(/^jsonPath\s+(\S+)\s+exists=(true|false)$/i)
-        if (m) {
-          return { ok, expr: `jsonPath ${m[1]} exists`, actual: m[2] }
-        }
-      }
-      return { ok, expr: formatAssertExpr(body), actual: '' }
-    })
-}
-
-function formatAssertExpr(raw: string): string {
-  return raw
-    .replace(/==/g, ' == ')
-    .replace(/!=/g, ' != ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-function caseIfaceTitle(c: any): string {
-  const method = String(c?.method || 'GET').toUpperCase()
-  const path = pathBase(String(c?.path || c?.url || ''))
-  const parts = path.split('/').filter(Boolean)
-  const short = parts.length >= 2 ? parts.slice(-2).join('/') : parts.join('/') || path
-  return `${method} ${short}`
-}
-
-function headerEntries(raw?: string | Record<string, string>): Array<{ key: string; value: string }> {
-  const o = typeof raw === 'string' ? safeParse(raw) : raw
-  if (!o) return []
-  return Object.entries(o).map(([key, value]) => ({ key, value: String(value ?? '') }))
-}
-
-const SENSITIVE_HEADERS = ['token', 'authorization', 'cookie', 'x-api-key', 'x-auth-token']
-
-function maskHeaderValue(key: string, value: string): string {
-  const k = key.toLowerCase()
-  if (!SENSITIVE_HEADERS.some((h) => k.includes(h))) return value
-  const v = String(value || '').trim()
-  if (!v) return v
-  if (v.length <= 12) return '*** (已遮掩)'
-  return `${v.slice(0, 8)}...${v.slice(-4)} (已遮掩)`
-}
-
-function hasCaseDetail(c: any): boolean {
-  return !!(c?.reqHeaders || c?.reqBody || c?.respHeaders || c?.bodyPreview)
-}
-
-function isCaseDetailOpen(id?: string) {
-  return !!id && caseDetailOpen.value[id] !== false
-}
-
-function toggleCaseDetail(id?: string) {
-  if (!id) return
-  caseDetailOpen.value[id] = !isCaseDetailOpen(id)
-}
-
-function isRespHeadersOpen(id?: string) {
-  return !!id && !!respHeadersOpen.value[id]
-}
-
-function toggleRespHeaders(id?: string) {
-  if (!id) return
-  respHeadersOpen.value[id] = !isRespHeadersOpen(id)
-}
-
-function visibleRespHeaders(c: any) {
-  const rows = headerEntries(c.respHeaders)
-  if (isRespHeadersOpen(c.id)) return rows
-  return rows.slice(0, 5)
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
-
-function highlightJson(raw: string): string {
-  const text = escapeHtml(raw)
-  return text.replace(
-    /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?/g,
-    (match, str, colon) => {
-      if (colon) return `<span class="jk">${str}</span>${colon}`
-      if (str) return `<span class="js">${str}</span>`
-      if (match === 'true' || match === 'false' || match === 'null') return `<span class="jb">${match}</span>`
-      return `<span class="jn">${match}</span>`
-    }
-  )
-}
-
-async function copyText(text: string) {
-  try {
-    await navigator.clipboard.writeText(text)
-    ElMessage.success('已复制')
-  } catch {
-    ElMessage.error('复制失败')
-  }
-}
-
-function pretty(raw?: string) {
-  if (!raw) return ''
-  try {
-    return JSON.stringify(JSON.parse(raw), null, 2)
-  } catch {
-    return raw
-  }
+  return Math.floor(n / 60000) + 'm' + Math.round((n % 60000) / 1000) + 's'
 }
 
 function onTreeClick(data: TreeNode) {
-  if (data.kind === 'interface' || data.kind === 'endpoint') {
+  if (!data.isFolder) {
     selectedNodeKey.value = data.nodeKey
     selectedRunIds.value = []
+    runKeyword.value = ''
+    runFilter.value = 'ALL'
   }
 }
 
@@ -901,19 +970,13 @@ async function loadCollectionTree() {
   }
 }
 
-function nodeExists(nodes: TreeNode[], key: string): boolean {
-  for (const n of nodes) {
-    if (n.nodeKey === key) return true
-    if (n.children?.length && nodeExists(n.children, key)) return true
-  }
-  return false
-}
-
 watch(treeData, async () => {
   await nextTick()
-  if (selectedNodeKey.value && !nodeExists(treeData.value, selectedNodeKey.value)) {
+  if (selectedNodeKey.value && !findPath(treeData.value, selectedNodeKey.value)) {
     selectedNodeKey.value = ''
   }
+  if (treeKeyword.value.trim()) treeRef.value?.filter(treeKeyword.value.trim())
+  if (selectedNodeKey.value) treeRef.value?.setCurrentKey?.(selectedNodeKey.value)
 })
 
 async function load() {
@@ -921,7 +984,7 @@ async function load() {
   try {
     const [, runs] = await Promise.all([
       loadCollectionTree(),
-      apiClient.browseApiTestRuns(300) as Promise<RunRow[]>
+      apiClient.browseApiTestRuns(500) as Promise<RunRow[]>
     ])
     allRuns.value = runs
   } catch (e: any) {
@@ -931,30 +994,14 @@ async function load() {
   }
 }
 
-async function loadTrend() {
-  try {
-    trendRows.value = await apiClient.getApiTestTrend(days.value)
-  } catch (e: any) {
-    ElMessage.error(e?.message || '加载趋势失败')
-  }
+function openRun(row: { id: string }) {
+  detailRunId.value = row.id
+  drawer.value = true
 }
 
-async function openRun(row: any) {
-  drawer.value = true
-  detailLoading.value = true
-  detail.value = null
-  caseDetailOpen.value = {}
-  respHeadersOpen.value = {}
-  try {
-    detail.value = await apiClient.getApiTestRunDetail(row.id)
-    for (const c of detail.value?.cases || []) {
-      if (c?.id) caseDetailOpen.value[c.id] = true
-    }
-  } catch (e: any) {
-    ElMessage.error(e?.message || '加载详情失败')
-  } finally {
-    detailLoading.value = false
-  }
+async function onReportChanged(runId?: string) {
+  await load()
+  if (runId) openRun({ id: runId })
 }
 
 async function deleteOne(row: RunRow) {
@@ -987,900 +1034,675 @@ async function batchDelete() {
   }
 }
 
-onMounted(async () => {
-  await Promise.all([load(), loadTrend()])
-  const runId = String(route.query.runId || '')
-  if (runId) {
-    const run = allRuns.value.find((r) => r.id === runId)
-    if (run) {
-      scope.value = runScope(run)
-      const it = run.interfaces?.[0]
-      if (it) {
-        const key = findInterfaceNodeKey(treeData.value, it.project, it.method, it.path)
-        if (key) {
-          selectedNodeKey.value = key
-          await nextTick()
-          treeRef.value?.setCurrentKey?.(selectedNodeKey.value)
-        }
+/** 重跑最近一次执行里覆盖这个接口的那几条用例 */
+async function runNow() {
+  const sel = selectedInterface.value
+  if (!sel) return
+  const latest = allRuns.value
+    .filter((r) => runScope(r) === scope.value && !!ifaceOf(r, sel.project, sel.method, sel.path))
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0]
+  if (!latest) {
+    ElMessage.warning('这个接口还没有执行过，去「用例集合」里执行一次后才能在这里重跑')
+    return
+  }
+  runningNow.value = true
+  try {
+    const detail = await apiClient.getApiTestRunDetail(latest.id)
+    const pk = ifaceKey(sel.method, sel.path)
+    const refs = new Map<string, CaseRef>()
+    for (const c of detail?.cases || []) {
+      if (c.caseId && ifaceKey(c.method || 'GET', c.path || '') === pk && !refs.has(c.caseId)) {
+        refs.set(c.caseId, {
+          id: String(c.caseId),
+          name: c.name,
+          method: c.method,
+          path: c.path,
+          project: sel.project,
+          durationMs: c.durationMs
+        })
       }
-      openRun(run)
-    } else {
-      openRun({ id: runId })
+    }
+    let ids = [...refs.keys()]
+    if (!ids.length) {
+      ElMessage.warning('最近一次执行里找不到这个接口对应的用例（可能已被删除）')
+      return
+    }
+    let env: 'PROD' | 'TEST' = scope.value === 'LIVE' ? 'PROD' : 'TEST'
+    if (env === 'PROD') {
+      const g = await guardProdRun([...refs.values()], sel.project)
+      if (g.mode === 'cancel') return
+      ids = g.ids
+      env = g.env
+    }
+    const r = await apiClient.runApiTest({ caseIds: ids, environment: env, confirmProd: env === 'PROD' })
+    ElMessage[r.ok ? 'success' : 'warning'](r.message || '执行完成')
+    await load()
+    if (r.runId) openRun({ id: r.runId })
+  } catch (e: any) {
+    ElMessage.error(e?.message || '执行失败')
+  } finally {
+    runningNow.value = false
+  }
+}
+
+function csvCell(v: unknown) {
+  const s = String(v ?? '')
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+
+function exportCsv() {
+  const list = selectedInterface.value ? visibleRuns.value : windowRuns.value
+  if (!list.length) {
+    ElMessage.info('当前范围内没有可导出的执行记录')
+    return
+  }
+  const head = ['时间', '环境', '报告', '触发', '执行人', '用例数', '通过', '失败', '没跑成', '耗时']
+  const lines = list.map((r) =>
+    [
+      fmt(r.createdAt),
+      r.environment,
+      runReportLabel(r),
+      triggerText(r),
+      r.createdBy || '',
+      r.total,
+      r.passed,
+      Number(r.failed || 0),
+      Number(r.blocked || 0),
+      dur(r.durationMs)
+    ]
+      .map(csvCell)
+      .join(',')
+  )
+  const blob = new Blob(['\ufeff' + [head.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  const scopeName = scope.value === 'LIVE' ? '生产' : '测试'
+  a.download = `执行报告-${scopeName}-${rangeLabel.value}.csv`
+  a.click()
+  URL.revokeObjectURL(a.href)
+}
+
+function revealNode(key: string) {
+  const tree = treeRef.value
+  if (!tree) return
+  let parent = tree.getNode?.(key)?.parent
+  while (parent && parent.level > 0) {
+    parent.expanded = true
+    parent = parent.parent
+  }
+  tree.setCurrentKey?.(key)
+}
+
+async function focusRun(runId: string) {
+  const run = allRuns.value.find((r) => r.id === runId)
+  if (run) {
+    const target = runScope(run)
+    if (scope.value !== target) {
+      scope.value = target
+      await nextTick()
+    }
+    if (!inWindow(run)) days.value = 90
+    await loadCollectionTree()
+    const it = run.interfaces?.[0]
+    if (it) {
+      const key = findInterfaceNodeKey(treeData.value, it.project, it.method, it.path)
+      if (key) {
+        selectedNodeKey.value = key
+        selectedRunIds.value = []
+        await nextTick()
+        revealNode(key)
+      }
     }
   }
+  openRun({ id: runId })
+}
+
+onMounted(async () => {
+  await load()
+  const runId = String(route.query.runId || '')
+  if (runId) await focusRun(runId)
 })
+
+watch(
+  () => String(route.query.runId || ''),
+  async (runId, prev) => {
+    if (!runId || runId === prev) return
+    await load()
+    await focusRun(runId)
+  }
+)
 </script>
 
 <style scoped>
 .reports-page {
+  --line: #eef0f3;
+  --muted: #8a919f;
+  --text: #1f2329;
+  --green: #2f9e44;
+  --red: #e03131;
+  --orange: #f08c00;
+  --amber: var(--el-color-warning-dark-2);
+  --blue: #1971c2;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  box-sizing: border-box;
   background: #fff;
+  color: var(--text);
+  font-size: 13px;
 }
 
-.rp-topbar {
+.mono { font-family: var(--mono); }
+.tb-spacer { flex: 1; }
+
+/* ---------- 顶栏 ---------- */
+.rp-toolbar {
   flex-shrink: 0;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 20px;
-  background: #2b3648;
-}
-
-.rp-topbar-title {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: #fff;
-}
-
-.rp-topbar-user {
   display: flex;
   align-items: center;
   gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
 }
 
-.rp-role-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  line-height: 18px;
-  color: #fff;
-  background: #e85d6a;
+.env-seg {
+  display: inline-flex;
+  border: 1px solid var(--el-border-color);
+  border-radius: 6px;
+  overflow: hidden;
 }
 
-.rp-user-trigger {
+.env-seg-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 13px;
-  color: #fff;
-  cursor: pointer;
-  outline: none;
-}
-
-.rp-main {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-.page-shell {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  background: #fff;
-  border: none;
-  border-radius: 0;
-  overflow: hidden;
-}
-
-.kpi-bar {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 10px 20px;
-  border-bottom: 1px solid #f0f0f0;
-  background: #fff;
-  min-height: 56px;
-}
-
-.kpi-cards {
-  display: flex;
-  flex: 1;
-  gap: 36px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.kpi-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.kpi-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  font-size: 16px;
-}
-
-.kpi-icon.is-green { background: #f0faf0; color: #3cb371; }
-.kpi-icon.is-blue { background: #eef5ff; color: #4a90e2; }
-.kpi-icon.is-orange { background: #fff8ef; color: #f5a623; }
-
-.kpi-label {
-  font-size: 12px;
-  color: #999;
-  line-height: 1.3;
-}
-
-.kpi-value {
-  font-size: 20px;
-  font-weight: 700;
-  line-height: 1.2;
-}
-
-.kpi-value.is-green { color: #3cb371; }
-.kpi-value.is-blue { color: #4a90e2; }
-.kpi-value.is-orange { color: #f5a623; }
-
-.kpi-sub {
-  margin-top: 1px;
-  font-size: 11px;
-  display: flex;
   gap: 6px;
-  line-height: 1.3;
-}
-
-.kpi-sub.muted { color: #999; }
-
-.kpi-filter {
-  width: 96px;
-  flex-shrink: 0;
-}
-
-.kpi-filter :deep(.el-input__wrapper) {
-  box-shadow: 0 0 0 1px #dcdfe6 inset;
-  border-radius: 4px;
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
   background: #fff;
-  min-height: 28px;
-}
-
-.kpi-filter :deep(.el-input__inner) {
+  color: var(--app-text-regular);
   font-size: 12px;
-}
-
-.page-split {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  overflow: hidden;
-}
-
-.nav-panel {
-  width: 272px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid #f0f0f0;
-  min-height: 0;
-  background: #fff;
-}
-
-.scope-tabs {
-  display: flex;
-  gap: 0;
-  padding: 0 16px;
-  border-bottom: 1px solid #f0f0f0;
-  background: #fff;
-  flex-shrink: 0;
-}
-
-.scope-tab {
-  border: none;
-  background: transparent;
-  padding: 14px 16px;
-  font-size: 14px;
-  color: #666;
   cursor: pointer;
-  position: relative;
 }
 
-.scope-tab.active {
-  color: #4a90e2;
+.env-seg-btn + .env-seg-btn { border-left: 1px solid var(--el-border-color); }
+.env-seg-btn.active { background: var(--el-color-primary-light-9); color: var(--text); font-weight: 600; }
+
+.env-dot { width: 6px; height: 6px; border-radius: 50%; }
+.env-dot.is-green { background: var(--green); }
+.env-dot.is-red { background: var(--red); }
+
+.env-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--el-fill-color-light);
+  color: var(--app-text-regular);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
   font-weight: 500;
 }
 
-.scope-tab.active::after {
-  content: '';
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 0;
-  height: 2px;
-  background: #4a90e2;
+.env-seg-btn.active .env-count { background: var(--el-color-primary-light-8); color: var(--blue); }
+
+.tb-label { margin-left: 6px; color: var(--muted); font-size: 12px; }
+
+.range-pills { display: inline-flex; gap: 4px; }
+
+.range-pill {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--app-text-regular);
+  font-size: 12px;
+  cursor: pointer;
 }
 
-.nav-tree-wrap {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 8px 0 12px;
+.range-pill:hover { background: var(--el-fill-color-lighter); }
+.range-pill.active { border-color: #c9d6ea; background: var(--el-color-primary-light-9); color: var(--text); font-weight: 600; }
+
+.tb-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
 }
 
-.report-tree :deep(.el-tree-node__content) {
-  height: 34px;
-  border-radius: 4px;
-  margin: 0 8px;
+.tb-btn:hover:not(:disabled) { border-color: #b8c2d0; }
+.tb-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* ---------- KPI ---------- */
+.kpi-row {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-bottom: 1px solid var(--line);
 }
 
-.report-tree :deep(.el-tree-node.is-current > .el-tree-node__content) {
-  background: #eef5ff;
-}
-
-.report-tree :deep(.el-tree-node.is-current > .el-tree-node__content .tree-text) {
-  color: #4a90e2;
-}
-
-.nav-empty,
-.panel-empty {
-  flex: 1;
+.kpi {
   display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+}
+
+.kpi + .kpi { border-left: 1px solid var(--line); }
+
+.kpi-ico {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 48px 24px;
-  text-align: center;
-  color: #bbb;
-  font-size: 14px;
+  flex-shrink: 0;
+  font-size: 15px;
 }
 
+.kpi-ico.is-green { background: var(--el-color-success-light-9); color: var(--green); }
+.kpi-ico.is-blue { background: var(--el-color-primary-light-9); color: var(--blue); }
+.kpi-ico.is-orange { background: var(--el-color-warning-light-9); color: var(--orange); }
+.kpi-ico.is-red { background: var(--el-color-danger-light-9); color: var(--red); }
+
+.kpi-val { font-size: 20px; font-weight: 700; line-height: 1.15; font-family: var(--mono); }
+.kpi-val.is-green { color: var(--green); }
+.kpi-val.is-orange { color: var(--orange); }
+.kpi-val.is-red { color: var(--red); }
+.kpi-label { margin-top: 2px; font-size: 12px; color: var(--app-text-regular); }
+.kpi-sub { font-size: 11px; color: var(--muted); }
+
+/* ---------- 分栏 ---------- */
+.rp-split { flex: 1; min-height: 0; display: flex; }
+
+.nav-panel {
+  width: 328px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+  min-height: 0;
+}
+
+.nav-search { padding: 10px 10px 6px; }
+
+.nav-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px 6px;
+  font-size: 12px;
+}
+
+.nav-filter-text { color: var(--app-text-regular); cursor: pointer; user-select: none; }
+.nav-filter-hint { margin-left: auto; color: var(--el-text-color-disabled); font-size: 11px; }
+
+.nav-tree-wrap { flex: 1; min-height: 0; overflow: auto; padding: 0 4px 12px; }
+.nav-empty { padding: 32px 12px; color: var(--muted); text-align: center; font-size: 12px; }
+
+.report-tree { background: transparent; }
+
+.report-tree :deep(.el-tree-node__content) {
+  height: 28px;
+  border-radius: 4px;
+}
+
+.report-tree :deep(.el-tree-node__content:hover) { background: var(--el-fill-color-lighter); }
+.report-tree :deep(.el-tree-node.is-current > .el-tree-node__content) { background: transparent; }
+.report-tree :deep(.el-tree-node__expand-icon) { color: var(--el-text-color-disabled); padding: 4px; }
+
+.tree-row {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 6px;
+  height: 28px;
+  font-size: 12px;
+}
+
+.tree-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.tree-row.k-category .tree-text { font-weight: 700; font-size: 13px; }
+.tree-row.k-controller .tree-text { font-family: var(--mono); color: var(--app-text-regular); }
+.tree-row.k-project .tree-text,
+.tree-row.k-collection .tree-text { color: var(--app-text-regular); }
+
+.cat-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.cat-dot.is-green { background: var(--green); }
+.cat-dot.is-blue { background: var(--blue); }
+.cat-dot.is-orange { background: var(--orange); }
+
+.leaf-path { font-family: var(--mono); color: var(--text); }
+.leaf-prefix { color: #a4abb6; }
+
+.tree-row.is-active {
+  margin-left: -4px;
+  padding-left: 4px;
+  background: var(--el-color-primary-light-9);
+  box-shadow: inset 2px 0 0 var(--el-color-primary);
+  border-radius: 3px;
+}
+
+.tree-row.is-active .leaf-path { color: var(--el-color-primary-dark-2); font-weight: 600; }
+
+.state-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.state-dot.is-fail { background: var(--red); }
+.state-dot.is-blocked { background: var(--amber); }
+.is-amber { color: var(--amber); }
+
+.tree-count {
+  min-width: 16px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--app-text-regular);
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.tree-count.is-zero { color: var(--el-text-color-disabled); }
+
+/* 方法标签（树 + 标题共用） */
+.m-tag {
+  flex-shrink: 0;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 15px;
+  letter-spacing: 0.02em;
+}
+
+.m-tag-lg { font-size: 11px; line-height: 18px; padding: 0 6px; }
+.m-tag.is-get { background: var(--el-color-success-light-9); color: var(--green); }
+.m-tag.is-post { background: var(--el-color-primary-light-9); color: var(--blue); }
+.m-tag.is-put { background: var(--el-color-warning-light-9); color: var(--orange); }
+.m-tag.is-patch { background: #f3f0ff; color: #7048e8; }
+.m-tag.is-delete { background: var(--el-color-danger-light-9); color: var(--red); }
+
+/* ---------- 右侧 ---------- */
 .detail-panel {
   flex: 1;
   min-width: 0;
-  min-height: 0;
-  overflow: auto;
-  padding: 24px 28px;
-  background: #fff;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  overflow: auto;
 }
 
-.detail-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 20px;
-  flex-shrink: 0;
-}
+.panel-empty { margin: auto; color: var(--muted); font-size: 13px; }
 
-.head-main {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  min-width: 0;
-}
+.d-head { padding: 12px 20px 10px; }
 
-.iface-title {
+.d-crumb { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.crumb-sep { margin: 0 6px; color: var(--el-text-color-disabled); }
+
+.d-title-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+
+.d-title {
   margin: 0;
-  font-size: 16px;
-  font-weight: 700;
-  color: #333;
-  word-break: break-all;
-}
-
-.head-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.tag {
-  display: inline-block;
-  font-size: 12px;
-  padding: 2px 10px;
-  border-radius: 4px;
-  line-height: 20px;
-}
-
-.tag-method {
-  border: 1px solid #b7eb8f;
-  color: #52a832;
-  background: #f6ffed;
-}
-
-.tag-env {
-  border: 1px solid #91caff;
-  color: #4a90e2;
-  background: #eef5ff;
-}
-
-.tag-proj {
-  border: 1px solid #b7eb8f;
-  color: #52a832;
-  background: #f6ffed;
-}
-
-.btn-batch-del {
-  flex-shrink: 0;
-  border: 1px solid #dcdfe6;
-  background: #fff;
-  color: #666;
-  font-size: 13px;
-  padding: 6px 16px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.btn-batch-del:hover:not(:disabled) {
-  border-color: #c0c4cc;
-  color: #333;
-}
-
-.btn-batch-del:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.tree-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
   min-width: 0;
-  padding-right: 4px;
-}
-
-.tree-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #bfbfbf;
-  flex-shrink: 0;
-}
-
-.tree-row.is-active .tree-dot {
-  background: #4a90e2;
-}
-
-.tree-row.is-active .tree-text {
-  color: #4a90e2;
-}
-
-.tree-folder {
-  flex-shrink: 0;
-  color: #f5a623;
+  font-family: var(--mono);
   font-size: 15px;
-}
-
-.tree-text {
-  flex: 1;
+  font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
-  color: #262626;
 }
 
-.tree-badge {
+.btn-run {
   flex-shrink: 0;
-  font-size: 12px;
-  color: #8c8c8c;
-}
-
-.run-table-wrap {
-  flex: 1;
-  min-height: 0;
-}
-
-.run-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-.run-table thead {
-  background: #fafafa;
-}
-
-.run-table th {
-  padding: 11px 12px;
-  text-align: left;
-  font-weight: 500;
-  color: #999;
-  border-bottom: 1px solid #f0f0f0;
-  white-space: nowrap;
-  font-size: 13px;
-}
-
-.run-table td {
-  padding: 14px;
-  border-bottom: 1px solid #f5f5f5;
-  vertical-align: middle;
-  color: #262626;
-}
-
-.run-table tbody tr:last-child td {
-  border-bottom: none;
-}
-
-.col-check { width: 44px; }
-.col-time { width: 150px; white-space: nowrap; }
-.col-result { width: 100px; }
-.col-rate { width: 100px; }
-.col-dur { width: 80px; white-space: nowrap; }
-.col-ops { width: 110px; white-space: nowrap; }
-
-.report-title {
-  font-weight: 600;
-  color: #262626;
-}
-
-.report-sub {
-  margin-top: 4px;
-  font-size: 12px;
-  color: #8c8c8c;
-}
-
-.result-cell {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-weight: 600;
-}
-
-.result-cell.is-ok { color: #3cb371; }
-.result-cell.is-fail { color: #e85d6a; }
-
-.rate-cell {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-}
-
-.rate-bar {
-  width: 60px;
-  flex: none;
-  height: 6px;
-  border-radius: 3px;
-  background: #f0f0f0;
-  overflow: hidden;
-}
-
-.rate-fill {
-  height: 100%;
-  border-radius: 4px;
-}
-
-.rate-fill.good { background: #3cb371; }
-.rate-fill.warn { background: #f5a623; }
-.rate-fill.bad { background: #e85d6a; }
-
-.rate-pct {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid #c9dafc;
+  border-radius: 6px;
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary-dark-2);
   font-size: 12px;
-  color: #666;
-  flex-shrink: 0;
-  min-width: 32px;
-}
-
-.op-view,
-.op-del {
-  border: none;
-  background: transparent;
-  font-size: 13px;
   cursor: pointer;
-  padding: 0 4px;
 }
 
-.op-view { color: #4a90e2; }
-.op-view:hover { color: #357abd; }
-.op-del { color: #e85d6a; margin-left: 10px; }
-.op-del:hover { color: #c0392b; }
+.btn-run:hover:not(:disabled) { background: #e0ebff; }
+.btn-run:disabled { opacity: 0.6; cursor: default; }
 
-.ok { color: #3cb371; }
-.bad { color: #e85d6a; }
+.d-tags { display: flex; gap: 6px; margin-top: 8px; }
 
-.empty-tip {
-  padding: 32px;
-  text-align: center;
-  color: #8c8c8c;
+.d-tag {
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 20px;
+  border: 1px solid transparent;
 }
 
-.report-drawer :deep(.el-drawer__header) {
-  margin-bottom: 0;
-  padding: 20px 24px 16px;
-  border-bottom: 1px solid #eef0f3;
+.d-tag.is-prod { background: var(--el-color-danger-light-9); color: var(--red); border-color: var(--el-color-danger-light-7); }
+.d-tag.is-test { background: var(--el-color-success-light-9); color: var(--green); border-color: #c3eccb; }
+.d-tag.is-proj { background: var(--el-fill-color-lighter); color: var(--app-text-regular); border-color: #e6e8ec; }
+
+.i-stats {
+  margin: 0 20px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border: 1px solid var(--line);
+  border-radius: 8px;
 }
 
-.report-drawer :deep(.el-drawer__body) {
-  padding: 0;
-  background: #f7f8fa;
-}
+.i-stat { display: flex; align-items: center; gap: 10px; padding: 10px 14px; }
+.i-stat + .i-stat { border-left: 1px solid var(--line); }
+.i-num { font-family: var(--mono); font-size: 18px; font-weight: 700; }
+.i-num.is-green { color: var(--green); }
+.i-num.is-red { color: var(--red); }
+.i-lab { font-size: 11px; color: var(--app-text-regular); line-height: 1.35; }
+.i-lab em { font-style: normal; color: var(--muted); }
 
-.rp-header {
+.r-filter {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  width: 100%;
-}
-
-.rp-title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-  color: #111827;
-}
-
-.rp-meta {
-  margin: 8px 0 0;
-  font-size: 13px;
-  color: #6b7280;
-  display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+  padding: 14px 20px 10px;
 }
 
-.rp-meta-dot {
-  color: #cbd5e1;
-}
+.r-search { width: 200px; margin-right: 4px; }
 
-.rp-meta-pass {
-  color: #16a34a;
-  font-weight: 600;
-}
-
-.rp-close {
-  border: none;
-  background: transparent;
-  color: #9ca3af;
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 4px;
-}
-
-.rp-close:hover {
-  color: #4b5563;
-}
-
-.rp-body {
-  padding: 16px 20px 24px;
-}
-
-.rp-case {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  overflow: hidden;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
-}
-
-.rp-case + .rp-case {
-  margin-top: 16px;
-}
-
-.rp-status-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
-  border-bottom: 1px solid #eef0f3;
-  flex-wrap: wrap;
-}
-
-.rp-status-bar.is-pass {
-  background: linear-gradient(180deg, #f6fffb 0%, #fff 100%);
-}
-
-.rp-status-bar.is-fail {
-  background: linear-gradient(180deg, #fff5f5 0%, #fff 100%);
-}
-
-.rp-pill {
+.r-chip {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--el-border-color);
   border-radius: 6px;
+  background: #fff;
+  color: var(--app-text-regular);
   font-size: 12px;
-  font-weight: 600;
-  line-height: 1;
-  padding: 6px 10px;
-}
-
-.rp-pill-status {
-  background: #dcfce7;
-  color: #15803d;
-}
-
-.rp-status-bar.is-fail .rp-pill-status {
-  background: #fee2e2;
-  color: #b91c1c;
-}
-
-.rp-pill-method {
-  background: #ecfdf5;
-  color: #047857;
-  font-weight: 700;
-}
-
-.rp-case-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: #111827;
-}
-
-.rp-spacer {
-  flex: 1;
-  min-width: 8px;
-}
-
-.rp-http {
-  margin-left: auto;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.rp-http.is-ok { color: #16a34a; }
-.rp-http.is-bad { color: #dc2626; }
-
-.rp-duration {
-  font-size: 13px;
-  color: #6b7280;
-}
-
-.rp-url-box {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin: 14px 16px 0;
-  padding: 12px 14px;
-  background: #f3f4f6;
-  border-radius: 8px;
-}
-
-.rp-url-icon {
-  color: #6b7280;
-  margin-top: 2px;
-  flex-shrink: 0;
-}
-
-.rp-url-text {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-  line-height: 1.6;
-  color: #374151;
-  word-break: break-all;
-  text-decoration: none;
-}
-
-.rp-url-text:hover {
-  color: #2563eb;
-}
-
-.rp-copy-btn {
-  flex-shrink: 0;
-  border: none;
-  background: transparent;
-  color: #2563eb;
-  font-size: 13px;
-  font-weight: 600;
   cursor: pointer;
-  padding: 0;
 }
 
-.rp-copy-btn:hover {
-  color: #1d4ed8;
-}
+.r-chip.active { border-color: #9ec0f7; background: var(--el-color-primary-light-9); color: var(--el-color-primary-dark-2); font-weight: 600; }
 
-.rp-error {
-  margin: 12px 16px 0;
-  padding: 10px 12px;
+.r-chip-n {
+  min-width: 16px;
+  padding: 0 4px;
   border-radius: 8px;
-  background: #fef2f2;
-  color: #b91c1c;
-  font-size: 13px;
-  line-height: 1.5;
+  background: var(--el-fill-color-light);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  font-weight: 500;
 }
 
-.rp-asserts {
-  margin: 14px 16px 0;
-  padding-top: 2px;
+.r-chip.active .r-chip-n { background: var(--el-color-primary-light-8); }
+
+.btn-del {
+  margin-left: 8px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid #ffc9c9;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--red);
+  font-size: 12px;
+  cursor: pointer;
 }
 
-.rp-assert-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 10px 0;
-  border-bottom: 1px solid #f1f5f9;
-  font-size: 13px;
+.btn-del:disabled { border-color: var(--el-border-color-lighter); color: var(--el-text-color-disabled); cursor: default; }
+
+.r-table-wrap {
+  margin: 0 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
 }
 
-.rp-assert-row:last-child {
-  border-bottom: none;
+.r-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+
+.r-table th {
+  height: 34px;
+  padding: 0 10px;
+  background: var(--el-fill-color-lighter);
+  color: var(--app-text-regular);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
 }
 
-.rp-assert-icon {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
+.r-table td { padding: 9px 10px; vertical-align: middle; }
+.r-row td { border-bottom: 1px solid var(--line); }
+.r-row.has-err td { border-bottom: 0; }
+.r-row.is-fail { background: var(--el-color-danger-light-9); }
+.r-row.is-blocked { background: var(--el-color-warning-light-9); }
+.r-row.is-checked.is-pass { background: #f7faff; }
+.t-center { text-align: center; }
+.t-right { text-align: right; }
+
+.r-title { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r-sub { margin-top: 2px; font-size: 11px; color: var(--muted); }
+.r-time { font-size: 12px; }
+.r-dur { font-size: 12px; color: var(--app-text-regular); }
+
+.trig {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 3px;
+  padding: 0 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 20px;
+  border: 1px solid;
+}
+
+.trig.is-manual { background: var(--el-fill-color-lighter); border-color: var(--el-border-color); color: var(--app-text-regular); }
+.trig.is-sched { background: var(--el-color-warning-light-9); border-color: #ffd8a8; color: #d9480f; }
+
+.res {
+  display: inline-block;
+  padding: 0 8px;
+  border-radius: 4px;
   font-size: 11px;
   font-weight: 700;
+  line-height: 20px;
+  color: #fff;
+}
+
+.res.is-pass { background: var(--green); }
+.res.is-fail { background: var(--red); }
+.res.is-blocked { background: var(--amber); }
+.rate-pct.is-none { color: var(--el-text-color-disabled); }
+
+.rate { display: flex; flex-direction: column; gap: 3px; }
+.r-sub.is-red { color: var(--red); }
+.kpi-of { font-size: 0.6em; font-weight: 500; color: var(--el-text-color-secondary); }
+.rate-pct { font-size: 12px; font-weight: 700; }
+.rate-pct.good { color: var(--green); }
+.rate-pct.warn { color: var(--orange); }
+.rate-pct.bad { color: var(--red); }
+.rate-bar { height: 4px; border-radius: 2px; background: var(--el-fill-color-light); overflow: hidden; }
+.rate-fill { height: 100%; border-radius: 2px; }
+.rate-fill.good { background: var(--green); }
+.rate-fill.warn { background: var(--orange); }
+.rate-fill.bad { background: var(--red); }
+
+.op {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.op + .op { margin-left: 12px; }
+.op-view { color: var(--blue); }
+.op-del { color: var(--red); }
+.op:hover { text-decoration: underline; }
+
+.r-err-row td { padding: 0 10px 10px; border-bottom: 1px solid var(--line); background: var(--el-color-danger-light-9); }
+.r-err-row.is-blocked td { background: var(--el-color-warning-light-9); }
+.r-err-row.is-blocked .r-err { border-color: var(--el-color-warning-light-7); }
+.r-err-row.is-blocked .r-err-ico { background: var(--amber); }
+.r-err-kind { flex-shrink: 0; color: var(--amber); font-weight: 600; }
+
+.r-err {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--el-color-danger-light-7);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 12px;
+  color: var(--app-text-regular);
+}
+
+.r-err-ico {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--red);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
   flex-shrink: 0;
 }
 
-.rp-assert-icon.is-ok {
-  background: #dcfce7;
-  color: #16a34a;
+.r-err-text {
+  font-family: var(--mono);
+  word-break: break-all;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-.rp-assert-icon.is-fail {
-  background: #fee2e2;
-  color: #dc2626;
-}
+.empty-tip { padding: 36px 0 !important; text-align: center; color: var(--muted); }
 
-.rp-assert-expr {
-  color: #374151;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-
-.rp-assert-sep {
-  color: #cbd5e1;
-}
-
-.rp-assert-label {
-  color: #9ca3af;
-}
-
-.rp-assert-val {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-weight: 600;
-}
-
-.rp-assert-val.is-ok { color: #16a34a; }
-.rp-assert-val.is-fail { color: #dc2626; }
-
-.rp-detail {
-  border-top: 1px solid #eef0f3;
-  margin-top: 12px;
-}
-
-.rp-detail-toggle {
-  width: 100%;
+.r-foot {
   display: flex;
   align-items: center;
-  gap: 8px;
-  border: none;
-  background: #fff;
-  padding: 14px 16px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #111827;
-  cursor: pointer;
-  text-align: left;
-}
-
-.rp-detail-arrow {
-  color: #6b7280;
-  transition: transform 0.15s ease;
-}
-
-.rp-detail-arrow.open {
-  transform: rotate(0deg);
-}
-
-.rp-detail-arrow:not(.open) {
-  transform: rotate(-90deg);
-}
-
-.rp-detail-body {
-  padding: 0 16px 16px;
-}
-
-.rp-block + .rp-block {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid #f1f5f9;
-}
-
-.rp-block-head-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-
-.rp-block-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: #374151;
-  margin-bottom: 10px;
-}
-
-.rp-block-head-row .rp-block-title {
-  margin-bottom: 0;
-}
-
-.rp-expand-link {
-  border: none;
-  background: transparent;
-  color: #2563eb;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 0;
-}
-
-.rp-kv-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.rp-kv-line {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  gap: 10px;
+  padding: 12px 20px 16px;
   font-size: 12px;
-  line-height: 1.7;
-  word-break: break-all;
+  color: var(--app-text-regular);
 }
 
-.rp-k {
-  color: #2563eb;
-}
-
-.rp-kv-sep {
-  color: #6b7280;
-}
-
-.rp-v {
-  color: #374151;
-}
-
-.rp-json-pre {
-  margin: 0;
-  padding: 12px 14px;
-  border-radius: 8px;
-  background: #f8fafc;
-  border: 1px solid #eef2f7;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-  line-height: 1.7;
-  white-space: pre-wrap;
-  word-break: break-all;
-  overflow: auto;
-  max-height: 48vh;
-}
-
-.rp-json-pre :deep(.jk) { color: #2563eb; }
-.rp-json-pre :deep(.js) { color: #16a34a; }
-.rp-json-pre :deep(.jn) { color: #ea580c; }
-.rp-json-pre :deep(.jb) { color: #7c3aed; }
-
+.r-foot b { color: var(--text); }
+.r-foot-sep { width: 1px; height: 12px; background: #dde1e6; }
+.r-foot-hint { color: var(--muted); }
 </style>

@@ -153,12 +153,12 @@ const showChartEnd = computed(() => {
   margin-bottom: 12px;
   padding: 10px 12px;
   border-radius: 8px;
-  background: #fff7e6;
+  background: var(--el-color-warning-light-9);
   border: 1px solid #ffe1a6;
 }
 .issue-panel.ok {
-  background: #f0f9eb;
-  border-color: #c2e7b0;
+  background: var(--el-color-success-light-9);
+  border-color: var(--el-color-success-light-7);
 }
 .issue-title {
   font-size: 13px;
@@ -177,15 +177,15 @@ const showChartEnd = computed(() => {
   color: var(--app-text-secondary);
 }
 .issue-panel li.error {
-  color: #c45656;
+  color: var(--el-color-danger-dark-2);
 }
 .issue-panel li.warn {
-  color: #b88230;
+  color: var(--el-color-warning-dark-2);
 }
 .empty {
   padding: 40px;
   text-align: center;
-  color: #c0c4cc;
+  color: var(--el-text-color-disabled);
 }
 .flow-chart-scroll {
   position: relative;
@@ -223,7 +223,7 @@ const showChartEnd = computed(() => {
   margin-bottom: 8px;
   font-size: 12px;
   font-weight: 700;
-  color: #fca5a5;
+  color: var(--el-color-danger-light-5);
   background: rgba(248, 113, 113, 0.12);
   border: 1px solid rgba(248, 113, 113, 0.35);
   padding: 4px 12px;
@@ -244,7 +244,7 @@ const showChartEnd = computed(() => {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 .node-oval.start {
-  background: linear-gradient(180deg, #22c55e 0%, #16a34a 100%);
+  background: linear-gradient(180deg, var(--el-color-success-light-3) 0%, var(--el-color-success) 100%);
 }
 .node-oval.end {
   background: linear-gradient(180deg, #64748b 0%, #475569 100%);
@@ -290,7 +290,7 @@ const showChartEnd = computed(() => {
   border-radius: 10px;
   background: rgba(15, 20, 25, 0.94);
   border: 1px solid #334155;
-  color: #cbd5e1;
+  color: var(--el-text-color-disabled);
   font-size: 12px;
   backdrop-filter: blur(6px);
   box-sizing: border-box;
@@ -304,7 +304,7 @@ const showChartEnd = computed(() => {
   margin: 0 0 8px;
   font-size: 11px;
   line-height: 1.55;
-  color: #94a3b8;
+  color: var(--el-text-color-disabled);
   white-space: normal;
   word-break: break-word;
 }
@@ -330,9 +330,9 @@ const showChartEnd = computed(() => {
   width: 14px;
   height: 14px;
   margin-top: 2px;
-  background: #fbbf24;
+  background: var(--el-color-warning);
   transform: rotate(45deg);
-  border: 1px solid #f59e0b;
+  border: 1px solid var(--el-color-warning);
   flex: none;
 }
 .lg-diamond.race {
@@ -347,22 +347,22 @@ const showChartEnd = computed(() => {
   flex: none;
 }
 .lg-rect.action {
-  background: #3b82f6;
+  background: var(--el-color-primary);
 }
 .lg-rect.then {
-  background: #22c55e;
+  background: var(--el-color-success);
 }
 .lg-rect.else {
-  background: #ef4444;
+  background: var(--el-color-danger);
 }
 .lg-rect.fail {
-  background: linear-gradient(180deg, #f87171 0%, #dc2626 100%);
+  background: linear-gradient(180deg, var(--el-color-danger-light-3) 0%, var(--el-color-danger) 100%);
 }
 .lg-rect.ok {
-  background: linear-gradient(180deg, #22c55e 0%, #15803d 100%);
+  background: linear-gradient(180deg, var(--el-color-success) 0%, var(--el-color-success-dark-2) 100%);
 }
 .lg-rect.skip {
-  background: linear-gradient(180deg, #fbbf24 0%, #d97706 100%);
+  background: linear-gradient(180deg, var(--el-color-warning) 0%, var(--el-color-warning-dark-2) 100%);
 }
 .lg-line {
   width: 22px;
@@ -372,10 +372,10 @@ const showChartEnd = computed(() => {
   flex: none;
 }
 .lg-line.then {
-  background: #22c55e;
+  background: var(--el-color-success);
 }
 .lg-line.else {
-  background: #ef4444;
+  background: var(--el-color-danger);
 }
 .lg-oval {
   width: 22px;
@@ -385,7 +385,7 @@ const showChartEnd = computed(() => {
   flex: none;
 }
 .lg-oval.stop {
-  background: #ef4444;
+  background: var(--el-color-danger);
 }
 </style>
 

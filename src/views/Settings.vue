@@ -9,7 +9,7 @@
               Electron 客户端连<strong>控制面</strong>取流程和报告；插在这台电脑上的手机由本机执行节点跑。
               同一 WiFi 下控制面必须填那台电脑的局域网 IP，不要填
               <code>127.0.0.1</code>（那是本机）。例如
-              <code>http://192.168.x.x:3000/api</code>
+              <code>http://192.168.x.x:3080/api</code>
             </p>
           </div>
         </div>
@@ -19,11 +19,11 @@
         <el-form-item label="控制面地址" required>
           <el-input
             v-model="settings.apiBaseUrl"
-            placeholder="http://192.168.x.x:3000/api"
+            placeholder="http://192.168.x.x:3080/api"
             style="max-width: 480px"
           />
           <div class="form-tip">
-            数据库和流程都在那台机器上。本机调试可填 <code>http://127.0.0.1:3000/api</code>
+            数据库和流程都在那台机器上。本机调试可填 <code>http://127.0.0.1:3080/api</code>
           </div>
         </el-form-item>
         <el-form-item label="本机执行节点">
@@ -103,16 +103,39 @@ const saveSettings = async () => {
   apiClient.setBaseUrl(control)
   settings.value.apiBaseUrl = apiClient.getBaseUrl()
   if (packaged.value && window.electronAPI?.setControlPlane) {
-    const st = await window.electronAPI.setControlPlane(apiClient.getBaseUrl())
-    workerOk.value = st.ok
-    settings.value.workerBaseUrl = st.url
-    apiClient.setWorkerBaseUrl(st.url)
-    testHint.value = st.message
-    if (!st.ok) {
-      ElMessage.warning(st.message)
-      return
-    }
-  } else {
+    // 地址先落地、先告诉人「已保存」，再去管本机 worker。
+    //
+    // 原先是 await setControlPlane 之后，worker 起不来就 return，于是走不到最后那句
+    // ElMessage.success('已保存')。而 setControlPlane 内部会死等 worker 健康检查 45 秒
+    // （workerSidecar.ts 的 deadline），所以在 Windows 上（没装 JDK 17，worker 必然起不来）
+    // 的实际体验是：填好地址点保存 → 转圈 45 秒 → 弹黄色「启动超时」→ 没有「已保存」。
+    // 用户的结论是「地址改不了」，于是来找你 —— 而地址其实早就存好了。
+    //
+    // 这两件事本来就该分开：控制面地址是「客户端连哪台后端」，
+    // worker 是「这台机器要不要当执行节点」，后者失败不该让前者看起来也失败。
+    ElMessage.success('控制面地址已保存')
+    testHint.value = '正在检查本机执行节点…'
+    window.electronAPI
+      .setControlPlane(apiClient.getBaseUrl())
+      .then((st) => {
+        workerOk.value = st.ok
+        settings.value.workerBaseUrl = st.url
+        apiClient.setWorkerBaseUrl(st.url)
+        testHint.value = st.message
+        if (!st.ok) {
+          // 用 info 而不是 warning：本机 worker 起不来在很多机器上是<b>正常状态</b>
+          // （手机插在 Mac Studio 上，本机不需要当执行节点）。
+          // 报成警告会让人以为自己配错了
+          ElMessage.info('本机执行节点未启动：' + st.message)
+        }
+      })
+      .catch((e: any) => {
+        workerOk.value = false
+        testHint.value = e?.message || '本机执行节点检查失败'
+      })
+    return
+  }
+  {
     const worker = settings.value.workerBaseUrl.trim() || apiClient.getBaseUrl()
     apiClient.setWorkerBaseUrl(worker)
     settings.value.workerBaseUrl = apiClient.getWorkerBaseUrl()

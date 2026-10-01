@@ -2373,7 +2373,7 @@ watch([perfReportTab, resourceSubTab], () => {
 .overview-tabs :deep(.el-tabs__header) {
   margin: 0;
   padding: 0 16px;
-  background: #fafafa;
+  background: var(--el-fill-color-lighter);
   border-bottom: 1px solid var(--app-border);
 }
 
@@ -2394,7 +2394,7 @@ watch([perfReportTab, resourceSubTab], () => {
 
 .overview-block {
   padding: 16px;
-  background: #fafbfc;
+  background: var(--el-fill-color-lighter);
   border-radius: 8px;
   border: 1px solid var(--app-border);
 }
@@ -2589,7 +2589,7 @@ watch([perfReportTab, resourceSubTab], () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fafafa;
+  background: var(--el-fill-color-lighter);
 }
 
 .overview-screenshots-strip {
@@ -2606,11 +2606,11 @@ watch([perfReportTab, resourceSubTab], () => {
   border: 1px solid var(--app-border);
   border-radius: 8px;
   overflow: hidden;
-  background: #fafafa;
+  background: var(--el-fill-color-lighter);
 }
 /* 页面稳定后拍的最终态：人工/AI 复核优先看这些，用绿框和角标区分 */
 .overview-screenshot-item.is-settled {
-  outline: 2px solid #22c55e;
+  outline: 2px solid var(--el-color-success);
   outline-offset: 1px;
   border-radius: 6px;
 }
@@ -2724,7 +2724,7 @@ watch([perfReportTab, resourceSubTab], () => {
 .performance-report-head {
   padding: 12px 16px;
   border-bottom: 1px solid var(--app-border);
-  background: #fafbfc;
+  background: var(--el-fill-color-lighter);
 }
 
 .performance-report-head-title {
@@ -3102,7 +3102,7 @@ watch([perfReportTab, resourceSubTab], () => {
   z-index: 1;
 }
 .perf-metric-pill:hover {
-  border-color: #c0c4cc;
+  border-color: var(--el-border-color);
   color: var(--app-text);
 }
 .perf-metric-pill.active {
@@ -3112,7 +3112,7 @@ watch([perfReportTab, resourceSubTab], () => {
   font-weight: 500;
 }
 .perf-metric-pill.disabled {
-  color: #c0c4cc;
+  color: var(--el-text-color-disabled);
   cursor: default;
 }
 
@@ -3188,7 +3188,7 @@ watch([perfReportTab, resourceSubTab], () => {
   min-width: 360px;
   min-height: 320px;
   height: 320px;
-  background: #fafbfc;
+  background: var(--el-fill-color-lighter);
   border-radius: 8px;
   border: 1px solid var(--app-border);
   padding: 12px;
@@ -3302,22 +3302,22 @@ watch([perfReportTab, resourceSubTab], () => {
 }
 
 .result-pill--passed {
-  background: #e1f3d8;
+  background: var(--el-color-success-light-8);
   color: var(--app-success);
 }
 
 .result-pill--failed {
-  background: #fde2e2;
+  background: var(--el-color-danger-light-8);
   color: var(--app-danger);
 }
 
 .result-pill--warning {
-  background: #faecd8;
+  background: var(--el-color-warning-light-8);
   color: var(--app-warning);
 }
 
 .result-pill--info {
-  background: #f4f4f5;
+  background: var(--el-fill-color-light);
   color: var(--el-text-color-placeholder);
 }
 
@@ -3341,7 +3341,7 @@ watch([perfReportTab, resourceSubTab], () => {
 }
 
 .no-log {
-  color: #c0c4cc;
+  color: var(--el-text-color-disabled);
   font-size: 13px;
 }
 
@@ -3438,13 +3438,13 @@ watch([perfReportTab, resourceSubTab], () => {
 }
 
 .execution-log-step--success {
-  background: #f0f9eb;
-  border: 1px solid #e1f3d8;
+  background: var(--el-color-success-light-9);
+  border: 1px solid var(--el-color-success-light-8);
 }
 
 .execution-log-step--fail {
-  background: #fef0f0;
-  border: 1px solid #fde2e2;
+  background: var(--el-color-danger-light-9);
+  border: 1px solid var(--el-color-danger-light-8);
 }
 
 .execution-log-step .step-icon {
@@ -3498,7 +3498,7 @@ watch([perfReportTab, resourceSubTab], () => {
 .execution-log-step .step-qr-block {
   margin-top: 10px;
   padding: 10px;
-  background: #fafafa;
+  background: var(--el-fill-color-lighter);
   border: 1px dashed var(--app-border);
   border-radius: 8px;
   max-width: 280px;

@@ -18,8 +18,8 @@ defineProps<{
 <style scoped>
 .xk-tool-card {
   margin-bottom: 8px;
-  background: #fdf6ec;
-  border: 1px solid #faecd8;
+  background: var(--el-color-warning-light-9);
+  border: 1px solid var(--el-color-warning-light-8);
   border-radius: 10px;
   padding: 10px 12px;
   width: 100%;

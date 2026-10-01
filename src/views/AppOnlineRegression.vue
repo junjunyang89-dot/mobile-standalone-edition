@@ -129,6 +129,7 @@
                   :disabled="!isDeviceSelectable(d)"
                 >
                   <span class="dev-name">{{ d.name || d.id }}</span>
+                  <el-tag v-if="isEmulatorDevice(d)" size="small" type="warning" effect="plain">模拟器</el-tag>
                   <span class="dev-status" :class="deviceStatusClass(d.status)">{{ deviceStatusDot(d.status) }} {{ deviceStatusText(d.status) }}</span>
                 </el-checkbox>
               </el-checkbox-group>
@@ -171,6 +172,13 @@
           </div>
         </section>
 
+        <section v-if="isCompat && !harmonyAppSelected" class="cfg-section">
+          <div class="cfg-title">系统设置差异（仅 Android）</div>
+          <el-checkbox-group v-model="deviceSettings">
+            <el-checkbox v-for="o in DEVICE_SETTING_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</el-checkbox>
+          </el-checkbox-group>
+        </section>
+
         <!-- 步骤 3：流程用例（按端分开勾选，顺序互不影响） -->
         <section class="cfg-section">
           <div class="cfg-title-row">
@@ -194,7 +202,7 @@
             :title="depError"
           />
           <el-alert
-            v-else-if="missingDeps.length"
+            v-else-if="missingDeps.length && !isCompat"
             type="warning"
             :closable="false"
             show-icon
@@ -632,7 +640,7 @@
             :disabled="!canStart"
             @click="startRegression"
           >
-            {{ running ? '回归执行中…' : '一键开始回归' }}
+            {{ running ? (isCompat ? '兼容性测试执行中…' : '回归执行中…') : (isCompat ? '一键开始兼容性测试' : '一键开始回归') }}
           </el-button>
           <el-button v-if="running" size="large" @click="stopRegression">停止</el-button>
         </div>
@@ -853,6 +861,7 @@
           <el-table-column label="轨道" width="100">
             <template #default="{ row }">
               <el-tag v-if="row.track === 'AUTOMATION'" size="small" type="primary" effect="plain">自动化</el-tag>
+              <el-tag v-else-if="row.track === 'COMPATIBILITY'" size="small" type="warning" effect="plain">兼容性</el-tag>
               <el-tag v-else size="small" type="info" effect="plain">回归</el-tag>
             </template>
           </el-table-column>
@@ -890,6 +899,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { InfoFilled, Refresh, Select, TopRight } from '@element-plus/icons-vue'
 import { apiClient } from '@/api'
 import { useDeviceStore, type Device } from '@/stores/device'
+import { isEmulatorDevice } from '@/utils/deviceKind'
 import {
   DEFAULT_ACCOUNT_POOL,
   HISTORY_STORAGE_KEY,
@@ -1034,10 +1044,25 @@ const REGRESSION_SCENES = [
     sub: '线上正式包的例行巡检',
     environment: 'PROD' as const,
     releasedPackage: true
+  },
+  {
+    key: 'COMPAT',
+    title: '⑤ 兼容性测试',
+    sub: '核心流程 × 全部设备，横向比对各机型表现',
+    environment: 'TEST' as const,
+    releasedPackage: false
   }
 ]
 
 const sceneKey = ref('TEST_NEW')
+const isCompat = computed(() => sceneKey.value === 'COMPAT')
+const runTrack = computed(() => (isCompat.value ? 'COMPATIBILITY' : 'REGRESSION'))
+/** 只对 Android 生效：后端用 adb 切深色/字体，跑完还原 */
+const deviceSettings = ref<string[]>([])
+const DEVICE_SETTING_OPTIONS = [
+  { value: 'DARK_MODE', label: '深色模式' },
+  { value: 'LARGE_FONT', label: '大字体（1.3 倍）' }
+]
 
 /**
  * ③ 和 ④ 技术上一样（都是生产 + 线上包），分开列是因为<b>触发时机和关注点不同</b>：
@@ -1047,10 +1072,18 @@ const sceneKey = ref('TEST_NEW')
 function applyScene(key: string) {
   const scene = REGRESSION_SCENES.find((x) => x.key === key)
   if (!scene) return
+  const trackChanged = (key === 'COMPAT') !== isCompat.value
   sceneKey.value = key
   environment.value = scene.environment
   releasedPackage.value = scene.releasedPackage
-  loadFlows()
+  if (trackChanged) clearAllFlows()
+  if (key === 'COMPAT') {
+    const pool = harmonyAppSelected.value
+      ? harmonyDevices.value
+      : [...androidDevices.value, ...iosDevices.value]
+    selectedDeviceIds.value = pool.filter(isDeviceSelectable).map((d) => d.id)
+  }
+  loadRegressionFlows()
 }
 const flowsLoading = ref(false)
 const excludedMatrixKeys = ref<string[]>([])
@@ -1360,6 +1393,7 @@ async function loadRegressionFlows() {
         apiClient.getUiFlows({
           appId,
           forRegression: true,
+          track: runTrack.value,
           environment: environment.value,
           releasedPackage: releasedPackage.value
         })
@@ -1384,7 +1418,12 @@ async function loadRegressionFlows() {
     const keepShared = selectedSharedFlowIds.value.filter((id) => visible.has(id))
     const keepHarmony = selectedHarmonyFlowIds.value.filter((id) => visible.has(id))
 
-    if (keepAndroid.length || keepIos.length || keepShared.length || keepHarmony.length) {
+    if (isCompat.value) {
+      selectedAndroidFlowIds.value = parts.android.map((f) => f.id)
+      selectedIosFlowIds.value = parts.ios.map((f) => f.id)
+      selectedSharedFlowIds.value = parts.shared.map((f) => f.id)
+      selectedHarmonyFlowIds.value = parts.harmony.map((f) => f.id)
+    } else if (keepAndroid.length || keepIos.length || keepShared.length || keepHarmony.length) {
       selectedAndroidFlowIds.value = keepAndroid
       selectedIosFlowIds.value = keepIos
       selectedSharedFlowIds.value = keepShared
@@ -1456,6 +1495,9 @@ function selectApp(id: RegressionAppId) {
 }
 
 const flowsEmptyHint = computed(() => {
+  if (isCompat.value) {
+    return '还没有核心流程。去「流程编排」把要跑兼容性的流程打开「核心」开关。'
+  }
   if (harmonyAppSelected.value) {
     return '鸿蒙应用下暂无用例。请先在元素管理采集鸿蒙元素，再在流程编排为 DOMESTIC_ESPORTS_HARMONY 创建流程。'
   }
@@ -1465,7 +1507,13 @@ const flowsEmptyHint = computed(() => {
   return '当前应用下暂无可用用例。请在「流程编排」创建 catalog=ONLINE/SHARED、启用、非组件的流程。'
 })
 
-watch(environment, () => {
+watch(environment, (env) => {
+  if (env === 'PROD') {
+    selectedDeviceIds.value = selectedDeviceIds.value.filter((id) => {
+      const d = deviceStore.devices.find((x) => x.id === id)
+      return !isEmulatorDevice(d)
+    })
+  }
   loadRegressionFlows()
 })
 
@@ -1479,7 +1527,11 @@ function excludeMatrixKey(key: string) {
 
 function isDeviceSelectable(d: Device) {
   const s = (d.status || '').toLowerCase()
-  return s === 'connected' || s === 'idle' || s === 'online' || s === 'available' || !s
+  const online = s === 'connected' || s === 'idle' || s === 'online' || s === 'available' || !s
+  if (!online) return false
+  // 线上回归要的是真机表现；测试场景可以用模拟器顶上
+  if (isEmulatorDevice(d) && environment.value === 'PROD') return false
+  return true
 }
 
 function deviceStatusText(status?: string) {
@@ -1658,6 +1710,10 @@ async function startRegression() {
     }
   }
 
+  if (environment.value === 'PROD' && selectedDevices.value.some((d) => isEmulatorDevice(d))) {
+    ElMessage.warning('模拟器不能跑生产环境回归。请改选真机，或把场景切到测试。')
+    return
+  }
   const busy = selectedDevices.value.filter((d) => {
     const s = (d.status || '').toLowerCase()
     return s === 'busy' || s === 'running' || s === 'occupied' || s === 'offline' || s === 'disconnected'
@@ -1705,7 +1761,9 @@ async function startRegression() {
       installStrategy: installStrategy.value,
       installBuildKey: installStrategy.value === 'SPECIFIC' ? installBuildKey.value : undefined,
       params: parseExecParams(),
-      environment: environment.value
+      environment: environment.value,
+      track: runTrack.value,
+      deviceSettings: isCompat.value && deviceSettings.value.length ? deviceSettings.value : undefined
     })
     activeRunId.value = res.id
     applyRunSnapshot(res)
@@ -1863,7 +1921,7 @@ function buildReportFromJobs(
     jobCount: jobs.length,
     // 本地生成的报告用当时选的环境；服务端历史以库里的为准
     environment: environment.value,
-    track: 'REGRESSION',
+    track: runTrack.value,
     detailLoaded: true
   }
 }
@@ -2169,7 +2227,7 @@ onUnmounted(() => {
 .cfg-section {
   margin-bottom: 22px;
   padding-bottom: 18px;
-  border-bottom: 1px solid #eef0f3;
+  border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
 .cfg-section:last-of-type {
@@ -2290,7 +2348,7 @@ onUnmounted(() => {
   height: 24px;
   padding: 0 10px;
   border-radius: 999px;
-  background: #3b82f6;
+  background: var(--el-color-primary);
   color: #fff;
   font-size: 12px;
   font-weight: 700;
@@ -2327,14 +2385,14 @@ onUnmounted(() => {
 }
 
 .app-card:hover {
-  border-color: #93c5fd;
+  border-color: var(--el-color-primary-light-5);
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.08);
   transform: translateY(-1px);
 }
 
 .app-card.active {
-  border-color: #3b82f6;
-  background: #eff6ff;
+  border-color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
   box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25), 0 4px 12px rgba(59, 130, 246, 0.1);
 }
 
@@ -2364,7 +2422,7 @@ onUnmounted(() => {
 }
 
 .app-card-icon.tone-harmony {
-  background: #60a5fa;
+  background: var(--el-color-primary-light-3);
 }
 
 .app-card-icon.tone-overseas {
@@ -2387,8 +2445,8 @@ onUnmounted(() => {
 }
 
 .app-card-radio.checked {
-  border-color: #3b82f6;
-  background: #3b82f6;
+  border-color: var(--el-color-primary);
+  background: var(--el-color-primary);
 }
 
 .app-card-body {
@@ -2398,14 +2456,14 @@ onUnmounted(() => {
 .app-card-name {
   font-size: 15px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--el-text-color-primary);
   line-height: 1.3;
 }
 
 .app-card-sub {
   margin-top: 4px;
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--el-text-color-disabled);
   line-height: 1.4;
 }
 
@@ -2428,23 +2486,23 @@ onUnmounted(() => {
 }
 
 .app-tag.tag-region {
-  background: #f1f5f9;
-  color: #64748b;
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-secondary);
 }
 
 .app-tag.tag-overseas {
-  background: #ffedd5;
-  color: #c2410c;
+  background: var(--el-color-warning-light-8);
+  color: var(--el-color-warning-dark-2);
 }
 
 .app-tag.tag-android {
-  background: #dcfce7;
-  color: #15803d;
+  background: var(--el-color-success-light-8);
+  color: var(--el-color-success-dark-2);
 }
 
 .app-tag.tag-ios {
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: var(--el-color-primary-light-8);
+  color: var(--el-color-primary-dark-2);
 }
 
 .app-tag.tag-harmony {
@@ -2460,7 +2518,7 @@ onUnmounted(() => {
 }
 
 .device-group {
-  background: #fafbfc;
+  background: var(--el-fill-color-lighter);
   border: 1px solid var(--app-border);
   border-radius: 8px;
   padding: 12px;
@@ -2517,13 +2575,13 @@ onUnmounted(() => {
 
 .flow-platform-panel {
   padding: 12px;
-  border: 1px solid #eef0f3;
+  border: 1px solid var(--el-border-color-lighter);
   border-radius: 10px;
   background: #fff;
 }
 
 .flow-platform-panel.shared {
-  background: #fafbfc;
+  background: var(--el-fill-color-lighter);
 }
 
 .flow-platform-head {
@@ -2558,9 +2616,9 @@ onUnmounted(() => {
   align-items: center !important;
   white-space: normal !important;
   padding: 8px 12px;
-  background: #fafbfc;
+  background: var(--el-fill-color-lighter);
   border-radius: 8px;
-  border: 1px solid #eef0f3;
+  border: 1px solid var(--el-border-color-lighter);
   box-sizing: border-box;
 }
 
@@ -2659,18 +2717,18 @@ onUnmounted(() => {
 }
 
 .order-preview-android {
-  background: #f0f9eb;
-  border: 1px solid #e1f3d8;
+  background: var(--el-color-success-light-9);
+  border: 1px solid var(--el-color-success-light-8);
 }
 
 .order-preview-ios {
   background: var(--el-color-primary-light-9);
-  border: 1px solid #d9ecff;
+  border: 1px solid var(--el-color-primary-light-8);
 }
 
 .order-preview-harmony {
-  background: #fdf6ec;
-  border: 1px solid #faecd8;
+  background: var(--el-color-warning-light-9);
+  border: 1px solid var(--el-color-warning-light-8);
 }
 
 .order-head {
@@ -2687,15 +2745,15 @@ onUnmounted(() => {
 }
 
 .order-preview-android .order-title {
-  color: #529b2e;
+  color: var(--el-color-success-dark-2);
 }
 
 .order-preview-ios .order-title {
-  color: #337ecc;
+  color: var(--el-color-primary-dark-2);
 }
 
 .order-preview-harmony .order-title {
-  color: #b88230;
+  color: var(--el-color-warning-dark-2);
 }
 
 .order-hint {
@@ -2707,15 +2765,15 @@ onUnmounted(() => {
 }
 
 .order-preview-android .order-hint {
-  color: #85ce61;
+  color: var(--el-color-success-light-3);
 }
 
 .order-preview-ios .order-hint {
-  color: #79bbff;
+  color: var(--el-color-primary-light-3);
 }
 
 .order-preview-harmony .order-hint {
-  color: #e6a23c;
+  color: var(--el-color-warning);
 }
 
 .order-hint .el-icon {
@@ -2744,18 +2802,18 @@ onUnmounted(() => {
 }
 
 .order-chip-btn-android {
-  border: 1px solid #b3e19d;
-  color: #529b2e;
+  border: 1px solid var(--el-color-success-light-5);
+  color: var(--el-color-success-dark-2);
 }
 
 .order-chip-btn-ios {
-  border: 1px solid #a0cfff;
-  color: #337ecc;
+  border: 1px solid var(--el-color-primary-light-5);
+  color: var(--el-color-primary-dark-2);
 }
 
 .order-chip-btn-harmony {
-  border: 1px solid #f3d19e;
-  color: #b88230;
+  border: 1px solid var(--el-color-warning-light-7);
+  color: var(--el-color-warning-dark-2);
 }
 
 .order-chip-btn:hover {
@@ -2764,33 +2822,33 @@ onUnmounted(() => {
 }
 
 .order-chip-btn-android:hover {
-  border-color: #67c23a;
-  background: #e1f3d8;
+  border-color: var(--el-color-success);
+  background: var(--el-color-success-light-8);
   color: #3d8b1e;
 }
 
 .order-chip-btn-ios:hover {
   border-color: var(--el-color-primary);
-  background: #d9ecff;
+  background: var(--el-color-primary-light-8);
   color: #1d6fb8;
 }
 
 .order-chip-btn-harmony:hover {
-  border-color: #e6a23c;
-  background: #fdf6ec;
+  border-color: var(--el-color-warning);
+  background: var(--el-color-warning-light-9);
   color: #a87016;
 }
 
 .order-chip-btn-android:hover .order-num {
-  background: #529b2e;
+  background: var(--el-color-success-dark-2);
 }
 
 .order-chip-btn-ios:hover .order-num {
-  background: #337ecc;
+  background: var(--el-color-primary-dark-2);
 }
 
 .order-chip-btn-harmony:hover .order-num {
-  background: #b88230;
+  background: var(--el-color-warning-dark-2);
 }
 
 .order-num {
@@ -2809,7 +2867,7 @@ onUnmounted(() => {
 }
 
 .order-chip-btn-android .order-num {
-  background: #67c23a;
+  background: var(--el-color-success);
 }
 
 .order-chip-btn-ios .order-num {
@@ -2817,7 +2875,7 @@ onUnmounted(() => {
 }
 
 .order-chip-btn-harmony .order-num {
-  background: #e6a23c;
+  background: var(--el-color-warning);
 }
 
 .order-name {
@@ -2886,9 +2944,9 @@ onUnmounted(() => {
   gap: 8px;
   flex-wrap: wrap;
   padding: 8px 10px;
-  background: #fafbfc;
+  background: var(--el-fill-color-lighter);
   border-radius: 8px;
-  border: 1px solid #eef0f3;
+  border: 1px solid var(--el-border-color-lighter);
 }
 
 .matrix-arrow {
@@ -2921,7 +2979,7 @@ onUnmounted(() => {
   padding: 12px;
   border: 1px solid var(--app-border);
   border-radius: 10px;
-  background: #fafbfc;
+  background: var(--el-fill-color-lighter);
 }
 
 .live-job-head {
@@ -2984,8 +3042,8 @@ onUnmounted(() => {
 }
 
 .live-steps :deep(.is-skipped-step .el-step__head) {
-  color: #c0c4cc;
-  border-color: #c0c4cc;
+  color: var(--el-text-color-disabled);
+  border-color: var(--el-border-color);
 }
 
 .live-steps :deep(.is-skipped-step .el-step__title) {
@@ -3068,7 +3126,7 @@ onUnmounted(() => {
 }
 
 .shot-placeholder {
-  color: #94a3b8;
+  color: var(--el-text-color-disabled);
   font-size: 13px;
 }
 
@@ -3122,7 +3180,7 @@ onUnmounted(() => {
 .history-block {
   margin-top: 8px;
   padding-top: 16px;
-  border-top: 1px solid #eef0f3;
+  border-top: 1px solid var(--el-border-color-lighter);
 }
 
 .history-head {

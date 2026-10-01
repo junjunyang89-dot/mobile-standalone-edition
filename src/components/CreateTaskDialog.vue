@@ -87,7 +87,7 @@
               :value="app.id"
             >
               <span>{{ app.packageName || app.id }}</span>
-              <span v-if="app.name && app.name !== app.packageName" style="color: #909399; font-size: 12px; margin-left: 8px">({{ app.name }})</span>
+              <span v-if="app.name && app.name !== app.packageName" style="color: var(--el-text-color-secondary); font-size: 12px; margin-left: 8px">({{ app.name }})</span>
             </el-option>
           </el-select>
           <el-button

@@ -535,7 +535,7 @@ onMounted(load)
   align-items: center;
   margin-bottom: 12px;
   font-size: 13px;
-  color: var(--app-text-secondary, #606266);
+  color: var(--app-text-secondary, var(--app-text-regular));
 }
 .detail-actions {
   display: flex;
@@ -557,6 +557,6 @@ onMounted(load)
   overflow: auto;
 }
 .muted {
-  color: #c0c4cc;
+  color: var(--el-text-color-disabled);
 }
 </style>

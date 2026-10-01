@@ -81,7 +81,7 @@ onMounted(load)
 
 <style scoped>
 .title { font-size: 16px; font-weight: 600; }
-.sub { margin: 4px 0 0; color: #909399; font-size: 12px; max-width: 760px; }
+.sub { margin: 4px 0 0; color: var(--el-text-color-secondary); font-size: 12px; max-width: 760px; }
 .bar { display: flex; gap: 12px; align-items: center; }
 h4 { margin: 8px 0 6px; }
 </style>

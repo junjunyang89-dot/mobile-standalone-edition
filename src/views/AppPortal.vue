@@ -166,7 +166,7 @@ onMounted(load)
 }
 .portal-head p {
   margin: 0;
-  color: #8c8c8c;
+  color: var(--el-text-color-secondary);
   font-size: 13px;
   line-height: 1.6;
   max-width: 640px;
@@ -177,7 +177,7 @@ onMounted(load)
 .portal-group h3 {
   margin: 0 0 10px;
   font-size: 14px;
-  color: #595959;
+  color: var(--app-text-regular);
 }
 .card-grid {
   display: grid;
@@ -186,17 +186,17 @@ onMounted(load)
 }
 .link-card {
   text-align: left;
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--el-border-color-lighter);
   background: #fff;
   border-radius: 10px;
   padding: 14px 16px;
   cursor: pointer;
 }
 .link-card.ready:hover {
-  border-color: #1890ff;
+  border-color: var(--el-color-primary);
 }
 .link-card:not(.ready) {
-  background: #fafafa;
+  background: var(--el-fill-color-lighter);
 }
 .link-title {
   font-weight: 600;
@@ -205,13 +205,13 @@ onMounted(load)
 .link-url {
   margin-top: 6px;
   font-size: 12px;
-  color: #8c8c8c;
+  color: var(--el-text-color-secondary);
   word-break: break-all;
 }
 .link-remark {
   margin-top: 6px;
   font-size: 12px;
-  color: #595959;
+  color: var(--app-text-regular);
 }
 .link-ops {
   margin-top: 10px;

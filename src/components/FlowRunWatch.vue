@@ -1,14 +1,23 @@
 <template>
   <el-dialog
     :model-value="visible"
-    :title="dialogTitle"
     width="760px"
-    top="6vh"
     append-to-body
+    align-center
     destroy-on-close
+    :modal="false"
+    modal-penetrable
+    :lock-scroll="false"
     :z-index="6100"
     @update:model-value="(v: boolean) => emit('update:visible', v)"
+    @close="emit('update:visible', false)"
   >
+    <template #header>
+      <div class="frw-titlebar">
+        <span class="frw-title">{{ dialogTitle }}</span>
+        <el-button size="small" @click="minimize">收到后台</el-button>
+      </div>
+    </template>
     <div class="frw">
       <!-- 结论一行说完：跑成什么样、跑了多久、下一步去哪 -->
       <div class="frw-head" :class="'is-' + tone">
@@ -16,6 +25,16 @@
         <span class="frw-head-text">{{ headline }}</span>
         <span class="frw-spacer" />
         <span v-if="elapsedText" class="frw-elapsed">{{ elapsedText }}</span>
+        <el-button
+          v-if="running && taskId"
+          size="small"
+          type="danger"
+          plain
+          :loading="stopping"
+          @click="forceStop"
+        >
+          强制停止
+        </el-button>
         <el-button v-if="taskId" size="small" @click="openFullReport">打开完整报告</el-button>
       </div>
 
@@ -41,6 +60,7 @@
       <div v-else-if="running" class="frw-running">
         <el-progress :percentage="100" :indeterminate="true" :duration="3" :show-text="false" />
         <span>{{ runningLabel }}</span>
+        <span class="frw-running-hint">收到后台后任务继续跑，底部「进行中」可以再打开</span>
       </div>
 
       <!-- 步骤流水：跑的时候是进度，跑完是回放 -->
@@ -93,7 +113,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { apiClient } from '../api'
+import { usePagePaneActive } from '../utils/pagePane'
 
 /**
  * 试跑结果就地回显。
@@ -120,6 +142,16 @@ const emit = defineEmits<{
 }>()
 
 const router = useRouter()
+const paneActive = usePagePaneActive()
+
+function minimize() {
+  emit('update:visible', false)
+}
+
+/** 切到别的页面时把这层收掉。任务在后端继续跑，底部「进行中」还能再打开。 */
+watch(paneActive, (on) => {
+  if (!on && props.visible) emit('update:visible', false)
+})
 
 type Step = {
   step?: string
@@ -138,6 +170,7 @@ const now = ref(0)
 const failedShotBroken = ref(false)
 const previewVisible = ref(false)
 const previewSrc = ref('')
+const stopping = ref(false)
 
 /** setTimeout 链而不是 setInterval：后端慢的时候 interval 会把请求堆起来，越堆越慢 */
 let timer: number | undefined
@@ -277,6 +310,41 @@ function openFullReport() {
   void router.push({ name: 'TaskOverview', params: { id: props.taskId } })
 }
 
+async function forceStop() {
+  if (!props.taskId || stopping.value) return
+  try {
+    // 本弹窗写死 z-index:6100，MessageBox 默认更低会被盖住——表现就是「强制停止没反应」
+    await ElMessageBox.confirm(
+      '确定强制停止这次执行？当前步骤会中断，设备会释放。',
+      '强制停止',
+      {
+        type: 'warning',
+        confirmButtonText: '停止',
+        cancelButtonText: '继续跑',
+        zIndex: 7200,
+        appendTo: document.body
+      }
+    )
+  } catch {
+    return
+  }
+  stopping.value = true
+  try {
+    await apiClient.stopTask(props.taskId)
+    ElMessage({ type: 'success', message: '已请求停止，等待当前滑动结束…', zIndex: 7300 })
+    // 立刻再拉一次状态，别等下一轮 2 秒轮询
+    try {
+      task.value = await apiClient.getTask(props.taskId)
+    } catch {
+      /* 下一轮 tick 还会拉 */
+    }
+  } catch (e: any) {
+    ElMessage({ type: 'error', message: e?.message || '停止失败', zIndex: 7300 })
+  } finally {
+    stopping.value = false
+  }
+}
+
 async function tick() {
   if (stopped || !props.taskId) return
   now.value = Date.now()
@@ -339,10 +407,35 @@ onBeforeUnmount(stop)
 </script>
 
 <style scoped>
+/* 遮罩层铺满窗口，不关掉点击会穿透不到页签。只留弹窗本身能点。 */
+:global(.el-modal-dialog.is-penetrable),
+:global(.el-modal-dialog.is-penetrable .el-overlay-dialog) {
+  pointer-events: none;
+}
+:global(.el-modal-dialog.is-penetrable .el-dialog) {
+  pointer-events: auto;
+}
 .frw {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+.frw-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding-right: 28px;
+}
+.frw-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
 }
 .frw-head {
   display: flex;
@@ -435,8 +528,14 @@ onBeforeUnmount(stop)
 .frw-running {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+.frw-running-hint {
+  flex: 1 0 100%;
+  font-size: 12px;
   color: var(--el-text-color-secondary);
 }
 .frw-running :deep(.el-progress) {

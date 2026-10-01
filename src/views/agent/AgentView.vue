@@ -1,242 +1,422 @@
 <template>
-  <div class="xk-shell">
-    <header class="xk-top">
-      <div class="xk-top-left">
-        <span class="xk-brand">AI助手</span>
-        <span class="xk-session">session: {{ sessionId }}</span>
+  <div class="ask-shell">
+    <aside class="ask-side">
+      <div class="ask-side-head">
+        <span class="ask-side-title">对话记录</span>
+        <button type="button" class="ask-new" :disabled="loading" @click="newChat">
+          <span class="ask-new-plus">+</span>
+          新对话
+        </button>
       </div>
-      <div class="xk-top-right">
-        <span class="xk-pill" :class="status?.configured ? 'ok' : 'bad'">
-          <i class="dot" />
-          {{ status?.configured ? '千问在线' : '千问未配置' }}
-        </span>
-        <span v-if="status?.chatModel" class="xk-pill mute">{{ status.chatModel }}</span>
-        <span class="xk-pill mute">知识库 {{ knowledgeCountDisplay }} 条</span>
-        <button type="button" class="xk-link-btn" @click="tipsVisible = true">使用帮助</button>
+      <div class="ask-side-list">
+        <div v-for="g in sessionGroups" :key="g.label" class="ask-group">
+          <div class="ask-group-label">{{ g.label }}</div>
+          <button
+            v-for="s in g.items"
+            :key="s.id"
+            type="button"
+            class="ask-session"
+            :class="{ active: s.id === activeId }"
+            :disabled="loading"
+            @click="selectSession(s.id)"
+          >
+            <div class="ask-session-title">{{ s.title }}</div>
+            <div class="ask-session-meta">
+              {{ formatSessionTime(s.updatedAt) }} ·
+              {{ Math.max(0, (s.messages?.length || 1) - 1) }} 条消息
+            </div>
+          </button>
+        </div>
+        <div v-if="!sessionGroups.length" class="ask-side-empty">还没有对话</div>
       </div>
-    </header>
+    </aside>
 
-    <div class="xk-body">
-      <AgentSidebar
-        :active-mode="activeMode"
-        @switch-mode="switchMode"
-        @quick="onQuick"
-      />
+    <section class="ask-main">
+      <header class="ask-top">
+        <div class="ask-top-left">
+          <span class="ask-logo" aria-hidden="true">AI</span>
+          <span class="ask-brand">AI 助手</span>
+          <span class="ask-pill soft">Cursor SDK</span>
+          <span class="ask-pill" :class="status?.configured ? 'ok' : 'bad'">
+            <i class="dot" />
+            {{ status?.configured ? 'Cursor 就绪' : '未就绪' }}
+          </span>
+          <span v-if="status?.model" class="ask-pill mute">{{ status.model }}</span>
+        </div>
+      </header>
 
-      <main class="xk-center">
+      <p v-if="status && !status.configured" class="ask-banner">
+        {{ status.hint || '请配置 CURSOR_API_KEY，并在 scripts/cursor-ask 执行 npm install' }}
+      </p>
+
+      <div class="ask-cwd">
+        <span class="ask-cwd-ico" aria-hidden="true">📁</span>
+        <input
+          v-if="cwdEditing"
+          ref="cwdInputRef"
+          v-model="cwd"
+          class="ask-cwd-input"
+          :disabled="loading"
+          @blur="cwdEditing = false"
+          @keydown.enter="cwdEditing = false"
+        />
+        <button v-else type="button" class="ask-cwd-path" @click="startEditCwd">
+          <span>{{ cwd || '未设置代码目录' }}</span>
+          <span class="ask-cwd-edit">✎</span>
+        </button>
+        <span class="ask-cwd-hint">AI 只能读取此目录下的代码</span>
+      </div>
+
+      <div class="ask-body">
         <AgentChat :messages="messages" :loading="loading" />
         <AgentInput
           v-model="input"
-          v-model:drag-over="dragOver"
-          :pending-files="pendingFiles"
-          :uploading="uploading"
           :loading="loading"
           :configured="!!status?.configured"
-          @chip="onChip"
-          @drop="onDrop"
-          @paste="onPaste"
-          @file-pick="onFilePick"
-          @remove-file="removeFile"
-          @upload="uploadPending"
-          @send="sendChat"
+          @send="sendChat()"
+          @quick="sendChat"
         />
-      </main>
-
-      <AgentRightPanel
-        :right-tab="rightTab"
-        :configured="!!status?.codewordsConfigured"
-        v-model:monitor-url="monitorUrl"
-        v-model:monitor-schedule="monitorSchedule"
-        v-model:show-last-monitor="showLastMonitor"
-        :monitor-loading="monitorLoading"
-        :monitor-result="monitorResult"
-        :monitor-summary="monitorSummary"
-        :knowledge-items="knowledgeItems"
-        :workflow-logs="workflowLogs"
-        :last-generated-cases="lastGeneratedCases"
-        @tab="onRightTab"
-        @run-monitor="runMonitor"
-        @refresh-knowledge="loadKnowledge"
-        @ask-knowledge="askAboutKnowledge"
-        @add-knowledge="addKnowledgeManual"
-      />
-    </div>
-
-    <el-dialog v-model="tipsVisible" title="AI助手使用指南" width="520px" align-center>
-      <div class="tips-list">
-        <div v-for="(item, i) in tipsItems" :key="i" class="tips-item">
-          <div class="tips-you">你：「{{ item.you }}」</div>
-          <div class="tips-agent">助手 → {{ item.agent }}</div>
-        </div>
       </div>
-      <template #footer>
-        <el-button type="primary" @click="closeTips">知道了</el-button>
-      </template>
-    </el-dialog>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import AgentSidebar from './AgentSidebar.vue'
+import { nextTick, ref } from 'vue'
 import AgentChat from './AgentChat.vue'
 import AgentInput from './AgentInput.vue'
-import AgentRightPanel from './AgentRightPanel.vue'
-import { useAgent } from './composables/useAgent'
-
-const tipsItems = [
-  { you: 'Ctrl/Cmd+V 粘贴截图', agent: '图片入库并带给 Agent ✅' },
-  { you: '拖入需求文档.md', agent: '解析并写入本地知识库 ✅' },
-  { you: '点「生成测试用例」', agent: '需求文字/PDF/截图 → 用例卡片 ✅' },
-  { you: '监控这个 H5 页面元素', agent: '浏览器爬取 → 返回定位库 ✅' }
-]
+import { useCursorAsk } from './composables/useCursorAsk'
 
 const {
   messages,
   input,
-  sessionId,
   loading,
   status,
-  knowledgeItems,
-  workflowLogs,
-  activeMode,
-  rightTab,
-  tipsVisible,
-  monitorUrl,
-  monitorSchedule,
-  monitorLoading,
-  monitorResult,
-  showLastMonitor,
-  monitorSummary,
-  knowledgeCountDisplay,
-  pendingFiles,
-  dragOver,
-  uploading,
-  lastGeneratedCases,
-  switchMode,
-  onRightTab,
-  onChip,
-  onQuick,
-  askAboutKnowledge,
-  addKnowledgeManual,
-  runMonitor,
-  removeFile,
-  onFilePick,
-  onDrop,
-  onPaste,
-  uploadPending,
+  cwd,
+  cwdEditing,
+  activeId,
+  sessionGroups,
   sendChat,
-  closeTips,
-  loadKnowledge
-} = useAgent()
+  newChat,
+  selectSession,
+  formatSessionTime
+} = useCursorAsk()
+
+const cwdInputRef = ref<HTMLInputElement | null>(null)
+
+async function startEditCwd() {
+  cwdEditing.value = true
+  await nextTick()
+  cwdInputRef.value?.focus()
+  cwdInputRef.value?.select()
+}
 </script>
 
 <style scoped>
-.xk-shell {
-  /* 略暗浅灰，减轻过白 */
-  --bg: var(--app-border);
-  --panel: #eceff3;
-  --panel-2: #e2e6eb;
-  --line: #cdd3dc;
-  --text: var(--app-text);
-  --muted: var(--app-text-secondary);
-  --accent: var(--app-primary);
-  --accent-2: #337ecc;
-  --warn: var(--app-warning);
-  --user: #d9ecff;
-  --danger: var(--app-danger);
-
+.ask-shell {
+  display: flex;
+  width: 100%;
   height: 100%;
-  background: var(--bg);
-  color: var(--text);
+  min-height: 0;
+  background: #f4f6fa;
+  color: var(--el-text-color-primary);
+}
+
+.ask-side {
+  width: 268px;
+  flex: 0 0 268px;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  font-family: "IBM Plex Sans", "PingFang SC", "Noto Sans SC", sans-serif;
+  background: #fff;
+  border-right: 1px solid var(--el-border-color);
+  min-height: 0;
 }
-.xk-shell,
-.xk-shell * {
-  scrollbar-width: thin;
-  scrollbar-color: #c0c4cc transparent;
-}
-.xk-shell ::-webkit-scrollbar { width: 8px; height: 8px; }
-.xk-shell ::-webkit-scrollbar-track { background: transparent; }
-.xk-shell ::-webkit-scrollbar-thumb {
-  background: #c0c4cc;
-  border-radius: 8px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-.xk-top {
-  height: 52px;
-  flex-shrink: 0;
+
+.ask-side-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 18px;
-  border-bottom: 1px solid var(--line);
-  background: #eceff3;
+  gap: 10px;
+  padding: 16px 14px 12px;
 }
-.xk-brand { font-weight: 650; letter-spacing: 0.02em; margin-right: 14px; color: var(--app-text); }
-.xk-session {
-  color: var(--muted);
+
+.ask-side-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--el-text-color-primary);
+}
+
+.ask-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: var(--el-color-primary);
+  color: #fff;
   font-size: 12px;
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-weight: 600;
+  padding: 7px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.25);
 }
-.xk-top-right { display: flex; align-items: center; gap: 10px; }
-.xk-pill {
+
+.ask-new-plus {
+  font-size: 14px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.ask-new:hover:not(:disabled) {
+  background: var(--el-color-primary-dark-2);
+}
+
+.ask-new:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ask-side-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 10px 14px;
+}
+
+.ask-group-label {
+  padding: 10px 8px 6px;
+  font-size: 11px;
+  color: var(--el-text-color-disabled);
+  font-weight: 600;
+}
+
+.ask-session {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  border-radius: 10px;
+  padding: 10px 10px;
+  cursor: pointer;
+  margin-bottom: 4px;
+}
+
+.ask-session:hover {
+  background: var(--el-fill-color-light);
+}
+
+.ask-session.active {
+  background: #e8f1ff;
+}
+
+.ask-session-title {
+  font-size: 13px;
+  color: var(--el-text-color-primary);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ask-session-meta {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--el-text-color-disabled);
+}
+
+.ask-side-empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--el-text-color-disabled);
+  font-size: 12px;
+}
+
+.ask-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #f7f9fc;
+}
+
+.ask-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
+  background: #fff;
+  border-bottom: 1px solid var(--el-border-color);
+}
+
+.ask-top-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ask-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(145deg, var(--el-color-primary-light-3), var(--el-color-primary));
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+  letter-spacing: -0.02em;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.35);
+}
+
+.ask-brand {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.ask-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  padding: 4px 10px;
+  padding: 3px 10px;
   border-radius: 999px;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-}
-.xk-pill.mute { color: var(--muted); }
-.xk-pill.ok { color: var(--accent); }
-.xk-pill.bad { color: var(--danger); }
-.xk-pill .dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: currentColor;
-  display: inline-block;
-}
-.xk-link-btn {
-  background: none;
-  border: none;
-  color: var(--accent);
-  cursor: pointer;
   font-size: 12px;
+  border: 1px solid var(--el-border-color);
+  background: var(--el-fill-color-lighter);
+  color: var(--app-text-regular);
 }
-.xk-body {
+
+.ask-pill.soft {
+  background: var(--el-color-primary-light-9);
+  border-color: var(--el-color-primary-light-7);
+  color: var(--el-color-primary-dark-2);
+}
+
+.ask-pill .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+
+.ask-pill.ok {
+  color: var(--el-color-success-dark-2);
+  background: var(--el-color-success-light-9);
+  border-color: var(--el-color-success-light-7);
+}
+
+.ask-pill.ok .dot {
+  background: var(--el-color-success);
+}
+
+.ask-pill.bad {
+  color: var(--el-color-danger-dark-2);
+  background: var(--el-color-danger-light-9);
+  border-color: var(--el-color-danger-light-7);
+}
+
+.ask-pill.bad .dot {
+  background: var(--el-color-danger);
+}
+
+.ask-pill.mute {
+  color: var(--el-text-color-secondary);
+}
+
+.ask-banner {
+  margin: 0;
+  padding: 10px 20px;
+  background: var(--el-color-warning-light-9);
+  color: var(--el-color-warning-dark-2);
+  font-size: 13px;
+  border-bottom: 1px solid var(--el-color-warning-light-8);
+}
+
+.ask-cwd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: var(--el-fill-color-light);
+  border-bottom: 1px solid var(--el-border-color);
+}
+
+.ask-cwd-ico {
+  flex: none;
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.ask-cwd-path {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  color: var(--app-text-regular);
+  text-align: left;
+}
+
+.ask-cwd-path span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ask-cwd-edit {
+  color: var(--el-text-color-disabled);
+  flex: none;
+}
+
+.ask-cwd-input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--el-color-primary-light-7);
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  outline: none;
+  background: #fff;
+}
+
+.ask-cwd-hint {
+  flex: none;
+  font-size: 12px;
+  color: var(--el-text-color-disabled);
+}
+
+.ask-body {
   flex: 1;
   min-height: 0;
-  display: grid;
-  grid-template-columns: 200px minmax(0, 1fr) 300px;
-  overflow: hidden;
-}
-.xk-center {
   display: flex;
   flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  overflow: hidden;
-  background: #e8ebef;
+  width: 100%;
+  margin: 0;
+  padding: 0 24px 18px;
+  box-sizing: border-box;
 }
-.tips-list { display: flex; flex-direction: column; gap: 12px; }
-.tips-item {
-  padding: 12px 14px;
-  background: var(--panel-2);
-  border-radius: 8px;
-  border: 1px solid var(--line);
-}
-.tips-you { font-size: 14px; color: var(--text); margin-bottom: 6px; }
-.tips-agent { font-size: 13px; color: var(--app-primary); font-weight: 600; }
 
-@media (max-width: 1100px) {
-  .xk-body { grid-template-columns: 180px minmax(0, 1fr); }
+@media (max-width: 960px) {
+  .ask-side {
+    width: 220px;
+  }
+  .ask-cwd-hint {
+    display: none;
+  }
+  .ask-body {
+    padding: 0 16px 16px;
+  }
 }
 </style>

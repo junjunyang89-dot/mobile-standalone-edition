@@ -469,7 +469,7 @@ function submit() {
   align-items: center;
   justify-content: space-between;
   padding: 12px 20px;
-  border-bottom: 1px solid #eef0f3;
+  border-bottom: 1px solid var(--el-border-color-lighter);
   flex-shrink: 0;
 }
 
@@ -479,7 +479,7 @@ function submit() {
   gap: 8px;
   font-size: 15px;
   font-weight: 600;
-  color: #1f2329;
+  color: var(--el-text-color-primary);
 }
 
 .bsd-title-icon {
@@ -489,7 +489,7 @@ function submit() {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #ff4d4f;
+  background: var(--el-color-danger);
   color: #fff;
   font-size: 11px;
   font-weight: 700;
@@ -501,13 +501,13 @@ function submit() {
   background: none;
   font-size: 18px;
   line-height: 1;
-  color: #8f959e;
+  color: var(--el-text-color-secondary);
   cursor: pointer;
   padding: 0 2px;
 }
 
 .bsd-close:hover {
-  color: #646a73;
+  color: var(--app-text-regular);
 }
 
 .bsd-body {
@@ -526,7 +526,7 @@ function submit() {
   display: flex;
   align-items: center;
   margin: 12px 0 10px;
-  color: #8f959e;
+  color: var(--el-text-color-secondary);
   font-size: 12px;
   user-select: none;
 }
@@ -556,7 +556,7 @@ function submit() {
   padding: 6px 0;
   border: none;
   background: none;
-  color: #3370ff;
+  color: var(--el-color-primary);
   font-size: 12px;
   cursor: pointer;
   text-align: left;
@@ -596,7 +596,7 @@ function submit() {
 
 .bsd-field-summary .bsd-label small {
   font-weight: 400;
-  color: #8f959e;
+  color: var(--el-text-color-secondary);
   margin-left: 6px;
   font-size: 12px;
 }
@@ -607,13 +607,13 @@ function submit() {
 
 .bsd-label {
   font-size: 13px;
-  color: #1f2329;
+  color: var(--el-text-color-primary);
   font-weight: 600;
   line-height: 1.3;
 }
 
 .bsd-label em {
-  color: #ff4d4f;
+  color: var(--el-color-danger);
   font-style: normal;
   margin-left: 2px;
 }
@@ -624,7 +624,7 @@ function submit() {
 
 .bsd-hint {
   font-size: 11px;
-  color: #8f959e;
+  color: var(--el-text-color-secondary);
   line-height: 1.3;
   margin-top: -2px;
 }
@@ -651,26 +651,26 @@ function submit() {
 
 .bsd-select :deep(.el-select__wrapper.is-focused),
 .bsd-field :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 1px #3370ff inset !important;
+  box-shadow: 0 0 0 1px var(--el-color-primary) inset !important;
 }
 
 .bsd-type-select :deep(.el-select__wrapper) {
-  background: #fff1f0;
-  box-shadow: 0 0 0 1px #ffccc7 inset;
+  background: var(--el-color-danger-light-9);
+  box-shadow: 0 0 0 1px var(--el-color-danger-light-7) inset;
 }
 
 .bsd-type-select :deep(.el-select__selected-item) {
-  color: #1f2329;
+  color: var(--el-text-color-primary);
   font-weight: 500;
 }
 
 .bsd-prio-select.is-prio-CRITICAL :deep(.el-select__wrapper) {
-  background: #fffbe6;
-  box-shadow: 0 0 0 1px #ffe58f inset;
+  background: var(--el-color-warning-light-9);
+  box-shadow: 0 0 0 1px var(--el-color-warning-light-7) inset;
 }
 
 .bsd-prio-select.is-prio-HIGH :deep(.el-select__wrapper) {
-  background: #fff7e6;
+  background: var(--el-color-warning-light-9);
 }
 
 .bsd-module-select :deep(.el-select__selection) {
@@ -679,7 +679,7 @@ function submit() {
 }
 
 .bsd-module-select :deep(.el-tag) {
-  background: #e8f3ff;
+  background: var(--el-color-primary-light-9);
   border-color: #b8daff;
   color: #245bdb;
   border-radius: 4px;
@@ -690,7 +690,7 @@ function submit() {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #ff4d4f;
+  background: var(--el-color-danger);
   flex-shrink: 0;
 }
 
@@ -706,14 +706,14 @@ function submit() {
   font-size: 13px;
 }
 
-.prio-CRITICAL { color: #d48806; }
-.prio-HIGH { color: #d48806; }
-.prio-MEDIUM { color: #646a73; }
-.prio-LOW { color: #8f959e; }
+.prio-CRITICAL { color: var(--el-color-warning-dark-2); }
+.prio-HIGH { color: var(--el-color-warning-dark-2); }
+.prio-MEDIUM { color: var(--app-text-regular); }
+.prio-LOW { color: var(--el-text-color-secondary); }
 
 /* editor */
 .bsd-editor {
-  border: 1px solid #dee0e3;
+  border: 1px solid var(--el-border-color);
   border-radius: 8px;
   overflow: hidden;
   background: #fff;
@@ -724,8 +724,8 @@ function submit() {
   align-items: center;
   gap: 2px;
   padding: 4px 8px;
-  background: #f5f6f7;
-  border-bottom: 1px solid #dee0e3;
+  background: var(--el-fill-color-lighter);
+  border-bottom: 1px solid var(--el-border-color);
 }
 
 .bsd-toolbar button {
@@ -738,13 +738,13 @@ function submit() {
   height: 24px;
   border-radius: 4px;
   cursor: pointer;
-  color: #646a73;
+  color: var(--app-text-regular);
   font-size: 12px;
   padding: 0 3px;
 }
 
 .bsd-toolbar button:hover {
-  background: #e8eaed;
+  background: var(--el-fill-color-dark);
 }
 
 .bsd-toolbar-sep {
@@ -760,14 +760,14 @@ function submit() {
   height: 26px !important;
   font-size: 12px !important;
   background: #fff !important;
-  border: 1px solid #dee0e3 !important;
+  border: 1px solid var(--el-border-color) !important;
   border-radius: 4px !important;
-  color: #646a73 !important;
+  color: var(--app-text-regular) !important;
 }
 
 .bsd-chip-btn:hover {
-  border-color: #3370ff !important;
-  color: #3370ff !important;
+  border-color: var(--el-color-primary) !important;
+  color: var(--el-color-primary) !important;
 }
 
 .bsd-textarea {
@@ -780,7 +780,7 @@ function submit() {
   padding: 10px 12px;
   font-size: 13px;
   line-height: 1.6;
-  color: #1f2329;
+  color: var(--el-text-color-primary);
   font-family: inherit;
   box-sizing: border-box;
 }
@@ -789,7 +789,7 @@ function submit() {
   align-self: flex-start;
   border: none;
   background: none;
-  color: #3370ff;
+  color: var(--el-color-primary);
   font-size: 12px;
   cursor: pointer;
   padding: 0;
@@ -806,14 +806,14 @@ function submit() {
   padding: 14px 12px;
   text-align: center;
   cursor: pointer;
-  background: #fafbfc;
+  background: var(--el-fill-color-lighter);
   transition: border-color 0.15s, background 0.15s;
 }
 
 .bsd-upload.dragover,
 .bsd-upload:hover {
-  border-color: #3370ff;
-  background: #f0f5ff;
+  border-color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
 }
 
 .bsd-upload.uploading {
@@ -831,11 +831,11 @@ function submit() {
 .bsd-upload p {
   margin: 0;
   font-size: 12px;
-  color: #646a73;
+  color: var(--app-text-regular);
 }
 
 .bsd-upload em {
-  color: #3370ff;
+  color: var(--el-color-primary);
   font-style: normal;
 }
 
@@ -859,13 +859,13 @@ function submit() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #1f2329;
+  color: var(--el-text-color-primary);
 }
 
 .file-bar {
   width: 72px;
   height: 4px;
-  background: #e8eaed;
+  background: var(--el-fill-color-dark);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -874,13 +874,13 @@ function submit() {
   display: block;
   height: 100%;
   width: 100%;
-  background: #52c41a;
+  background: var(--el-color-success);
 }
 
 .file-remove {
   border: none;
   background: none;
-  color: #8f959e;
+  color: var(--el-text-color-secondary);
   font-size: 16px;
   cursor: pointer;
 }
@@ -896,10 +896,10 @@ function submit() {
 .bsd-link-add {
   width: 32px;
   height: 32px;
-  border: 1px solid #dee0e3;
+  border: 1px solid var(--el-border-color);
   border-radius: 6px;
   background: #fff;
-  color: #3370ff;
+  color: var(--el-color-primary);
   font-size: 18px;
   cursor: pointer;
   line-height: 1;
@@ -916,18 +916,18 @@ function submit() {
   justify-content: space-between;
   width: 100%;
   padding: 10px 20px 14px;
-  border-top: 1px solid #eef0f3;
+  border-top: 1px solid var(--el-border-color-lighter);
   flex-shrink: 0;
   background: #fff;
 }
 
 .bsd-required-tip {
   font-size: 12px;
-  color: #8f959e;
+  color: var(--el-text-color-secondary);
 }
 
 .bsd-required-tip em {
-  color: #ff4d4f;
+  color: var(--el-color-danger);
   font-style: normal;
 }
 
@@ -948,23 +948,23 @@ function submit() {
 
 .bsd-btn-cancel {
   background: #fff;
-  border-color: #dee0e3;
-  color: #1f2329;
+  border-color: var(--el-border-color);
+  color: var(--el-text-color-primary);
 }
 
 .bsd-btn-cancel:hover {
-  background: #f5f6f7;
+  background: var(--el-fill-color-lighter);
 }
 
 .bsd-btn-submit {
-  background: #ff4d4f;
+  background: var(--el-color-danger);
   color: #fff;
   font-weight: 600;
   min-width: 108px;
 }
 
 .bsd-btn-submit:hover:not(:disabled) {
-  background: #ff7875;
+  background: var(--el-color-danger-light-3);
 }
 
 .bsd-btn-submit:disabled {

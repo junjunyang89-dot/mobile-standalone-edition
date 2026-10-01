@@ -184,7 +184,7 @@ function movePopup(pi: number, delta: number) {
 }
 .dp-item {
   border: 1px solid var(--el-border-color-lighter, var(--app-border));
-  border-left: 4px solid #f59e0b;
+  border-left: 4px solid var(--el-color-warning);
   background: rgba(245, 158, 11, 0.04);
   border-radius: 8px;
   padding: 12px;
@@ -199,7 +199,7 @@ function movePopup(pi: number, delta: number) {
 .dp-idx {
   font-size: 12px;
   font-weight: 800;
-  color: #d97706;
+  color: var(--el-color-warning-dark-2);
   background: rgba(245, 158, 11, 0.14);
   border-radius: 4px;
   padding: 2px 8px;

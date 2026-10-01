@@ -10,6 +10,10 @@ export interface Device {
   status: string
   lastSeen?: string | number
   config?: string
+  environment?: string
+  isEmulator?: boolean
+  emulator?: boolean
+  disabled?: boolean
 }
 
 export const useDeviceStore = defineStore('device', () => {

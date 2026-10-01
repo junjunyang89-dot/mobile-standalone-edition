@@ -1,15 +1,5 @@
 <template>
   <div class="env-page">
-    <h1 class="page-title">环境变量</h1>
-
-    <div class="notice">
-      <el-icon class="notice-icon"><WarningFilled /></el-icon>
-      <p>
-        接口自动化和 APP UI 自动化共用这一套变量。
-        <b>baseUrl 不在这里管理</b>，请到「资产管理 · URL 管理」配置。
-      </p>
-    </div>
-
     <div class="env-switch">
       <div class="env-tabs">
         <button
@@ -26,7 +16,6 @@
           <span v-if="current === tab.environment" class="now-badge">当前</span>
         </button>
       </div>
-      <span class="env-switch-hint">切换环境后变量列表同步更新</span>
     </div>
 
     <div class="env-layout">
@@ -45,10 +34,9 @@
             <span class="base-k">当前</span>
             <code class="base-v">{{ currentEnv.baseUrl || '（未配置）' }}</code>
           </div>
-          <el-button type="primary" class="base-btn" @click="$router.push('/api-urls')">
-            去 URL 管理修改
+          <el-button type="primary" class="base-btn" @click="$router.push('/api-projects')">
+            去项目管理改地址
           </el-button>
-          <p class="panel-hint">仅在用例没选具体 URL 时才用它</p>
         </section>
 
         <section class="panel db-panel">
@@ -60,7 +48,6 @@
             <span class="db-status" :class="{ ok: dbConfigured }">{{ dbConfigured ? '已配置' : '未配置' }}</span>
             <el-icon class="collapse-caret" :class="{ open: dbOpen }"><ArrowRight /></el-icon>
           </button>
-          <p class="panel-hint db-hint-line">用例里写 db / dbDelta 断言时查这个库，务必只读账号</p>
           <div v-show="dbOpen" class="db-form">
             <el-input v-model="db.dbHost" placeholder="库地址，如 10.0.0.12" />
             <el-input v-model.number="db.dbPort" placeholder="3306" />
@@ -81,46 +68,43 @@
             </div>
             <el-button type="primary" @click="openAdd">+ 新增变量</el-button>
           </div>
-          <el-table :data="variables" v-loading="loading" class="var-table" size="default">
-            <el-table-column width="48" align="center">
-              <template #default="{ row }">
+          <div v-loading="loading" class="var-list">
+            <div v-if="!loading && !variables.length" class="empty-tip">
+              还没有变量，点右上角新增。token 不要在这里填死。
+            </div>
+            <div v-else-if="variables.length" class="var-list-head">
+              <span class="c-en">启用</span>
+              <span class="c-name">变量名</span>
+              <span class="c-val">值</span>
+              <span class="c-ref">引用（点击复制）</span>
+              <span class="c-ops">操作</span>
+            </div>
+            <div v-for="row in variables" :key="`${row.environment || ''}:${row.project || ''}:${row.name}`" class="var-row">
+              <span class="c-en">
                 <el-checkbox
                   :model-value="row.enabled !== false"
                   @change="(v: any) => toggleEnabled(row, v)"
                 />
-              </template>
-            </el-table-column>
-            <el-table-column label="变量名" min-width="180">
-              <template #default="{ row }">
+              </span>
+              <span class="c-name">
                 <span class="var-name">
                   <el-icon v-if="row.secret" class="key-icon"><Key /></el-icon>
                   {{ row.name }}
                 </span>
                 <div v-if="row.description" class="var-desc">{{ row.description }}</div>
-              </template>
-            </el-table-column>
-            <el-table-column label="值" min-width="200">
-              <template #default="{ row }">
-                <span :class="{ masked: row.secret }">{{ row.value || '（空）' }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="引用（点击复制）" min-width="200">
-              <template #default="{ row }">
+              </span>
+              <span class="c-val" :class="{ masked: row.secret }">{{ row.value || '（空）' }}</span>
+              <span class="c-ref">
                 <button type="button" class="ref-pill" @click="copy(refOf(row.name))">
                   {{ refOf(row.name) }}
                 </button>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="120" align="right">
-              <template #default="{ row }">
+              </span>
+              <span class="c-ops">
                 <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
                 <el-button v-perm:delete link type="danger" @click="removeVar(row)">删除</el-button>
-              </template>
-            </el-table-column>
-            <template #empty>
-              <div class="empty-tip">还没有变量，点右上角新增。token 不要在这里填死。</div>
-            </template>
-          </el-table>
+              </span>
+            </div>
+          </div>
         </section>
       </div>
 
@@ -132,7 +116,6 @@
               内置变量
             </span>
           </button>
-          <p class="side-sub">无需配置，直接引用。造数据时每次都是新值，避免唯一键冲突。</p>
           <div v-show="builtinOpen" class="chip-list">
             <button
               v-for="b in BUILTINS"
@@ -213,7 +196,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowRight, Coin, Key, Link, WarningFilled } from '@element-plus/icons-vue'
+import { ArrowRight, Coin, Key, Link } from '@element-plus/icons-vue'
 import { apiClient } from '../api'
 
 const ENV_TABS = [
@@ -270,7 +253,7 @@ function syncDbForm() {
 async function saveDb() {
   const e: any = currentEnv.value || {}
   if (!e.baseUrl) {
-    ElMessage.warning('这个环境还没有 baseUrl，先去「URL 管理」配一个')
+    ElMessage.warning('这个环境还没有 baseUrl，先去「项目管理」点项目的「地址」配一个')
     return
   }
   dbSaving.value = true
@@ -338,8 +321,10 @@ async function loadEnvs() {
 async function loadVariables() {
   loading.value = true
   try {
-    variables.value = await apiClient.getApiTestVariables(current.value)
+    const rows = await apiClient.getApiTestVariables(current.value)
+    variables.value = Array.isArray(rows) ? rows : []
   } catch (e: any) {
+    variables.value = []
     ElMessage.error(e?.message || '加载变量失败')
   } finally {
     loading.value = false
@@ -445,33 +430,6 @@ onMounted(async () => {
   background: #f4f6f8;
   min-height: 100%;
 }
-.page-title {
-  margin: 0 0 14px;
-  font-size: 20px;
-  font-weight: 700;
-  color: #1f2329;
-}
-.notice {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  padding: 12px 14px;
-  margin-bottom: 16px;
-  background: #fff8e6;
-  border: 1px solid #f3d19e;
-  border-radius: 8px;
-  color: #8a6116;
-  font-size: 13px;
-  line-height: 1.55;
-}
-.notice p {
-  margin: 0;
-}
-.notice-icon {
-  margin-top: 2px;
-  color: #e6a23c;
-  font-size: 16px;
-}
 .env-switch {
   display: flex;
   align-items: center;
@@ -488,20 +446,20 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
-  border: 1px solid #dcdfe6;
+  border: 1px solid var(--el-border-color);
   border-radius: 8px;
   background: #fff;
   cursor: pointer;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 .env-tab .dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #67c23a;
+  background: var(--el-color-success);
 }
 .env-tab.prod .dot {
-  background: #f56c6c;
+  background: var(--el-color-danger);
 }
 .env-name {
   font-weight: 600;
@@ -509,24 +467,20 @@ onMounted(async () => {
 }
 .env-code {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 .now-badge {
   padding: 1px 6px;
   border-radius: 4px;
-  background: #ecf5ff;
-  color: #409eff;
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
   font-size: 11px;
   font-weight: 600;
 }
 .env-tab.active {
-  border-color: #409eff;
-  background: #f0f7ff;
-  box-shadow: 0 0 0 1px #c6e2ff;
-}
-.env-switch-hint {
-  font-size: 12px;
-  color: #909399;
+  border-color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  box-shadow: 0 0 0 1px var(--el-color-primary-light-7);
 }
 .env-layout {
   display: grid;
@@ -544,7 +498,7 @@ onMounted(async () => {
 .var-card,
 .side-card {
   background: #fff;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--el-border-color);
   border-radius: 10px;
   padding: 14px 16px;
 }
@@ -569,56 +523,47 @@ onMounted(async () => {
   gap: 6px;
   font-size: 14px;
   font-weight: 650;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 .env-chip {
   margin-left: auto;
   font-size: 12px;
   padding: 2px 8px;
   border-radius: 999px;
-  background: #f0f9eb;
-  color: #67c23a;
+  background: var(--el-color-success-light-9);
+  color: var(--el-color-success);
 }
 .env-chip.is-prod {
-  background: #fef0f0;
-  color: #f56c6c;
+  background: var(--el-color-danger-light-9);
+  color: var(--el-color-danger);
 }
 .base-box {
   margin: 12px 0 10px;
   padding: 10px 12px;
   border-radius: 8px;
-  background: #f0f7ff;
+  background: var(--el-color-primary-light-9);
   display: flex;
   align-items: baseline;
   gap: 8px;
 }
 .base-k {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 .base-v {
   font-size: 13px;
-  color: #303133;
-}
-.base-btn {
-  margin-bottom: 8px;
-}
-.panel-hint {
-  margin: 0;
-  font-size: 12px;
-  color: #909399;
-  line-height: 1.5;
+  color: var(--el-text-color-primary);
 }
 .db-status {
   margin-left: auto;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 .db-status.ok {
-  color: #67c23a;
+  color: var(--el-color-success);
 }
 .collapse-caret {
-  color: #c0c4cc;
+  color: var(--el-text-color-disabled);
   transition: transform 0.15s;
 }
 .collapse-caret.open {
@@ -626,9 +571,6 @@ onMounted(async () => {
 }
 .side-caret {
   margin-right: 2px;
-}
-.db-hint-line {
-  margin-top: 8px;
 }
 .db-form {
   display: flex;
@@ -642,14 +584,13 @@ onMounted(async () => {
 .db-msg {
   margin-top: 8px;
   font-size: 13px;
-  color: #67c23a;
+  color: var(--el-color-success);
 }
 .db-msg.bad {
-  color: #f56c6c;
+  color: var(--el-color-danger);
 }
 .var-card {
   padding: 0;
-  overflow: hidden;
 }
 .var-card-head {
   justify-content: space-between;
@@ -662,10 +603,49 @@ onMounted(async () => {
 }
 .var-count {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
-.var-table {
-  width: 100%;
+.var-list {
+  min-height: 48px;
+  border-top: 1px solid var(--el-border-color);
+}
+.var-list-head,
+.var-row {
+  display: grid;
+  grid-template-columns: 52px minmax(140px, 1.1fr) minmax(140px, 1.2fr) minmax(160px, 1fr) 110px;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 16px;
+}
+.var-list-head {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  background: var(--el-fill-color-lighter);
+  border-bottom: 1px solid var(--el-border-color);
+}
+.var-row {
+  border-bottom: 1px solid #f0f2f5;
+  font-size: 13px;
+  color: var(--el-text-color-primary);
+}
+.var-row:last-child {
+  border-bottom: none;
+}
+.var-row:hover {
+  background: var(--el-color-primary-light-9);
+}
+.c-en {
+  display: flex;
+  justify-content: center;
+}
+.c-ops {
+  text-align: right;
+  white-space: nowrap;
+}
+.c-val {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .var-name {
   display: inline-flex;
@@ -675,21 +655,21 @@ onMounted(async () => {
   font-size: 13px;
 }
 .key-icon {
-  color: #e6a23c;
+  color: var(--el-color-warning);
 }
 .var-desc {
   margin-top: 3px;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 .masked {
   letter-spacing: 2px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 .ref-pill {
   border: none;
-  background: #ecf5ff;
-  color: #409eff;
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
   border-radius: 999px;
   padding: 2px 10px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -697,18 +677,17 @@ onMounted(async () => {
   cursor: pointer;
 }
 .ref-pill:hover {
-  background: #d9ecff;
+  background: var(--el-color-primary-light-8);
 }
 .empty-tip {
   padding: 20px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-size: 13px;
 }
-.side-sub,
 .side-foot {
   margin: 8px 0 0;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   line-height: 1.5;
 }
 .chip-list {
@@ -739,20 +718,20 @@ onMounted(async () => {
 }
 .var-chip span {
   font-size: 11px;
-  color: #6b7280;
+  color: var(--el-text-color-secondary);
 }
 .token-card {
   background: #fff8e6;
-  border-color: #f3d19e;
+  border-color: var(--el-color-warning-light-7);
 }
 .token-ico {
-  color: #e6a23c;
+  color: var(--el-color-warning);
 }
 .howto-body {
   margin-top: 10px;
   font-size: 13px;
   line-height: 1.7;
-  color: #606266;
+  color: var(--app-text-regular);
 }
 .howto-body ol {
   margin: 8px 0;
@@ -766,7 +745,7 @@ onMounted(async () => {
 .form-tip {
   margin-top: 6px;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   line-height: 1.6;
 }
 .form-tip.inline {

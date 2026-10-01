@@ -269,6 +269,8 @@ const ACTION_TITLE: Record<string, string> = {
   HOT_START: '热启动',
   CLICK: '点击',
   INPUT: '输入',
+  INPUT_EDITTEXT: 'EditText输入',
+  EDITTEXT: 'EditText输入',
   CLEAR: '清空',
   WAIT: '固定延迟',
   WAIT_ELEMENT: '等待元素',
@@ -293,7 +295,8 @@ const ACTION_TITLE: Record<string, string> = {
   COLD_START_IOS: '冷启动',
   HOT_START_IOS: '热启动',
   SWIPE_IOS: '滑动',
-  SCROLL_UNTIL_IOS: '滑到元素'
+  SCROLL_UNTIL_IOS: '滑到元素',
+  SCROLL_UNTIL_SHORT: '小幅滑到'
 }
 
 const desc = computed(() => (props.step.description || '').trim())
@@ -348,7 +351,8 @@ const waitHint = computed(() => {
 })
 
 const inputHint = computed(() => {
-  if (props.step.keywordCode !== 'INPUT') return ''
+  const code = String(props.step.keywordCode || '').toUpperCase()
+  if (code !== 'INPUT' && code !== 'INPUT_EDITTEXT' && code !== 'EDITTEXT') return ''
   const t = String(props.step.params?.text || '').trim()
   return t ? `内容「${t.slice(0, 36)}」` : ''
 })
@@ -423,8 +427,8 @@ const tooltip = computed(() => {
   width: 142px;
   height: 142px;
   transform: rotate(45deg);
-  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
-  border: 2px solid #fcd34d;
+  background: linear-gradient(135deg, var(--el-color-warning-light-3) 0%, var(--el-color-warning) 100%);
+  border: 2px solid var(--el-color-warning-light-5);
   box-shadow: 0 8px 24px rgba(245, 158, 11, 0.28);
   display: flex;
   align-items: center;
@@ -434,10 +438,10 @@ const tooltip = computed(() => {
   transform: rotate(-45deg);
   width: 168px;
   text-align: center;
-  color: #1f2937;
+  color: var(--el-text-color-primary);
 }
 .diamond-inner .no {
-  color: #92400e;
+  color: var(--el-color-warning-dark-2);
   font-size: 11px;
   font-weight: 800;
 }
@@ -479,10 +483,10 @@ const tooltip = computed(() => {
   stroke: #94a3b8;
 }
 .ink.then {
-  stroke: #22c55e;
+  stroke: var(--el-color-success);
 }
 .ink.else {
-  stroke: #ef4444;
+  stroke: var(--el-color-danger);
 }
 .ink.join {
   stroke: #38bdf8;
@@ -510,10 +514,10 @@ const tooltip = computed(() => {
   border-radius: 1px;
 }
 .pipe.then {
-  background: #22c55e;
+  background: var(--el-color-success);
 }
 .pipe.else {
-  background: #ef4444;
+  background: var(--el-color-danger);
 }
 .pipe.grow {
   flex: 1 1 auto;
@@ -537,12 +541,12 @@ const tooltip = computed(() => {
   flex: none;
 }
 .edge-label.then {
-  color: #86efac;
+  color: var(--el-color-success-light-5);
   background: rgba(34, 197, 94, 0.16);
   border: 1px solid rgba(34, 197, 94, 0.4);
 }
 .edge-label.else {
-  color: #fca5a5;
+  color: var(--el-color-danger-light-5);
   background: rgba(239, 68, 68, 0.16);
   border: 1px solid rgba(239, 68, 68, 0.4);
 }
@@ -580,7 +584,7 @@ const tooltip = computed(() => {
   background: rgba(56, 189, 248, 0.12);
 }
 .branch-foot.stop {
-  color: #fca5a5;
+  color: var(--el-color-danger-light-5);
   background: rgba(239, 68, 68, 0.12);
 }
 
@@ -589,7 +593,7 @@ const tooltip = computed(() => {
   padding: 10px 12px;
   border-radius: 8px;
   border: 1px dashed #64748b;
-  color: #94a3b8;
+  color: var(--el-text-color-disabled);
   font-size: 12px;
   text-align: center;
 }
@@ -605,22 +609,22 @@ const tooltip = computed(() => {
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
 }
 .node-card.action {
-  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
-  border-color: #60a5fa;
+  background: linear-gradient(180deg, var(--el-color-primary-light-3) 0%, var(--el-color-primary) 100%);
+  border-color: var(--el-color-primary-light-3);
 }
 .node-card.then {
-  background: linear-gradient(180deg, #22c55e 0%, #16a34a 100%);
+  background: linear-gradient(180deg, var(--el-color-success-light-3) 0%, var(--el-color-success) 100%);
   border-color: #4ade80;
 }
 .node-card.else {
-  background: linear-gradient(180deg, #f87171 0%, #ef4444 100%);
-  border-color: #fca5a5;
+  background: linear-gradient(180deg, var(--el-color-danger-light-3) 0%, var(--el-color-danger) 100%);
+  border-color: var(--el-color-danger-light-5);
 }
 .node-card.ok {
-  background: linear-gradient(180deg, #22c55e 0%, #15803d 100%);
+  background: linear-gradient(180deg, var(--el-color-success) 0%, var(--el-color-success-dark-2) 100%);
 }
 .node-card.fail {
-  background: linear-gradient(180deg, #f87171 0%, #dc2626 100%);
+  background: linear-gradient(180deg, var(--el-color-danger-light-3) 0%, var(--el-color-danger) 100%);
 }
 /* 判跳过：既不算过也不算挂，用琥珀与红绿区分开 */
 .diamond.race {
@@ -635,7 +639,7 @@ const tooltip = computed(() => {
   justify-content: center;
 }
 .node-card.skip {
-  background: linear-gradient(180deg, #fbbf24 0%, #d97706 100%);
+  background: linear-gradient(180deg, var(--el-color-warning) 0%, var(--el-color-warning-dark-2) 100%);
 }
 .node-card .no {
   color: rgba(255, 255, 255, 0.85);
@@ -674,13 +678,13 @@ const tooltip = computed(() => {
   flex: none;
 }
 .node-oval.stop {
-  background: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%);
+  background: linear-gradient(180deg, var(--el-color-danger) 0%, var(--el-color-danger-dark-2) 100%);
 }
 .node-oval.ok {
-  background: linear-gradient(180deg, #22c55e 0%, #15803d 100%);
+  background: linear-gradient(180deg, var(--el-color-success) 0%, var(--el-color-success-dark-2) 100%);
 }
 .node-oval.skip {
-  background: linear-gradient(180deg, #fbbf24 0%, #b45309 100%);
+  background: linear-gradient(180deg, var(--el-color-warning) 0%, var(--el-color-warning-dark-2) 100%);
 }
 
 .node-join {
@@ -697,7 +701,7 @@ const tooltip = computed(() => {
 .node-join.dead {
   background: rgba(248, 113, 113, 0.1);
   border-color: rgba(248, 113, 113, 0.4);
-  color: #fecaca;
+  color: var(--el-color-danger-light-7);
   margin-top: 10px;
 }
 .join-title {

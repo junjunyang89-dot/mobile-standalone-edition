@@ -8,20 +8,35 @@
             分支用例
           </button>
           <button type="button" class="scope-tab" :class="{ active: scope === 'LIVE' }" @click="switchScope('LIVE')">
-            master 用例
+            全量用例
           </button>
+        </div>
+        <div v-if="scope === 'LIVE'" class="live-env">
+          <span class="live-env-label">执行环境</span>
+          <el-radio-group v-model="liveRunEnv" size="small">
+            <el-radio-button value="TEST">测试</el-radio-button>
+            <el-radio-button value="PROD">线上</el-radio-button>
+          </el-radio-group>
+        </div>
+        <div v-if="projectFilter" class="project-filter">
+          <el-tag closable size="small" @close="clearProjectFilter">只看 {{ projectFilter }}</el-tag>
+        </div>
+        <div class="tree-filter">
+          <el-input v-model="treeKeyword" placeholder="搜接口 / Controller / 集合" clearable :prefix-icon="Search" />
         </div>
         <div class="nav-tree-wrap">
           <el-tree
-            v-if="treeData.length"
+            v-if="visibleTree.length"
             ref="treeRef"
-            :data="treeData"
+            :data="visibleTree"
             node-key="nodeKey"
             :props="treeProps"
             highlight-current
-            default-expand-all
+            :default-expanded-keys="treeExpandedKeys"
             :expand-on-click-node="false"
             @node-click="onNodeClick"
+            @node-expand="onTreeExpand"
+            @node-collapse="onTreeCollapse"
           >
             <template #default="{ data }">
               <span class="tree-row" :class="{ 'tree-leaf-row': !data.isFolder }">
@@ -29,6 +44,12 @@
                 <span class="tree-text" :title="data.kind === 'interface' ? data.path || data.label : data.label">
                   {{ data.label }}
                 </span>
+                <span
+                  v-if="data.coreTotal"
+                  class="tree-core"
+                  :class="{ 'is-done': data.coreCovered >= data.coreTotal }"
+                  :title="`核心接口 ${data.coreTotal} 个，已有启用用例 ${data.coreCovered} 个`"
+                >核心 {{ data.coreCovered }}/{{ data.coreTotal }}</span>
                 <span v-if="data.statusTag" class="tree-status" :class="statusClass(data.statusTag)">
                   {{ data.statusTag }}
                 </span>
@@ -36,7 +57,21 @@
               </span>
             </template>
           </el-tree>
+          <div v-else-if="!loading && treeKeyword.trim()" class="nav-empty">没有匹配「{{ treeKeyword.trim() }}」的</div>
+          <div v-else-if="!loading && projectFilter" class="nav-empty">
+            {{ projectFilter }} 在「{{ scope === 'LIVE' ? '全量用例' : '分支用例' }}」下还没有东西，可以切到另一个页签看看
+          </div>
           <div v-else-if="!loading" class="nav-empty">暂无集合</div>
+        </div>
+        <div v-if="navTotal > NAV_PAGE_SIZE" class="nav-pagination">
+          <el-pagination
+            v-model:current-page="navPage"
+            :page-size="NAV_PAGE_SIZE"
+            :total="navTotal"
+            :pager-count="5"
+            layout="total, prev, pager, next"
+            small
+          />
         </div>
       </aside>
 
@@ -54,6 +89,7 @@
             <el-option v-for="v in versionOptions" :key="v" :label="v" :value="v" />
           </el-select>
           <el-checkbox v-model="includeArchived" @change="loadTree">已归档</el-checkbox>
+          <el-button plain @click="triageVisible = true">分支用例分诊</el-button>
           <el-button v-if="scope === 'TEST'" type="primary" @click="openCreate">
             <el-icon><Plus /></el-icon>新建集合
           </el-button>
@@ -70,7 +106,7 @@
               </span>
               <span v-if="!selectedInterface && selectedCollection.requirementNo" class="pill pill-req">需求单接口</span>
               <span v-else-if="!selectedInterface && selectedCollection.sourceBranch" class="pill pill-req">分支涉及的接口用例</span>
-              <span class="pill pill-env">{{ scope === 'TEST' ? '分支用例' : 'master 用例' }}</span>
+              <span class="pill pill-env">{{ scope === 'TEST' ? '分支用例' : '全量用例' }}</span>
               <span
                 v-if="!selectedInterface && collectionStatusTag"
                 class="pill"
@@ -116,6 +152,15 @@
                 clearable
                 class="search-input"
               />
+              <el-select
+                v-if="hasCaseKind(collectionCases)"
+                v-model="kindFilter"
+                clearable
+                placeholder="全部类型"
+                class="kind-select"
+              >
+                <el-option v-for="o in CASE_KIND_OPTIONS" :key="o.value" :label="o.label" :value="o.value" />
+              </el-select>
               <el-button type="primary" @click="openCreateCase">
                 <el-icon><Plus /></el-icon>新建用例
               </el-button>
@@ -132,8 +177,17 @@
               </el-button>
             </div>
 
-            <el-table v-if="interfaceCaseRows.length" :data="interfaceCaseRows" size="default" class="case-table">
-              <el-table-column label="用例名称" min-width="220" show-overflow-tooltip prop="name" />
+            <el-table v-if="interfaceCaseRows.length" :data="pagedInterfaceCaseRows" size="default" class="case-table">
+              <el-table-column label="用例名称" min-width="220" show-overflow-tooltip>
+                <template #default="{ row }">
+                  <span v-if="row.level === 'CORE'" class="core-tag">核心</span><span
+                    v-if="kindOf(row)"
+                    class="kind-tag"
+                    :class="CASE_KIND_META[kindOf(row)!].cls"
+                    :title="caseKindTitle(row)"
+                  >{{ CASE_KIND_META[kindOf(row)!].text }}</span><span v-if="row.testOnly" class="test-only-tag">仅测试</span>{{ row.name }}
+                </template>
+              </el-table-column>
               <el-table-column label="说明" min-width="160" show-overflow-tooltip prop="description" />
               <el-table-column label="验证状态" width="120">
                 <template #default="{ row }">
@@ -142,16 +196,40 @@
                   </span>
                 </template>
               </el-table-column>
-              <el-table-column label="操作" width="200" fixed="right">
+              <el-table-column label="操作" width="128" fixed="right">
                 <template #default="{ row }">
-                  <el-button link type="primary" @click="openEditCase(row)">编辑</el-button>
-                  <el-button link type="primary" @click="toggleCaseEnabled(row)">
-                    {{ row.enabled ? '停用' : '启用' }}
-                  </el-button>
-                  <el-button link type="danger" @click="removeCase(row)">删除</el-button>
+                  <div class="ops-col">
+                    <div class="ops-row">
+                      <el-button link type="primary" @click="openEditCase(row)">编辑</el-button>
+                      <el-button link type="danger" @click="removeCase(row)">删除</el-button>
+                    </div>
+                    <div class="ops-row">
+                      <el-button
+                        link
+                        type="success"
+                        :loading="runningCaseId === row.id"
+                        :disabled="!!runningCaseId && runningCaseId !== row.id"
+                        @click="runOneCase(row)"
+                      >执行</el-button>
+                      <el-button link @click="toggleCaseEnabled(row)">
+                        {{ row.enabled ? '停用' : '启用' }}
+                      </el-button>
+                    </div>
+                  </div>
                 </template>
               </el-table-column>
             </el-table>
+            <el-pagination
+              v-if="interfaceCaseRows.length > PAGE_SIZES[0]"
+              v-model:current-page="ifaceCasePage"
+              v-model:page-size="ifaceCaseSize"
+              class="table-pagination"
+              background
+              small
+              layout="total, sizes, prev, pager, next"
+              :page-sizes="PAGE_SIZES"
+              :total="interfaceCaseRows.length"
+            />
           </template>
 
           <div v-else class="detail-empty">展开左侧需求单，点击具体接口查看用例</div>
@@ -162,8 +240,7 @@
           <div class="detail-head">
             <div class="head-left">
               <h2>{{ selectedController.label }}</h2>
-              <span class="pill pill-ctrl">Controller · 生产环境</span>
-              <span class="pill pill-live">已上线</span>
+              <span class="pill pill-ctrl">Controller</span>
             </div>
             <el-button
               v-if="selectedController.runCollectionId"
@@ -173,36 +250,111 @@
               <el-icon><VideoPlay /></el-icon>执行
             </el-button>
           </div>
-          <div class="stat-line">
-            <span>接口总数</span>
-            <div class="stat-bar"><div class="stat-fill" /></div>
-            <span>{{ filteredCaseRows.length }} 个接口</span>
-          </div>
           <div class="toolbar">
-            <el-input v-model="caseKeyword" placeholder="搜索路径 / 说明" clearable class="search-input" />
-            <el-button plain @click="loadLiveProjectCases(selectedController.code)">刷新</el-button>
+            <el-input v-model="caseKeyword" placeholder="搜索用例 / 路径" clearable class="search-input" />
+            <el-select
+              v-model="kindFilter"
+              clearable
+              placeholder="全部类型"
+              class="kind-select"
+            >
+              <el-option v-for="o in CASE_KIND_OPTIONS" :key="o.value" :label="o.label" :value="o.value" />
+            </el-select>
+            <span class="ctrl-count">{{ liveIfaceTotal }} 个接口 · {{ liveCaseTotal }} 条用例</span>
+            <el-button plain @click="refreshLiveInterfaces">刷新</el-button>
           </div>
-          <el-table v-if="filteredCaseRows.length" :data="filteredCaseRows" size="default" class="case-table">
-            <el-table-column label="方法" width="88">
+          <div v-loading="liveLoading">
+          <el-table
+            v-if="ifaceGroups.length"
+            :data="ifaceGroups"
+            :row-key="(r: any) => r.rowKey || r.id"
+            :tree-props="{ children: 'children' }"
+            default-expand-all
+            :row-class-name="({ row }: any) => (row.isIface ? 'iface-row' : 'case-row')"
+            size="default"
+            class="case-table iface-table"
+            @row-click="onIfaceRowClick"
+            @expand-change="onIfaceExpandChange"
+          >
+            <el-table-column label="接口 / 用例" min-width="360">
               <template #default="{ row }">
-                <span class="method-tag" :class="methodClass(row.method)">{{ row.method }}</span>
+                <template v-if="row.isIface">
+                  <el-icon class="iface-arrow" :class="{ 'is-open': row.children.length }"><ArrowRight /></el-icon>
+                  <span class="method-tag" :class="methodClass(row.method)">{{ row.method }}</span>
+                  <span class="iface-cell">
+                    <span class="path-main">
+                      <span v-if="row.level === 'CORE'" class="core-tag">核心</span>{{ row.title }}
+                    </span>
+                    <span class="path-sub">{{ row.path }}</span>
+                  </span>
+                </template>
+                <span v-else class="case-name" :title="row.name">
+                  <span
+                    v-if="kindOf(row)"
+                    class="kind-tag"
+                    :class="CASE_KIND_META[kindOf(row)!].cls"
+                    :title="caseKindTitle(row)"
+                  >{{ CASE_KIND_META[kindOf(row)!].text }}</span><span v-if="row.testOnly" class="test-only-tag">仅测试</span>{{ scenarioOf(row) }}
+                </span>
               </template>
             </el-table-column>
-            <el-table-column label="路径" min-width="300">
+            <el-table-column label="状态" width="110">
               <template #default="{ row }">
-                <div class="path-main">{{ row.path }}</div>
-                <div class="path-sub">[{{ projectShort(selectedController.code) }}] {{ row.method }} {{ row.path }}</div>
+                <span v-if="row.isIface" class="iface-count">
+                  {{ row.caseCount }} 条 · <span :class="row.enabledCount ? 'st-pass' : 'st-pending'">{{ row.enabledCount }} 启用</span>
+                </span>
+                <span v-else class="verify-tag" :class="row.enabled ? 'st-pass' : 'st-pending'">
+                  {{ row.enabled ? '已启用' : '已停用' }}
+                </span>
               </template>
             </el-table-column>
-            <el-table-column label="Controller" width="180">
-              <template #default="{ row }">{{ row.controller || selectedController.label }}</template>
-            </el-table-column>
-            <el-table-column label="状态" width="100">
-              <template #default>
-                <span class="verify-tag st-live">已上线</span>
+            <el-table-column label="操作" width="128" fixed="right">
+              <template #default="{ row }">
+                <div v-if="row.isIface" class="ops-col" @click.stop>
+                  <div class="ops-row">
+                    <el-button
+                      link
+                      type="success"
+                      :loading="runningCaseId === row.rowKey"
+                      :disabled="!!runningCaseId && runningCaseId !== row.rowKey"
+                      @click="runIfaceCases(row)"
+                    >执行全部</el-button>
+                  </div>
+                </div>
+                <div v-else class="ops-col" @click.stop>
+                  <div class="ops-row">
+                    <el-button link type="primary" @click="openEditCase(row)">编辑</el-button>
+                    <el-button link type="danger" @click="removeCase(row)">删除</el-button>
+                  </div>
+                  <div class="ops-row">
+                    <el-button
+                      link
+                      type="success"
+                      :loading="runningCaseId === row.id"
+                      :disabled="!!runningCaseId && runningCaseId !== row.id"
+                      @click="runOneCase(row)"
+                    >执行</el-button>
+                    <el-button link @click="toggleCaseEnabled(row)">
+                      {{ row.enabled ? '停用' : '启用' }}
+                    </el-button>
+                  </div>
+                </div>
               </template>
             </el-table-column>
           </el-table>
+          <div v-else-if="!liveLoading" class="detail-empty">没有匹配的接口</div>
+          <el-pagination
+            v-if="liveIfaceTotal > PAGE_SIZES[0]"
+            v-model:current-page="liveIfacePage"
+            v-model:page-size="liveIfaceSize"
+            class="table-pagination"
+            background
+            small
+            layout="total, sizes, prev, pager, next"
+            :page-sizes="PAGE_SIZES"
+            :total="liveIfaceTotal"
+          />
+          </div>
         </template>
 
         <div v-else class="detail-empty">从左侧选择需求单、分支或 Controller</div>
@@ -222,7 +374,7 @@
         <el-form-item label="范围">
           <el-radio-group v-model="form.scope">
             <el-radio value="TEST">分支涉及的接口用例</el-radio>
-            <el-radio value="LIVE">master 接口用例</el-radio>
+            <el-radio value="LIVE">全量接口用例</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item v-if="form.scope === 'TEST'" label="需求单">
@@ -241,10 +393,10 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="runDialog" title="执行集合" width="460px" destroy-on-close>
+    <el-dialog v-model="runDialog" title="执行集合" :width="prodGuardOn ? '640px' : '460px'" destroy-on-close>
       <el-form label-width="80px">
         <el-form-item label="集合">
-          <b>{{ runTarget?.name }}</b>（{{ runTarget?.caseCount ?? 0 }} 条）
+          <b>{{ runTarget?.name }}</b><template v-if="runTarget?.caseCount != null">（{{ runTarget.caseCount }} 条）</template>
         </el-form-item>
         <el-form-item label="环境">
           <el-radio-group v-model="runEnv">
@@ -252,71 +404,181 @@
             <el-radio-button value="PROD">线上</el-radio-button>
           </el-radio-group>
         </el-form-item>
-        <el-form-item v-if="runEnv === 'PROD'">
+        <el-form-item v-if="runEnv === 'PROD' && prodJudge.loading">
+          <span class="pg-hint">正在逐条判断会不会改数据…</span>
+        </el-form-item>
+        <el-form-item v-else-if="runEnv === 'PROD' && !prodJudge.supported">
           <el-checkbox v-model="confirmProd">我确认要在线上环境执行</el-checkbox>
         </el-form-item>
       </el-form>
+
+      <!-- 线上：只读的才能勾，写数据/读写未知的列出来但勾不上。列表说的是「这些不给你跑」，不是「你确认一下」 -->
+      <div v-if="prodGuardOn" class="pg">
+        <div class="pg-head">
+          <span>可以跑 <b class="pg-ok">{{ prodAllowed.length }}</b> 条只读用例</span>
+          <span v-if="prodBlocked.length">· 不给跑 <b class="pg-bad">{{ prodBlocked.length }}</b> 条</span>
+          <span class="pg-spacer" />
+          <el-checkbox
+            v-if="prodAllowed.length"
+            :model-value="prodPicked.length === prodAllowed.length"
+            :indeterminate="prodPicked.length > 0 && prodPicked.length < prodAllowed.length"
+            @change="(v: boolean) => (prodPicked = v ? prodAllowed.map((x) => x.c.id) : [])"
+          >全选只读</el-checkbox>
+        </div>
+        <div class="pg-list">
+          <div
+            v-for="v in prodJudge.verdicts"
+            :key="v.c.id"
+            class="pg-row"
+            :class="{ 'is-blocked': !v.allowed }"
+            @click.self="v.allowed && togglePicked(v.c.id, !prodPicked.includes(v.c.id))"
+          >
+            <el-checkbox
+              :model-value="v.allowed && prodPicked.includes(v.c.id)"
+              :disabled="!v.allowed"
+              @change="(on: boolean) => togglePicked(v.c.id, on)"
+            />
+            <span class="pg-tag" :class="v.c.testOnly ? 'is-unknown' : WRITE_EFFECT_META[v.effect].cls">
+              {{ v.c.testOnly ? '仅测试' : WRITE_EFFECT_META[v.effect].text }}
+            </span>
+            <span class="pg-main">
+              <span class="pg-name">{{ v.c.name || v.c.path }}</span>
+              <span class="pg-path">{{ v.c.method }} {{ v.c.path }}</span>
+              <span v-if="!v.allowed" class="pg-reason">{{ v.reason }}</span>
+            </span>
+          </div>
+          <div v-if="!prodJudge.verdicts.length" class="pg-empty">这个集合里没有启用的用例</div>
+        </div>
+      </div>
+
       <template #footer>
         <el-button @click="runDialog = false">取消</el-button>
         <el-button
           type="primary"
           :loading="running"
-          :disabled="runEnv === 'PROD' && !confirmProd"
+          :disabled="runDisabled"
           @click="doRun"
         >
-          开始执行
+          {{ prodGuardOn ? `在线上执行 ${prodPicked.length} 条` : '开始执行' }}
         </el-button>
       </template>
     </el-dialog>
 
-    <el-drawer v-model="caseDrawer" :title="caseForm.id ? '编辑用例' : '新建用例'" size="560px">
-      <el-form label-width="88px" size="small">
-        <el-form-item label="名称" required>
-          <el-input v-model="caseForm.name" />
-        </el-form-item>
-        <el-form-item label="方法">
-          <el-select v-model="caseForm.method" style="width: 120px">
-            <el-option v-for="m in httpMethods" :key="m" :label="m" :value="m" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="Path">
-          <el-input v-model="caseForm.path" />
-        </el-form-item>
-        <el-form-item label="说明">
-          <el-input v-model="caseForm.description" type="textarea" :rows="2" />
-        </el-form-item>
-      </el-form>
+    <el-dialog
+      v-model="caseDrawer"
+      width="780px"
+      class="case-edit-dialog"
+      :show-close="false"
+      append-to-body
+      destroy-on-close
+    >
+      <template #header="{ close }">
+        <div class="ce-head">
+          <div class="ce-head-main">
+            <div class="ce-title">{{ caseForm.id ? '编辑用例' : '新建用例' }}</div>
+            <div v-if="caseForm.path" class="ce-sub">
+              <span class="method-tag" :class="methodClass(caseForm.method)">{{ caseForm.method }}</span>
+              <code class="ce-path">{{ caseForm.path }}</code>
+            </div>
+          </div>
+          <button type="button" class="ce-close" aria-label="关闭" @click="close">
+            <el-icon><Close /></el-icon>
+          </button>
+        </div>
+      </template>
 
       <!--
         原来 Headers / 断言 是两个裸 JSON 文本框：少一个引号整条失效，
         而报错只说「断言解析异常」，不说是哪一行。改成键值行——
         这是 Postman 那套形式，好处不是好看，是<b>写不出语法错</b>
       -->
-      <el-tabs v-model="editTab" class="kv-tabs">
+      <el-tabs v-model="editTab" class="ce-tabs">
+        <el-tab-pane label="基本信息" name="basic">
+          <el-form label-width="72px" class="ce-form">
+            <el-form-item label="名称" required>
+              <el-input v-model="caseForm.name" />
+            </el-form-item>
+            <el-form-item label="请求" required>
+              <div class="ce-req">
+                <el-select v-model="caseForm.method" class="ce-method">
+                  <el-option v-for="m in httpMethods" :key="m" :label="m" :value="m" />
+                </el-select>
+                <el-input v-model="caseForm.path" class="ce-path-input" />
+              </div>
+            </el-form-item>
+            <el-form-item label="地址">
+              <div class="ce-url">
+                <el-select v-model="caseForm.urlId" class="ce-url-select">
+                  <el-option label="按执行环境自动选" value="" />
+                  <el-option
+                    v-for="u in urlEntries"
+                    :key="u.id"
+                    :label="`固定用 ${u.name}（${u.baseUrl}）`"
+                    :value="u.id"
+                  />
+                </el-select>
+                <div v-for="p in urlPreview" :key="p.key" class="ce-url-line">
+                  <span class="ce-env" :class="p.cls">{{ p.label }}</span>
+                  <code class="ce-url-full" :title="p.url">{{ p.url || '未配置地址' }}</code>
+                  <button v-if="p.url" type="button" class="ce-copy" title="复制" @click="copyText(p.url)">
+                    <el-icon><CopyDocument /></el-icon>
+                  </button>
+                </div>
+              </div>
+            </el-form-item>
+            <el-form-item label="说明">
+              <el-input v-model="caseForm.description" type="textarea" :autosize="{ minRows: 3, maxRows: 6 }" />
+            </el-form-item>
+            <el-form-item label="来源分支">
+              <el-input
+                v-model="caseForm.sourceBranch"
+                clearable
+                placeholder="为哪个提测分支写的，如 mike/20260901/APP-9083；不填就是回归用例"
+              />
+            </el-form-item>
+            <el-form-item label="用例类型">
+              <div class="ce-kind">
+                <el-radio-group v-model="caseForm.caseKind" size="small" @click="caseKindTouched = true">
+                  <el-radio-button value="BRANCH">分支用例</el-radio-button>
+                  <el-radio-button value="REGRESSION">回归用例</el-radio-button>
+                  <el-radio-button v-if="caseForm.id" value="UNCLASSIFIED">未分类</el-radio-button>
+                </el-radio-group>
+                <div class="kv-hint">
+                  <template v-if="caseForm.caseKind === 'BRANCH' && !caseForm.sourceBranch.trim()">
+                    <b>分支用例没填来源分支</b>：分支合进 master 后没法提醒你来分诊，请补上
+                  </template>
+                  <template v-else-if="caseForm.caseKind">{{ CASE_KIND_META[caseForm.caseKind].hint }}</template>
+                  <template v-else>不选就按来源分支定：填了是分支用例，没填是回归用例</template>
+                </div>
+              </div>
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
+
         <el-tab-pane name="params">
           <template #label>Params <span class="kv-count">{{ activeCount(paramRows) }}</span></template>
-          <KvTable v-model="paramRows" key-ph="参数名" val-ph="值" />
-          <div class="kv-hint">URL 上的 query 参数。点行末「+」新增；取消勾选＝这次不传它。末尾空行保留</div>
+          <KvTable v-model="paramRows" key-ph="参数名" val-ph="值" :variables="caseVars" />
+          <div class="kv-hint">URL 上的 query 参数。勾选框决定这次是否传它；点行的 + 在下方新增一行</div>
         </el-tab-pane>
 
         <el-tab-pane name="headers">
           <template #label>Headers <span class="kv-count">{{ activeCount(headerRows) }}</span></template>
-          <KvTable v-model="headerRows" key-ph="头名称" val-ph="值" />
-          <div class="kv-hint">
-            <b>token 不用填</b>：执行时按环境自动注入。在这里写死的话，过期那天所有用例集体变红
-          </div>
+          <KvTable v-model="headerRows" key-ph="头名称" val-ph="值" :variables="caseVars" />
+          <div class="kv-hint">token 不用填，执行时按环境自动注入</div>
         </el-tab-pane>
 
-        <el-tab-pane label="Body" name="body">
-          <el-input v-model="caseForm.body" type="textarea" :rows="8" placeholder="POST/PUT 的 JSON" />
+        <el-tab-pane name="body">
+          <template #label>Body <span class="kv-count">{{ caseForm.body?.trim() ? 1 : 0 }}</span></template>
+          <el-input v-model="caseForm.body" type="textarea" :rows="12" placeholder="POST/PUT 的 JSON" class="ce-body" />
           <el-button size="small" text type="primary" class="kv-hint" @click="formatBody">格式化</el-button>
         </el-tab-pane>
 
         <el-tab-pane name="assert">
           <template #label>断言 <span class="kv-count">{{ assertRows.length }}</span></template>
           <div v-if="!assertRaw">
+            <div class="as-list">
             <div v-for="(a, i) in assertRows" :key="i" class="as-row">
-              <el-select v-model="a.type" size="small" style="width: 108px" @change="onAssertType(a)">
+              <el-select v-model="a.type" style="width: 108px" @change="onAssertType(a)">
                 <el-option label="状态码" value="status" />
                 <el-option label="字段" value="jsonPath" />
                 <el-option label="响应含" value="bodyIncludes" />
@@ -327,28 +589,24 @@
               <el-input
                 v-if="a.type === 'jsonPath'"
                 v-model="a.path"
-                size="small"
                 placeholder="$.data.total"
-                style="width: 168px"
+                class="as-path"
               />
               <el-input
                 v-else-if="a.type === 'header'"
                 v-model="a.path"
-                size="small"
                 placeholder="content-type"
-                style="width: 168px"
+                class="as-path"
               />
               <el-input
                 v-else-if="a.type === 'db' || a.type === 'dbDelta'"
                 v-model="a.path"
-                size="small"
                 placeholder="SELECT COUNT(*) FROM 表 WHERE 条件"
-                style="width: 168px"
+                class="as-path"
               />
               <el-select
                 v-if="a.type !== 'status' && a.type !== 'bodyIncludes'"
                 v-model="a.op"
-                size="small"
                 style="width: 104px"
               >
                 <el-option v-for="o in assertOps" :key="o.v" :label="o.l" :value="o.v" />
@@ -356,13 +614,17 @@
               <el-input
                 v-if="a.op !== 'exists' && a.op !== 'notEmpty'"
                 v-model="a.value"
-                size="small"
                 placeholder="期望值"
                 class="as-val"
               />
-              <el-button size="small" text type="danger" @click="assertRows.splice(i, 1)">删</el-button>
+              <button type="button" class="as-del" title="删除" @click="assertRows.splice(i, 1)">
+                <el-icon><Delete /></el-icon>
+              </button>
             </div>
-            <el-button size="small" text type="primary" @click="addAssert">+ 加一条断言</el-button>
+            <button type="button" class="as-add" @click="addAssert">
+              <el-icon><Plus /></el-icon>加一条断言
+            </button>
+            </div>
             <div v-if="assertUnknown.length" class="kv-hint">
               另有 {{ assertUnknown.length }} 条这里编辑不了的断言，已原样保留（切「源码」查看）
             </div>
@@ -375,18 +637,40 @@
             {{ assertRaw ? '← 回到表格' : '源码…' }}
           </el-button>
         </el-tab-pane>
+
+        <el-tab-pane label="运行设置" name="settings">
+          <div class="ce-setting">
+            <div class="ce-setting-text">
+              <div class="ce-setting-title" :class="{ on: caseForm.enabled }">启用该用例</div>
+              <div class="ce-setting-sub">关闭后执行集合时会跳过它，但不会删除</div>
+            </div>
+            <el-switch v-model="caseForm.enabled" style="--el-switch-on-color: var(--el-color-success)" />
+          </div>
+          <div class="ce-setting">
+            <div class="ce-setting-text">
+              <div class="ce-setting-title">只在测试环境跑</div>
+              <div class="ce-setting-sub">打开后切到生产环境时会自动跳过，避免打到线上</div>
+            </div>
+            <el-switch v-model="caseForm.testOnly" />
+          </div>
+        </el-tab-pane>
       </el-tabs>
 
-      <el-form label-width="88px" size="small">
-        <el-form-item label="启用">
-          <el-switch v-model="caseForm.enabled" />
-        </el-form-item>
-      </el-form>
-      <div class="drawer-footer">
-        <el-button @click="caseDrawer = false">取消</el-button>
-        <el-button type="primary" :loading="caseSaving" @click="saveCaseForm">保存</el-button>
-      </div>
-    </el-drawer>
+      <template #footer>
+        <div class="ce-foot">
+          <span class="ce-saved">{{ caseForm.updatedAt ? `上次保存 ${fmtSaved(caseForm.updatedAt)}` : '' }}</span>
+          <el-button @click="caseDrawer = false">取消</el-button>
+          <el-button type="primary" :loading="caseSaving" @click="saveCaseForm">保存</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <BranchTriageDrawer
+      v-model="triageVisible"
+      :projects="projects"
+      :default-project="selectedCollection?.project || selectedController?.code || ''"
+      @changed="refreshCurrentCases"
+    />
 
     <el-dialog v-model="importDocVisible" title="导入接口文档" width="560px" destroy-on-close>
       <el-radio-group v-model="importDocMode" size="small" style="margin-bottom: 12px">
@@ -442,13 +726,30 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { FolderOpened, Plus, VideoPlay } from '@element-plus/icons-vue'
+import { ArrowRight, Close, CopyDocument, Delete, FolderOpened, Plus, Search, VideoPlay } from '@element-plus/icons-vue'
 import { apiClient } from '../api'
-import KvTable, { type KvRow } from '../components/KvTable.vue'
+import KvTable, { type KvRow, type KvVariable } from '../components/KvTable.vue'
 import type { MustTestItem } from '../components/api-testing/MustTestBoard.vue'
+import {
+  WRITE_EFFECT_META,
+  guardProdRun,
+  judgeProdCases,
+  type CaseRef,
+  type ProdVerdict
+} from '../utils/writeEffect'
+import {
+  CASE_KIND_META,
+  CASE_KIND_OPTIONS,
+  caseKindTitle,
+  hasCaseKind,
+  invalidateCaseKindIndex,
+  kindOf,
+  type ApiCaseKind
+} from '../utils/caseKind'
+import BranchTriageDrawer from '../components/api-testing/BranchTriageDrawer.vue'
 
 type TreeNode = {
   nodeKey: string
@@ -469,6 +770,10 @@ type TreeNode = {
   path?: string
   linkId?: string
   endpointId?: string
+  coreTotal?: number
+  coreCovered?: number
+  /** Controller 下的接口路径和用例名，树上搜接口时靠它命中 */
+  searchText?: string
   children?: TreeNode[]
 }
 
@@ -485,7 +790,118 @@ const grouping = ref(false)
 const saving = ref(false)
 const running = ref(false)
 const treeData = ref<TreeNode[]>([])
+const projectFilter = computed(() => String(route.query.project || '').trim())
+const treeKeyword = ref('')
+function filterTreeByKeyword(nodes: TreeNode[], kw: string): TreeNode[] {
+  const out: TreeNode[] = []
+  for (const n of nodes) {
+    const text = `${n.label || ''}\n${n.path || ''}\n${n.searchText || ''}`.toLowerCase()
+    if (text.includes(kw)) {
+      out.push(n)
+      continue
+    }
+    const children = filterTreeByKeyword(n.children || [], kw)
+    if (children.length) out.push({ ...n, children })
+  }
+  return out
+}
+const filteredTree = computed(() => {
+  const code = projectFilter.value
+  const byProject = !code
+    ? treeData.value
+    : treeData.value
+        .map((cat) => ({ ...cat, children: (cat.children || []).filter((p) => p.project === code) }))
+        .filter((cat) => cat.children.length)
+  const kw = treeKeyword.value.trim().toLowerCase()
+  return kw ? filterTreeByKeyword(byProject, kw) : byProject
+})
+
+/** 左侧分页单位：全量用例按 Controller，分支用例按集合 */
+const NAV_PAGE_SIZE = 20
+const navPage = ref(1)
+const navUnitKind = computed(() => (scope.value === 'LIVE' ? 'controller' : 'collection'))
+
+function countNavUnits(nodes: TreeNode[], kind: string): number {
+  let n = 0
+  for (const node of nodes) {
+    if (node.kind === kind) n++
+    else if (node.children?.length) n += countNavUnits(node.children, kind)
+  }
+  return n
+}
+
+/** 只留 [from, to) 区间内的单位节点，没有剩下单位的文件夹一并去掉 */
+function sliceNavUnits(nodes: TreeNode[], kind: string, from: number, to: number, counter: { i: number }): TreeNode[] {
+  const out: TreeNode[] = []
+  for (const node of nodes) {
+    if (counter.i >= to) break
+    if (node.kind === kind) {
+      if (counter.i >= from) out.push(node)
+      counter.i++
+      continue
+    }
+    if (!node.children?.length) continue
+    const children = sliceNavUnits(node.children, kind, from, to, counter)
+    if (children.length) out.push({ ...node, children })
+  }
+  return out
+}
+
+const navTotal = computed(() => countNavUnits(filteredTree.value, navUnitKind.value))
+const visibleTree = computed(() => {
+  if (navTotal.value <= NAV_PAGE_SIZE) return filteredTree.value
+  const from = (navPage.value - 1) * NAV_PAGE_SIZE
+  return sliceNavUnits(filteredTree.value, navUnitKind.value, from, from + NAV_PAGE_SIZE, { i: 0 })
+})
+watch([treeKeyword, projectFilter, scope], () => {
+  navPage.value = 1
+})
+watch(navTotal, (total) => {
+  const pages = Math.max(1, Math.ceil(total / NAV_PAGE_SIZE))
+  if (navPage.value > pages) navPage.value = pages
+})
 const treeRef = ref()
+/** 树每次换数据都会重建节点，手动展开的要记下来，否则点一下集合别的都收起了 */
+const userExpandedKeys = ref<string[]>([])
+/** 默认展开的文件夹被手动收起后，不能再被默认规则展开回去 */
+const userCollapsedKeys = ref<string[]>([])
+const treeExpandedKeys = computed(() => {
+  const kw = treeKeyword.value.trim()
+  const collapsed = new Set(userCollapsedKeys.value)
+  const out: string[] = []
+  const walk = (nodes: TreeNode[]) => {
+    for (const n of nodes) {
+      if (!n.children?.length) continue
+      // 集合下面是接口，默认收起，点开才渲染
+      if ((kw || n.kind !== 'collection') && !collapsed.has(n.nodeKey)) out.push(n.nodeKey)
+      walk(n.children)
+    }
+  }
+  walk(visibleTree.value)
+  return [...out, ...userExpandedKeys.value.filter((k) => !collapsed.has(k))]
+})
+function onTreeExpand(data: TreeNode) {
+  const key = data.nodeKey
+  if (userCollapsedKeys.value.includes(key)) {
+    userCollapsedKeys.value = userCollapsedKeys.value.filter((k) => k !== key)
+  }
+  if (!userExpandedKeys.value.includes(key)) {
+    userExpandedKeys.value = [...userExpandedKeys.value, key]
+  }
+}
+function onTreeCollapse(data: TreeNode) {
+  const key = data.nodeKey
+  if (userExpandedKeys.value.includes(key)) {
+    userExpandedKeys.value = userExpandedKeys.value.filter((k) => k !== key)
+  }
+  if (!userCollapsedKeys.value.includes(key)) {
+    userCollapsedKeys.value = [...userCollapsedKeys.value, key]
+  }
+}
+function expandTreeNode(nodeKey: string) {
+  treeRef.value?.getNode?.(nodeKey)?.expand?.()
+  onTreeExpand({ nodeKey } as TreeNode)
+}
 const collectionCases = ref<any[]>([])
 const caseKeyword = ref('')
 const selectedCollection = ref<any>(null)
@@ -508,12 +924,16 @@ const runDialog = ref(false)
 const editing = ref(false)
 const runTarget = ref<any>(null)
 const runEnv = ref('TEST')
+/** 全量用例在哪个环境跑；默认测试，线上要主动切 */
+const liveRunEnv = ref<'TEST' | 'PROD'>('TEST')
 const confirmProd = ref(false)
 const autoGroupProject = ref('')
 
 const httpMethods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 const caseDrawer = ref(false)
+let editingRow: any = null
 const caseSaving = ref(false)
+const runningCaseId = ref('')
 const generatingCase = ref(false)
 const runningCase = ref(false)
 const importDocVisible = ref(false)
@@ -529,7 +949,7 @@ function onDocFilePicked(e: Event) {
   docFile.value = f || null
   importResult.value = null
 }
-const editTab = ref('params')
+const editTab = ref('basic')
 const paramRows = ref<KvRow[]>([])
 const headerRows = ref<KvRow[]>([])
 const assertRaw = ref(false)
@@ -579,8 +999,11 @@ function formatBody() {
 
 /** query 串 ⇄ 行 */
 function queryToRows(q?: string): KvRow[] {
-  if (!q) return []
-  return q
+  const s = (q || '').trim()
+  if (!s) return []
+  if (s.startsWith('{')) return jsonToRows(s)
+  return s
+    .replace(/^\?/, '')
     .split('&')
     .filter(Boolean)
     .map((p) => {
@@ -710,7 +1133,7 @@ function loadEditorRows() {
   headerRows.value = jsonToRows(caseForm.value.headers)
   assertsToRows(caseForm.value.assertions)
   assertRaw.value = false
-  editTab.value = 'params'
+  editTab.value = 'basic'
 }
 
 const caseForm = ref({
@@ -726,8 +1149,115 @@ const caseForm = ref({
   body: '',
   assertions: '[{"type":"status","equals":200}]',
   enabled: true,
-  sortOrder: 100
+  testOnly: false,
+  sortOrder: 100,
+  urlId: '',
+  updatedAt: '',
+  sourceBranch: '',
+  caseKind: '' as ApiCaseKind | ''
 })
+/** 新建时类型跟着来源分支走；人点过一次就不再自动改。编辑已有用例一律视为点过——种类是存下来的，不是推出来的 */
+const caseKindTouched = ref(false)
+watch(
+  () => caseForm.value.sourceBranch,
+  (sb) => {
+    if (!caseKindTouched.value) caseForm.value.caseKind = String(sb || '').trim() ? 'BRANCH' : 'REGRESSION'
+  }
+)
+
+const envBase = ref<Record<string, string>>({})
+const urlEntries = ref<any[]>([])
+const caseVars = ref<KvVariable[]>([])
+
+const BUILTIN_VARS: KvVariable[] = [
+  { name: 'token', builtin: '自动登录拿到的 token（执行时才有）' },
+  { name: '$timestamp', builtin: '当前毫秒时间戳，每次执行都不同' },
+  { name: '$timestampSec', builtin: '当前秒级时间戳' },
+  { name: '$randomInt', builtin: '0～999999 随机整数' },
+  { name: '$uuid', builtin: '随机 UUID' }
+]
+
+/** 测试 / 线上两套变量按名字合并：同一个 {{steamId}} 执行时按环境各取各的值 */
+async function loadCaseVars(project?: string) {
+  const [test, prod] = await Promise.all(
+    ['TEST', 'PROD'].map((env) => apiClient.getApiTestVariables(env, project || undefined).catch(() => []))
+  )
+  const byName = new Map<string, KvVariable>()
+  const put = (list: any[], key: 'test' | 'prod') => {
+    for (const v of Array.isArray(list) ? list : []) {
+      if (!v?.name || v.enabled === false) continue
+      const cur = byName.get(v.name) || { name: v.name }
+      cur[key] = v.value ?? ''
+      cur.secret = cur.secret || !!v.secret
+      byName.set(v.name, cur)
+    }
+  }
+  put(test, 'test')
+  put(prod, 'prod')
+  const real = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name))
+  caseVars.value = [...real, ...BUILTIN_VARS.filter((b) => !byName.has(b.name))]
+}
+
+async function loadUrlContext(project?: string) {
+  urlEntries.value = []
+  loadCaseVars(project)
+  try {
+    if (!Object.keys(envBase.value).length) {
+      const envs = await apiClient.getApiTestEnvs()
+      envBase.value = Object.fromEntries(
+        (envs || []).filter((e) => e.baseUrl).map((e) => [String(e.environment).toUpperCase(), e.baseUrl])
+      )
+    }
+    if (project) {
+      urlEntries.value = ((await apiClient.getApiUrls({ project })) || []).filter((u: any) => u.enabled !== false)
+    }
+  } catch {
+    /* 地址预览拿不到不影响编辑 */
+  }
+}
+
+const ENV_LABEL: Record<string, { label: string; cls: string }> = {
+  TEST: { label: '测试', cls: 'is-test' },
+  PROD: { label: '线上', cls: 'is-prod' }
+}
+
+const urlPreview = computed(() => {
+  const qs = rowsToQuery(paramRows.value)
+  const join = (base?: string) => {
+    if (!base) return ''
+    const p = caseForm.value.path.trim()
+    if (/^https?:\/\//.test(p)) return p + (qs ? `?${qs}` : '')
+    return base.replace(/\/+$/, '') + (p.startsWith('/') ? p : `/${p}`) + (qs ? `?${qs}` : '')
+  }
+  const bound = urlEntries.value.find((u) => u.id === caseForm.value.urlId)
+  if (bound) {
+    const env = ENV_LABEL[String(bound.environment).toUpperCase()] || { label: '固定', cls: '' }
+    return [{ key: 'bound', ...env, url: join(bound.baseUrl) }]
+  }
+  return ['TEST', 'PROD'].map((k) => ({ key: k, ...ENV_LABEL[k], url: join(autoBase(k)) }))
+})
+
+/** 与后端执行器一致：项目在该环境的地址（同环境优先于 ANY，按排序取第一条），没有才退回全局环境 */
+function autoBase(env: string) {
+  const usable = urlEntries.value.filter((u: any) => u.baseUrl)
+  const envOf = (u: any) => String(u.environment || '').toUpperCase()
+  const hit = usable.find((u: any) => envOf(u) === env) || usable.find((u: any) => envOf(u) === 'ANY')
+  return hit?.baseUrl || envBase.value[env]
+}
+
+async function copyText(s: string) {
+  try {
+    await navigator.clipboard.writeText(s)
+    ElMessage.success('已复制')
+  } catch {
+    ElMessage.warning('复制失败')
+  }
+}
+
+function fmtSaved(v: string) {
+  const m = String(v).match(/^\d{4}-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/)
+  return m ? `${m[1]}-${m[2]} ${m[3]}:${m[4]}` : v
+}
 
 const form = ref<any>({
   id: '',
@@ -794,6 +1324,22 @@ const progressStats = computed(() => {
   return { passed, disabled, total: collectionCases.value.length }
 })
 
+function casePriority(r: any) {
+  if (r.level === 'CORE') return 0
+  if (r.testOnly) return 1
+  return 2
+}
+
+function sortByPriority<T>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => casePriority(a) - casePriority(b))
+}
+
+const kindFilter = ref<ApiCaseKind | ''>('')
+const triageVisible = ref(false)
+function byKind(rows: any[]) {
+  return kindFilter.value ? rows.filter((r) => kindOf(r) === kindFilter.value) : rows
+}
+
 const interfaceCaseRows = computed(() => {
   if (!selectedInterface.value) return []
   const { method, path } = selectedInterface.value
@@ -801,34 +1347,194 @@ const interfaceCaseRows = computed(() => {
     (r) => String(r.method || '').toUpperCase() === method.toUpperCase() && String(r.path || '') === path
   )
   const kw = caseKeyword.value.trim().toLowerCase()
-  if (!kw) return rows
-  return rows.filter(
-    (r) =>
-      String(r.name || '').toLowerCase().includes(kw) ||
-      String(r.path || '').toLowerCase().includes(kw) ||
-      String(r.description || '').toLowerCase().includes(kw)
-  )
+  if (kw) {
+    rows = rows.filter(
+      (r) =>
+        String(r.name || '').toLowerCase().includes(kw) ||
+        String(r.path || '').toLowerCase().includes(kw) ||
+        String(r.description || '').toLowerCase().includes(kw)
+    )
+  }
+  return sortByPriority(byKind(rows))
 })
 
 const selectedInterfaceCases = computed(() => interfaceCaseRows.value)
 
-const liveCaseRows = ref<any[]>([])
-
-const filteredCaseRows = computed(() => {
-  let rows = liveCaseRows.value
-  if (selectedController.value?.handler) {
-    const h = selectedController.value.handler
-    rows = rows.filter((r) => (r.controller || caseHostLabel(r)) === h)
-  }
-  const kw = caseKeyword.value.trim().toLowerCase()
-  if (!kw) return rows
-  return rows.filter(
-    (r) =>
-      String(r.path || '').toLowerCase().includes(kw) ||
-      String(r.name || '').toLowerCase().includes(kw) ||
-      String(r.controller || '').toLowerCase().includes(kw)
-  )
+const PAGE_SIZES = [20, 50, 100]
+const ifaceCasePage = ref(1)
+const ifaceCaseSize = ref(PAGE_SIZES[0])
+const pagedInterfaceCaseRows = computed(() => {
+  const from = (ifaceCasePage.value - 1) * ifaceCaseSize.value
+  return interfaceCaseRows.value.slice(from, from + ifaceCaseSize.value)
 })
+watch([selectedInterface, caseKeyword, kindFilter], () => {
+  ifaceCasePage.value = 1
+})
+
+function scenarioOf(row: any) {
+  const name = String(row?.name || '')
+  const i = name.indexOf(' · ')
+  return i > 0 ? name.slice(i + 3) : name
+}
+
+/** 生产 Controller 视图：接口按页从后端取，每个接口自带用例，点开才渲染 */
+const liveIfaceItems = ref<any[]>([])
+const liveIfaceTotal = ref(0)
+const liveCaseTotal = ref(0)
+const liveIfacePage = ref(1)
+const liveIfaceSize = ref(PAGE_SIZES[0])
+const liveLoading = ref(false)
+const expandedIfaceKeys = ref<string[]>([])
+let liveSeq = 0
+let liveQueryKey = ''
+
+function ifaceRowKey(g: { method?: string; path?: string }) {
+  return `if:${String(g.method || 'GET').toUpperCase()} ${g.path || ''}`
+}
+
+const ifaceGroups = computed(() =>
+  liveIfaceItems.value.map((g) => {
+    const rowKey = ifaceRowKey(g)
+    const cases: any[] = g.cases || []
+    return {
+      rowKey,
+      isIface: true,
+      method: g.method,
+      path: g.path,
+      title: g.title,
+      level: g.level,
+      caseCount: cases.length,
+      enabledCount: cases.filter((c) => c.enabled).length,
+      allCases: cases,
+      // 收起时不给 children：表格就不会把它们渲染成隐藏行
+      children: expandedIfaceKeys.value.includes(rowKey) ? cases : []
+    }
+  })
+)
+
+function liveQuery() {
+  const ctrl = selectedController.value
+  return {
+    code: ctrl?.code || '',
+    params: {
+      controller: ctrl?.handler || undefined,
+      keyword: caseKeyword.value.trim() || undefined,
+      kind: kindFilter.value || undefined,
+      page: liveIfacePage.value,
+      size: liveIfaceSize.value,
+      includeArchived: includeArchived.value
+    }
+  }
+}
+
+function resetLiveInterfaces() {
+  liveSeq++
+  liveQueryKey = ''
+  liveIfaceItems.value = []
+  liveIfaceTotal.value = 0
+  liveCaseTotal.value = 0
+  liveIfacePage.value = 1
+  expandedIfaceKeys.value = []
+  liveLoading.value = false
+}
+
+async function loadLiveInterfaces(opts: { force?: boolean; keepExpanded?: boolean } = {}) {
+  const { code, params } = liveQuery()
+  if (!code) return
+  const key = JSON.stringify([code, params])
+  if (!opts.force && key === liveQueryKey) return
+  liveQueryKey = key
+  const seq = ++liveSeq
+  liveLoading.value = true
+  try {
+    const res = await apiClient.getApiTestLiveInterfaces(code, params)
+    if (seq !== liveSeq) return
+    liveIfaceItems.value = res.items || []
+    liveIfaceTotal.value = res.total || 0
+    liveCaseTotal.value = res.caseTotal || 0
+    if (res.page && res.page !== liveIfacePage.value) {
+      liveIfacePage.value = res.page
+      liveQueryKey = JSON.stringify([code, liveQuery().params])
+    }
+    const keys = new Set(liveIfaceItems.value.map(ifaceRowKey))
+    expandedIfaceKeys.value = params.keyword
+      ? [...keys]
+      : opts.keepExpanded
+        ? expandedIfaceKeys.value.filter((k) => keys.has(k))
+        : []
+  } catch (e: any) {
+    if (seq !== liveSeq) return
+    liveQueryKey = ''
+    liveIfaceItems.value = []
+    liveIfaceTotal.value = 0
+    liveCaseTotal.value = 0
+    ElMessage.error(e?.message || '加载接口失败')
+  } finally {
+    if (seq === liveSeq) liveLoading.value = false
+  }
+}
+
+function refreshLiveInterfaces() {
+  return loadLiveInterfaces({ force: true, keepExpanded: true })
+}
+
+let liveFilterTimer: ReturnType<typeof setTimeout> | undefined
+watch([caseKeyword, kindFilter], () => {
+  if (!selectedController.value) return
+  clearTimeout(liveFilterTimer)
+  liveFilterTimer = setTimeout(() => {
+    liveIfacePage.value = 1
+    loadLiveInterfaces()
+  }, 300)
+})
+watch([liveIfacePage, liveIfaceSize], () => {
+  if (selectedController.value) loadLiveInterfaces()
+})
+
+function onIfaceRowClick(row: any) {
+  if (!row?.isIface) return
+  const keys = expandedIfaceKeys.value
+  expandedIfaceKeys.value = keys.includes(row.rowKey)
+    ? keys.filter((k) => k !== row.rowKey)
+    : [...keys, row.rowKey]
+}
+
+function onIfaceExpandChange(row: any, expanded: boolean) {
+  if (row?.isIface && !expanded) {
+    expandedIfaceKeys.value = expandedIfaceKeys.value.filter((k) => k !== row.rowKey)
+  }
+}
+
+async function runIfaceCases(group: any) {
+  let env: 'PROD' | 'TEST' = scope.value === 'LIVE' ? liveRunEnv.value : 'TEST'
+  const rows = (group.allCases || []).filter((c: any) => c.enabled !== false && !(env === 'PROD' && c.testOnly))
+  if (!rows.length) {
+    ElMessage.warning(env === 'PROD' ? '这个接口下没有能在线上跑的启用用例' : '这个接口下没有启用的用例')
+    return
+  }
+  let ids: string[] = rows.map((c: any) => c.id)
+  if (env === 'PROD') {
+    const g = await guardProdRun(rows, rows[0].project || selectedController.value?.code, group.title)
+    if (g.mode === 'cancel') return
+    ids = g.ids
+    env = g.env
+  }
+  runningCaseId.value = group.rowKey
+  try {
+    const r = await apiClient.runApiTest({
+      caseIds: ids,
+      environment: env,
+      confirmProd: env === 'PROD'
+    })
+    ElMessage[r.ok ? 'success' : 'warning'](r.message || '执行完成')
+    await refreshCurrentCases()
+    if (r.runId) router.push({ path: '/api-reports', query: { runId: r.runId } })
+  } catch (e: any) {
+    ElMessage.error(e?.message || '执行失败')
+  } finally {
+    runningCaseId.value = ''
+  }
+}
 
 function projectShort(code?: string) {
   if (!code) return '—'
@@ -891,11 +1597,9 @@ async function toggleCaseEnabled(row: any) {
   const next = !row.enabled
   try {
     await apiClient.updateApiTestCase(row.id, {
-      name: row.name,
-      method: row.method,
-      path: row.path,
+      ...row,
       enabled: next,
-      project: selectedCollection.value?.project || selectedController.value?.code
+      project: row.project || selectedCollection.value?.project || selectedController.value?.code
     })
     row.enabled = next
     ElMessage.success(next ? '已启用' : '已停用')
@@ -960,21 +1664,15 @@ function buildTree(categories: any[]): TreeNode[] {
             nodeKey: `ctrl:${proj.code}:${ctrl.label}`,
             label: ctrl.label,
             kind: 'controller' as const,
-            isFolder: true,
+            isFolder: false,
             project: proj.code,
             handler: ctrl.handler || ctrl.label,
             code: proj.code,
             runCollectionId: proj.runCollectionId,
             meta: String(ctrl.caseCount ?? 0),
-            statusTag: ctrl.statusTag,
-            children: (ctrl.previews || []).map((p: any, i: number) => ({
-              nodeKey: `ep:${proj.code}:${ctrl.label}:${i}`,
-              label: String(p.path || '').split('/').pop() || p.label,
-              kind: 'endpoint' as const,
-              method: p.method,
-              project: proj.code,
-              handler: ctrl.handler || ctrl.label
-            }))
+            coreTotal: Number(ctrl.coreTotal || 0),
+            coreCovered: Number(ctrl.coreCovered || 0),
+            searchText: ctrl.searchText || ''
           }))
         }
         return [projectNode]
@@ -1048,13 +1746,21 @@ async function loadTree() {
     selectedInterface.value = null
     selectedController.value = null
     collectionCases.value = []
-    liveCaseRows.value = []
+    resetLiveInterfaces()
     caseKeyword.value = ''
   } catch (e: any) {
     treeData.value = []
     ElMessage.error(e?.message || '加载失败')
   } finally {
     loading.value = false
+  }
+}
+
+async function refreshCurrentCases() {
+  if (selectedController.value) {
+    await refreshLiveInterfaces()
+  } else {
+    await refreshSelectedCases()
   }
 }
 
@@ -1098,6 +1804,7 @@ async function onNodeClick(data: TreeNode) {
       }
       selectedCollection.value = collectionCtx
     }
+    if (data.children?.length) expandTreeNode(data.nodeKey)
     if (collectionCtx?.id) {
       await loadCollectionCases(collectionCtx.id)
     }
@@ -1133,8 +1840,10 @@ async function onNodeClick(data: TreeNode) {
       handler: data.handler || data.label,
       runCollectionId: data.runCollectionId
     }
-    caseKeyword.value = ''
-    await loadLiveProjectCases(data.code || data.project || '')
+    const kw = treeKeyword.value.trim()
+    resetLiveInterfaces()
+    caseKeyword.value = kw && !data.label.toLowerCase().includes(kw.toLowerCase()) ? kw : ''
+    await loadLiveInterfaces({ force: true })
     return
   }
   if (data.kind === 'endpoint' && data.project && data.handler) {
@@ -1145,10 +1854,9 @@ async function onNodeClick(data: TreeNode) {
       code: data.project,
       handler: data.handler
     }
-    await loadLiveProjectCases(data.project)
-    if (data.method) {
-      caseKeyword.value = String(data.path || '').split('/').pop() || ''
-    }
+    resetLiveInterfaces()
+    caseKeyword.value = data.method ? String(data.path || '').split('/').pop() || '' : ''
+    await loadLiveInterfaces({ force: true })
   }
 }
 
@@ -1320,7 +2028,7 @@ async function hydrateCollectionNode(data: TreeNode, collectionCtx: any) {
     const children = buildInterfaceChildren(cases, endpoints, data, collectionCtx)
     patchTreeNode(data.nodeKey, { children, isFolder: true })
     await nextTick()
-    treeRef.value?.getNode?.(data.nodeKey)?.expand?.()
+    expandTreeNode(data.nodeKey)
   } catch (e: any) {
     ElMessage.error(e?.message || '加载接口列表失败')
     collectionCases.value = []
@@ -1351,21 +2059,37 @@ function findTreeNode(match: (n: TreeNode) => boolean): TreeNode | null {
   return walk(treeData.value)
 }
 
+function clearProjectFilter() {
+  const { project: _drop, ...rest } = route.query
+  router.replace({ path: route.path, query: rest })
+}
+
+function navPageOf(nodeKey: string): number | null {
+  const kind = navUnitKind.value
+  let i = 0
+  const contains = (n: TreeNode): boolean =>
+    n.nodeKey === nodeKey || (n.children || []).some(contains)
+  const walk = (nodes: TreeNode[]): number | null => {
+    for (const n of nodes) {
+      if (n.kind === kind) {
+        if (contains(n)) return Math.floor(i / NAV_PAGE_SIZE) + 1
+        i++
+      } else if (n.children?.length) {
+        const hit = walk(n.children)
+        if (hit) return hit
+      }
+    }
+    return null
+  }
+  return walk(filteredTree.value)
+}
+
 async function selectTreeNode(data: TreeNode) {
+  const page = navPageOf(data.nodeKey)
+  if (page) navPage.value = page
   await nextTick()
   treeRef.value?.setCurrentKey?.(data.nodeKey)
   await onNodeClick(data)
-}
-
-async function loadLiveProjectCases(projectCode: string) {
-  try {
-    liveCaseRows.value = await apiClient.getApiTestProjectLiveCases(projectCode, {
-      includeArchived: includeArchived.value
-    })
-  } catch (e: any) {
-    ElMessage.error(e?.message || '加载接口失败')
-    liveCaseRows.value = []
-  }
 }
 
 function onScopeChange() {
@@ -1377,7 +2101,7 @@ function onScopeChange() {
 
 function runLiveProject(proj: { code: string; label?: string; runCollectionId?: string }) {
   if (!proj.runCollectionId) {
-    ElMessage.warning('该项目暂无可执行的 master 集合')
+    ElMessage.warning('该项目暂无可执行的全量集合')
     return
   }
   run({
@@ -1553,6 +2277,7 @@ async function releaseRequirement(requirementNo: string) {
 }
 
 function resetCaseForm() {
+  editingRow = null
   const iface = selectedInterface.value
   const col = selectedCollection.value
   caseForm.value = {
@@ -1568,8 +2293,14 @@ function resetCaseForm() {
     body: '',
     assertions: '[{"type":"status","equals":200}]',
     enabled: false,
-    sortOrder: 100
+    testOnly: false,
+    sortOrder: 100,
+    urlId: '',
+    updatedAt: '',
+    sourceBranch: col?.sourceBranch || '',
+    caseKind: col?.sourceBranch ? 'BRANCH' : 'REGRESSION'
   }
+  caseKindTouched.value = false
 }
 
 function openCreateCase() {
@@ -1579,10 +2310,12 @@ function openCreateCase() {
   }
   resetCaseForm()
   loadEditorRows()
+  loadUrlContext(caseForm.value.project)
   caseDrawer.value = true
 }
 
 function openEditCase(row: any) {
+  editingRow = row
   caseForm.value = {
     id: row.id,
     project: row.project || selectedCollection.value?.project || '',
@@ -1596,19 +2329,33 @@ function openEditCase(row: any) {
     body: row.body || '',
     assertions: row.assertions || '[{"type":"status","equals":200}]',
     enabled: row.enabled !== false,
-    sortOrder: row.sortOrder ?? 100
+    testOnly: !!row.testOnly,
+    sortOrder: row.sortOrder ?? 100,
+    urlId: row.urlId || '',
+    updatedAt: row.updatedAt || '',
+    sourceBranch: row.sourceBranch || '',
+    caseKind: kindOf(row) || ''
   }
+  caseKindTouched.value = true
   loadEditorRows()
+  loadUrlContext(caseForm.value.project)
   caseDrawer.value = true
 }
 
 async function saveCaseForm() {
+  const id = await persistCaseForm()
+  if (!id) return
+  ElMessage.success('已保存')
+  caseDrawer.value = false
+  await refreshCurrentCases()
+}
+
+/** 先落库当前表单，返回用例 id；失败返回空串 */
+async function persistCaseForm(): Promise<string> {
   if (!caseForm.value.name.trim() || !caseForm.value.path.trim()) {
     ElMessage.warning('名称和 Path 必填')
-    return
+    return ''
   }
-  // 表格模式下由行拼出 JSON——人写不出语法错，这里也就不用再校验一遍。
-  // 只有停在「源码」页时才是人手写的，那时才校验
   if (!assertRaw.value) {
     caseForm.value.assertions = rowsToAsserts()
   } else {
@@ -1616,7 +2363,7 @@ async function saveCaseForm() {
       JSON.parse(caseForm.value.assertions || '[]')
     } catch {
       ElMessage.warning('断言不是合法 JSON —— 切回表格模式就不会写错了')
-      return
+      return ''
     }
   }
   caseForm.value.headers = rowsToJson(headerRows.value)
@@ -1624,6 +2371,9 @@ async function saveCaseForm() {
   caseSaving.value = true
   try {
     const body = {
+      urlId: caseForm.value.urlId || null,
+      extractJson: editingRow?.extractJson,
+      fieldNotes: editingRow?.fieldNotes,
       project: caseForm.value.project || selectedCollection.value?.project,
       environment: caseForm.value.environment,
       name: caseForm.value.name.trim(),
@@ -1635,26 +2385,65 @@ async function saveCaseForm() {
       body: caseForm.value.body,
       assertions: caseForm.value.assertions,
       enabled: caseForm.value.enabled,
+      testOnly: caseForm.value.testOnly,
       sortOrder: caseForm.value.sortOrder,
-      requirementRef: selectedCollection.value?.requirementNo || undefined
+      requirementRef: selectedCollection.value?.requirementNo || editingRow?.requirementRef || undefined,
+      caseKind: caseForm.value.caseKind || undefined,
+      // 后端：null＝沿用库里的，空串＝清空。行里压根没这个键（后端旧版）时别发空串，免得把库里的分支抹掉
+      sourceBranch:
+        caseForm.value.sourceBranch.trim() || (editingRow && !('sourceBranch' in editingRow) ? undefined : '')
     }
+    invalidateCaseKindIndex()
     if (caseForm.value.id) {
       await apiClient.updateApiTestCase(caseForm.value.id, body)
-    } else {
-      const saved = await apiClient.createApiTestCase(body)
-      const colId = selectedCollection.value?.id
-      if (colId && saved?.id) {
-        const ids = [...collectionCases.value.map((c) => c.id), saved.id]
-        await apiClient.assignApiTestCases(colId, ids)
-      }
+      return caseForm.value.id
     }
-    ElMessage.success('已保存')
-    caseDrawer.value = false
-    await refreshSelectedCases()
+    const saved = await apiClient.createApiTestCase(body)
+    const colId = selectedCollection.value?.id
+    if (colId && saved?.id) {
+      const ids = [...collectionCases.value.map((c) => c.id), saved.id]
+      await apiClient.assignApiTestCases(colId, ids)
+    }
+    if (saved?.id) caseForm.value.id = saved.id
+    return saved?.id || ''
   } catch (e: any) {
     ElMessage.error(e?.message || '保存失败')
+    return ''
   } finally {
     caseSaving.value = false
+  }
+}
+
+async function runOneCase(row: any) {
+  if (!row?.id) return
+  if (row.enabled === false) {
+    ElMessage.warning('用例已停用，先启用再执行')
+    return
+  }
+  let env: 'PROD' | 'TEST' = scope.value === 'LIVE' ? liveRunEnv.value : 'TEST'
+  if (env === 'PROD' && row.testOnly) {
+    ElMessage.warning('这条标了「只在测试环境跑」，把执行环境切到「测试」再执行')
+    return
+  }
+  if (env === 'PROD') {
+    const g = await guardProdRun([row], row.project || selectedController.value?.code)
+    if (g.mode === 'cancel') return
+    env = g.env
+  }
+  runningCaseId.value = row.id
+  try {
+    const r = await apiClient.runApiTest({
+      caseIds: [row.id],
+      environment: env,
+      confirmProd: env === 'PROD'
+    })
+    ElMessage[r.ok ? 'success' : 'warning'](r.message || '执行完成')
+    await refreshCurrentCases()
+    if (r.runId) router.push({ path: '/api-reports', query: { runId: r.runId } })
+  } catch (e: any) {
+    ElMessage.error(e?.message || '执行失败')
+  } finally {
+    runningCaseId.value = ''
   }
 }
 
@@ -1667,7 +2456,7 @@ async function removeCase(row: any) {
   try {
     await apiClient.deleteApiTestCase(row.id)
     ElMessage.success('已删除')
-    await refreshSelectedCases()
+    await refreshCurrentCases()
   } catch (e: any) {
     ElMessage.error(e?.message || '删除失败')
   }
@@ -1712,17 +2501,29 @@ async function runInterfaceCases() {
   // 只跑启用的：停用的那些是「待补断言」，跑起来必然失败，
   // 而失败得毫无意义 —— 几次之后人就不再看执行结果了
   const runnable = selectedInterfaceCases.value.filter((c: any) => c.enabled)
-  const ids = runnable.map((c: any) => c.id).filter(Boolean)
+  let ids = runnable.map((c: any) => c.id).filter(Boolean)
   if (!ids.length) {
     ElMessage.warning('这个接口下没有已启用的用例。停用的是「待补断言」，补完断言再启用')
     return
   }
   const skipped = selectedInterfaceCases.value.length - runnable.length
+  let env: 'PROD' | 'TEST' = scope.value === 'LIVE' ? liveRunEnv.value : 'TEST'
+  if (env === 'PROD') {
+    const g = await guardProdRun(
+      runnable.map((c: any) => ({ ...c, endpointId: c.endpointId || selectedInterface.value?.endpointId })),
+      selectedCollection.value?.project,
+      selectedInterface.value?.label
+    )
+    if (g.mode === 'cancel') return
+    ids = g.ids
+    env = g.env
+  }
   runningCase.value = true
   try {
     const r = await apiClient.runApiTest({
       caseIds: ids,
-      environment: scope.value === 'LIVE' ? 'PROD' : 'TEST'
+      environment: env,
+      confirmProd: env === 'PROD'
     })
     ElMessage[r.ok ? 'success' : 'warning'](
       (r.message || '执行完成') + (skipped > 0 ? `（跳过 ${skipped} 条待补断言的）` : '')
@@ -1786,18 +2587,62 @@ async function submitImportDoc() {
 
 function run(c: any) {
   runTarget.value = c
-  runEnv.value = scope.value === 'LIVE' ? 'PROD' : 'TEST'
+  runEnv.value = scope.value === 'LIVE' ? liveRunEnv.value : 'TEST'
   confirmProd.value = false
   runDialog.value = true
+  loadProdJudge()
 }
+
+const prodJudge = ref<{ loading: boolean; supported: boolean; verdicts: ProdVerdict[] }>({
+  loading: false,
+  supported: false,
+  verdicts: []
+})
+const prodPicked = ref<string[]>([])
+const prodGuardOn = computed(() => runEnv.value === 'PROD' && !prodJudge.value.loading && prodJudge.value.supported)
+const prodAllowed = computed(() => prodJudge.value.verdicts.filter((v) => v.allowed))
+const prodBlocked = computed(() => prodJudge.value.verdicts.filter((v) => !v.allowed))
+const runDisabled = computed(() => {
+  if (runEnv.value !== 'PROD') return false
+  if (prodJudge.value.loading) return true
+  return prodJudge.value.supported ? !prodPicked.value.length : !confirmProd.value
+})
+
+function togglePicked(id: string, on: boolean) {
+  prodPicked.value = on ? [...new Set([...prodPicked.value, id])] : prodPicked.value.filter((x) => x !== id)
+}
+
+let judgeSeq = 0
+async function loadProdJudge() {
+  if (runEnv.value !== 'PROD' || !runTarget.value?.id) return
+  const seq = ++judgeSeq
+  prodJudge.value = { loading: true, supported: false, verdicts: [] }
+  prodPicked.value = []
+  try {
+    const cases = (await apiClient.getApiTestCollectionCases(runTarget.value.id)).filter((c: any) => c.enabled !== false)
+    const r = await judgeProdCases(cases as CaseRef[], runTarget.value.project)
+    if (seq !== judgeSeq) return
+    prodJudge.value = { loading: false, ...r }
+    prodPicked.value = r.verdicts.filter((v) => v.allowed).map((v) => v.c.id)
+  } catch {
+    if (seq === judgeSeq) prodJudge.value = { loading: false, supported: false, verdicts: [] }
+  }
+}
+
+watch(runEnv, (env) => {
+  if (runDialog.value && env === 'PROD') loadProdJudge()
+})
 
 async function doRun() {
   running.value = true
   try {
+    const guarded = prodGuardOn.value
+    // 集合里全是只读、且全勾上了才按集合跑（报告里能认出是哪个集合第几次）；否则只跑勾上的那几条
+    const whole = guarded && !prodBlocked.value.length && prodPicked.value.length === prodAllowed.value.length
     const r = await apiClient.runApiTest({
-      collectionId: runTarget.value.id,
+      ...(guarded && !whole ? { caseIds: prodPicked.value } : { collectionId: runTarget.value.id }),
       environment: runEnv.value,
-      confirmProd: confirmProd.value
+      confirmProd: guarded || confirmProd.value
     })
     runDialog.value = false
     ElMessage[r.ok ? 'success' : 'warning'](r.message || '执行完成')
@@ -1863,7 +2708,7 @@ onMounted(async () => {
   display: flex;
   gap: 24px;
   padding: 14px 16px 0;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
 .scope-tab {
@@ -1871,15 +2716,15 @@ onMounted(async () => {
   background: none;
   padding: 0 0 12px;
   font-size: 14px;
-  color: #595959;
+  color: var(--app-text-regular);
   cursor: pointer;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
 }
 
 .scope-tab.active {
-  color: #1890ff;
-  border-bottom-color: #1890ff;
+  color: var(--el-color-primary);
+  border-bottom-color: var(--el-color-primary);
   font-weight: 500;
 }
 
@@ -1918,7 +2763,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #bfbfbf;
+  color: var(--el-text-color-disabled);
   font-size: 14px;
   min-height: 200px;
 }
@@ -1926,17 +2771,8 @@ onMounted(async () => {
 .import-tip {
   margin: 0 0 12px;
   font-size: 13px;
-  color: #8c8c8c;
+  color: var(--el-text-color-secondary);
   line-height: 1.5;
-}
-
-.drawer-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding-top: 16px;
-  border-top: 1px solid #f0f0f0;
-  margin-top: 8px;
 }
 
 .progress-block {
@@ -1947,7 +2783,7 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   font-size: 13px;
-  color: #595959;
+  color: var(--app-text-regular);
   margin-bottom: 8px;
 }
 
@@ -1958,8 +2794,8 @@ onMounted(async () => {
   font-size: 13px;
 }
 
-.chip-pass { color: #52c41a; }
-.chip-pending { color: #8c8c8c; }
+.chip-pass { color: var(--el-color-success); }
+.chip-pending { color: var(--el-text-color-secondary); }
 
 .stat-line {
   display: flex;
@@ -1967,7 +2803,7 @@ onMounted(async () => {
   gap: 12px;
   margin-bottom: 20px;
   font-size: 13px;
-  color: #595959;
+  color: var(--app-text-regular);
 }
 
 .stat-bar {
@@ -1981,7 +2817,7 @@ onMounted(async () => {
 .stat-fill {
   width: 100%;
   height: 100%;
-  background: #1890ff;
+  background: var(--el-color-primary);
   border-radius: 2px;
 }
 
@@ -2008,13 +2844,132 @@ onMounted(async () => {
 .path-sub {
   margin-top: 4px;
   font-size: 12px;
-  color: #bfbfbf;
+  color: var(--el-text-color-disabled);
 }
 
 .verify-tag { font-size: 13px; }
-.st-pass { color: #52c41a; }
-.st-pending { color: #8c8c8c; }
-.st-live { color: #1890ff; }
+.iface-table :deep(.iface-row) {
+  cursor: pointer;
+}
+.iface-table :deep(.iface-row .cell) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.iface-table :deep(.case-row td) {
+  background: var(--el-fill-color-lighter);
+}
+.iface-table :deep(.iface-row .el-table__expand-icon),
+.iface-table :deep(.iface-row .el-table__placeholder) {
+  display: none;
+}
+.iface-arrow {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  transition: transform 0.15s;
+}
+.iface-arrow.is-open {
+  transform: rotate(90deg);
+}
+.table-pagination {
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+.iface-cell {
+  display: inline-flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.iface-cell .path-sub {
+  margin-top: 2px;
+}
+.case-name {
+  font-size: 13px;
+  color: var(--app-text-regular);
+}
+.iface-count {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+.ops-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  line-height: 1.2;
+}
+.ops-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.ops-row .el-button {
+  margin: 0;
+  padding: 0 4px;
+  font-size: 12px;
+}
+.ctrl-count {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
+}
+.tree-core {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--el-color-danger);
+  background: var(--el-color-danger-light-9);
+}
+.tree-core.is-done {
+  color: var(--el-color-success-dark-2);
+  background: var(--el-color-success-light-9);
+}
+.tree-core + .tree-badge {
+  margin-left: 6px;
+}
+.core-tag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--el-color-danger);
+  background: var(--el-color-danger-light-9);
+}
+.kind-tag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 16px;
+  border: 1px solid transparent;
+}
+.kind-tag.is-branch { color: #0958d9; background: #e6f4ff; border-color: #91caff; }
+.kind-tag.is-regression { color: #531dab; background: #f9f0ff; border-color: #d3adf7; }
+/* 未分类必须和另外两种一眼分开：它是「没人确认过」，不是一种正常状态 */
+.kind-tag.is-unclassified { color: #8c8c8c; background: #fafafa; border: 1px dashed #bfbfbf; }
+.kind-select { width: 120px; }
+.ce-kind { display: flex; flex-direction: column; gap: 4px; }
+.test-only-tag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--el-color-warning-dark-2);
+  background: var(--el-color-warning-light-9);
+}
+.st-pass { color: var(--el-color-success); }
+.st-pending { color: var(--el-text-color-secondary); }
+.st-live { color: var(--el-color-primary); }
 
 .tree-status {
   flex-shrink: 0;
@@ -2024,20 +2979,20 @@ onMounted(async () => {
   border-radius: 10px;
 }
 
-.ts-ok { background: #f6ffed; color: #52c41a; }
-.ts-run { background: #fff7e6; color: #fa8c16; }
-.ts-pending { background: #f5f5f5; color: #8c8c8c; }
+.ts-ok { background: var(--el-color-success-light-9); color: var(--el-color-success); }
+.ts-run { background: var(--el-color-warning-light-9); color: var(--el-color-warning); }
+.ts-pending { background: var(--el-fill-color-light); color: var(--el-text-color-secondary); }
 
 .pill-ctrl { background: #e6fffb; color: #13c2c2; }
-.pill-env { background: #f5f5f5; color: #595959; }
-.pill-ok { background: #f6ffed; color: #52c41a; }
-.pill-run { background: #fff7e6; color: #fa8c16; }
+.pill-env { background: var(--el-fill-color-light); color: var(--app-text-regular); }
+.pill-ok { background: var(--el-color-success-light-9); color: var(--el-color-success); }
+.pill-run { background: var(--el-color-warning-light-9); color: var(--el-color-warning); }
 
 /* ---- 左侧 ---- */
 .nav-panel {
   display: flex;
   flex-direction: column;
-  border-right: 1px solid #f0f0f0;
+  border-right: 1px solid var(--el-border-color-lighter);
   background: #fff;
   min-height: 0;
 }
@@ -2047,7 +3002,7 @@ onMounted(async () => {
   grid-template-columns: 1fr 1fr;
   gap: 0;
   margin: 12px 12px 0;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--el-border-color);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -2057,16 +3012,16 @@ onMounted(async () => {
   background: #fff;
   padding: 8px 0;
   font-size: 13px;
-  color: #595959;
+  color: var(--app-text-regular);
   cursor: pointer;
 }
 
 .scope-btn + .scope-btn {
-  border-left: 1px solid #d9d9d9;
+  border-left: 1px solid var(--el-border-color);
 }
 
 .scope-btn.active {
-  background: #1890ff;
+  background: var(--el-color-primary);
   color: #fff;
 }
 
@@ -2077,9 +3032,28 @@ onMounted(async () => {
 .nav-hint {
   padding: 0 14px 8px;
   font-size: 11px;
-  color: #bfbfbf;
+  color: var(--el-text-color-disabled);
 }
 
+.project-filter {
+  flex-shrink: 0;
+  padding: 10px 12px 0;
+}
+.live-env {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 0;
+}
+.live-env-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.tree-filter {
+  flex-shrink: 0;
+  padding: 10px 12px 6px;
+}
 .nav-tree-wrap {
   flex: 1;
   overflow: auto;
@@ -2090,7 +3064,7 @@ onMounted(async () => {
 .nav-empty {
   padding: 24px 12px;
   font-size: 13px;
-  color: #bfbfbf;
+  color: var(--el-text-color-disabled);
   text-align: center;
 }
 
@@ -2104,7 +3078,7 @@ onMounted(async () => {
 }
 
 .tree-leaf-row .tree-text {
-  color: #595959;
+  color: var(--app-text-regular);
 }
 
 .tree-dot {
@@ -2117,11 +3091,11 @@ onMounted(async () => {
 }
 
 .nav-tree-wrap :deep(.el-tree-node.is-current > .el-tree-node__content) .tree-dot {
-  background: #1890ff;
+  background: var(--el-color-primary);
 }
 
 .nav-tree-wrap :deep(.el-tree-node.is-current > .el-tree-node__content) .tree-text {
-  color: #1890ff;
+  color: var(--el-color-primary);
 }
 
 .tree-badge {
@@ -2130,8 +3104,8 @@ onMounted(async () => {
   min-width: 20px;
   padding: 0 6px;
   border-radius: 10px;
-  background: #f5f5f5;
-  color: #8c8c8c;
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-secondary);
   font-size: 11px;
   line-height: 18px;
   text-align: center;
@@ -2148,18 +3122,18 @@ onMounted(async () => {
 }
 
 .nav-tree-wrap :deep(.el-tree-node.is-current > .el-tree-node__content) {
-  background: #e6f4ff !important;
+  background: var(--el-color-primary-light-9) !important;
 }
 
 .nav-tree-wrap :deep(.el-tree-node__expand-icon) {
-  color: #8c8c8c;
+  color: var(--el-text-color-secondary);
   font-size: 12px;
 }
 
 .tree-icon {
   flex-shrink: 0;
   font-size: 14px;
-  color: #faad14;
+  color: var(--el-color-warning);
 }
 
 .tree-text {
@@ -2168,12 +3142,12 @@ onMounted(async () => {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
-  color: #262626;
+  color: var(--el-text-color-primary);
 }
 
 .nav-pagination {
   padding: 8px 4px 4px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--el-border-color-lighter);
 }
 
 .nav-pagination :deep(.el-pagination) {
@@ -2200,7 +3174,7 @@ onMounted(async () => {
   justify-content: flex-end;
   gap: 12px;
   padding: 12px 20px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
   flex-shrink: 0;
 }
 
@@ -2225,7 +3199,7 @@ onMounted(async () => {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: #262626;
+  color: var(--el-text-color-primary);
 }
 
 .pill {
@@ -2243,38 +3217,38 @@ onMounted(async () => {
 }
 
 .pill-test {
-  background: #f6ffed;
-  color: #52c41a;
-  border-color: #b7eb8f;
+  background: var(--el-color-success-light-9);
+  color: var(--el-color-success);
+  border-color: var(--el-color-success-light-7);
 }
 
 .pill-live {
-  background: #e6f7ff;
-  color: #1890ff;
-  border-color: #91d5ff;
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+  border-color: var(--el-color-primary-light-7);
 }
 
 .pill-req {
   background: #fff;
-  color: #1890ff;
-  border-color: #91d5ff;
+  color: var(--el-color-primary);
+  border-color: var(--el-color-primary-light-7);
 }
 
 .pill-online {
-  background: #f6ffed;
-  color: #52c41a;
-  border-color: #b7eb8f;
+  background: var(--el-color-success-light-9);
+  color: var(--el-color-success);
+  border-color: var(--el-color-success-light-7);
   cursor: pointer;
 }
 
 .pill-online:hover {
-  background: #d9f7be;
+  background: var(--el-color-success-light-8);
 }
 
 .coll-stats {
   margin-left: auto;
   font-size: 13px;
-  color: #8c8c8c;
+  color: var(--el-text-color-secondary);
   white-space: nowrap;
 }
 
@@ -2285,7 +3259,7 @@ onMounted(async () => {
   gap: 12px;
   flex-wrap: wrap;
   padding-bottom: 12px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
 .coll-actions-left,
@@ -2312,7 +3286,7 @@ onMounted(async () => {
   align-items: center;
   gap: 12px;
   padding: 10px 0;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
   font-size: 13px;
 }
 
@@ -2325,7 +3299,7 @@ onMounted(async () => {
 }
 
 .case-row.is-collection:hover {
-  background: #fafafa;
+  background: var(--el-fill-color-lighter);
 }
 
 .collection-icon {
@@ -2345,40 +3319,40 @@ onMounted(async () => {
 }
 
 .m-get {
-  background: #f6ffed;
-  color: #52c41a;
-  border: 1px solid #b7eb8f;
+  background: var(--el-color-success-light-9);
+  color: var(--el-color-success);
+  border: 1px solid var(--el-color-success-light-7);
 }
 
 .m-post {
-  background: #e6f7ff;
-  color: #1890ff;
-  border: 1px solid #91d5ff;
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+  border: 1px solid var(--el-color-primary-light-7);
 }
 
 .m-put {
-  background: #fff7e6;
-  color: #fa8c16;
-  border: 1px solid #ffd591;
+  background: var(--el-color-warning-light-9);
+  color: var(--el-color-warning);
+  border: 1px solid var(--el-color-warning-light-7);
 }
 
 .m-del {
-  background: #fff1f0;
-  color: #f5222d;
-  border: 1px solid #ffa39e;
+  background: var(--el-color-danger-light-9);
+  color: var(--el-color-danger);
+  border: 1px solid var(--el-color-danger-light-7);
 }
 
 .m-other {
-  background: #fafafa;
-  color: #8c8c8c;
-  border: 1px solid #d9d9d9;
+  background: var(--el-fill-color-lighter);
+  color: var(--el-text-color-secondary);
+  border: 1px solid var(--el-border-color);
 }
 
 .case-path {
   flex: 1;
   min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: #262626;
+  color: var(--el-text-color-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2386,7 +3360,7 @@ onMounted(async () => {
 
 .case-meta {
   flex-shrink: 0;
-  color: #bfbfbf;
+  color: var(--el-text-color-disabled);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -2395,14 +3369,14 @@ onMounted(async () => {
   flex-shrink: 0;
   border: none;
   background: none;
-  color: #1890ff;
+  color: var(--el-color-primary);
   font-size: 13px;
   cursor: pointer;
   padding: 0 4px;
 }
 
 .case-toggle:hover {
-  color: #096dd9;
+  color: var(--el-color-primary-dark-2);
   text-decoration: underline;
 }
 .import-file {
@@ -2428,27 +3402,253 @@ onMounted(async () => {
   color: var(--el-text-color-secondary);
 }
 
-.kv-tabs {
-  padding: 0 20px 8px;
+.kv-count {
+  display: inline-block;
+  min-width: 18px;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 9px;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+  color: var(--el-text-color-secondary);
+  background: var(--el-fill-color);
 }
 
-.kv-count {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
+.is-active .kv-count {
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
 }
 
 .kv-hint {
-  margin-top: 6px;
+  margin-top: 8px;
   font-size: 12px;
   line-height: 1.8;
   color: var(--el-text-color-secondary);
 }
 
+.ce-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.ce-head-main {
+  flex: 1;
+  min-width: 0;
+}
+.ce-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--el-text-color-primary);
+}
+.ce-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.ce-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--el-fill-color-light);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--app-text-regular);
+}
+.ce-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--el-text-color-secondary);
+  cursor: pointer;
+  font-size: 16px;
+}
+.ce-close:hover {
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-primary);
+}
+.ce-tabs :deep(.el-tabs__header) {
+  margin: 0 0 16px;
+}
+.ce-tabs :deep(.el-tabs__nav-wrap::after) {
+  height: 1px;
+}
+.ce-tabs :deep(.el-tabs__item) {
+  font-size: 14px;
+  padding: 0 14px;
+  height: 40px;
+}
+.ce-tabs :deep(.el-tabs__content) {
+  height: 360px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.ce-tabs :deep(.el-tab-pane) {
+  min-height: 100%;
+}
+.ce-form {
+  margin-bottom: 0;
+}
+.ce-form :deep(.el-form-item:last-child) {
+  margin-bottom: 0;
+}
+.ce-form :deep(.el-form-item) {
+  margin-bottom: 16px;
+}
+.ce-body :deep(.el-textarea__inner) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+.ce-req {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+.ce-method {
+  width: 130px;
+  flex-shrink: 0;
+}
+.ce-method :deep(.el-select__selected-item),
+.ce-path-input :deep(.el-input__inner) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.ce-method :deep(.el-select__selected-item) {
+  font-weight: 600;
+}
+.ce-path-input {
+  flex: 1;
+}
+.ce-url {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+.ce-url-select {
+  width: 100%;
+}
+.ce-url-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--el-fill-color-lighter);
+  line-height: 20px;
+}
+.ce-env {
+  flex-shrink: 0;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--app-text-regular);
+  background: var(--el-fill-color-dark);
+}
+.ce-env.is-test {
+  color: var(--el-color-success-dark-2);
+  background: var(--el-color-success-light-9);
+}
+.ce-env.is-prod {
+  color: var(--el-color-danger-dark-2);
+  background: var(--el-color-danger-light-9);
+}
+.ce-url-full {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--el-text-color-primary);
+}
+.ce-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--el-text-color-secondary);
+  cursor: pointer;
+}
+.ce-copy:hover {
+  background: var(--el-fill-color-dark);
+  color: var(--el-color-primary);
+}
+.ce-setting {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 14px;
+}
+.ce-setting + .ce-setting {
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+.ce-setting-text {
+  flex: 1;
+}
+.ce-setting-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.ce-setting-title.on {
+  color: var(--el-color-success);
+}
+.ce-setting-sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.ce-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ce-saved {
+  flex: 1;
+  text-align: left;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.as-list {
+  border: 1px solid var(--el-border-color);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
 .as-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.as-path {
+  width: 190px;
+  flex-shrink: 0;
+}
+
+.as-path :deep(.el-input__inner),
+.as-val :deep(.el-input__inner) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .as-val {
@@ -2456,9 +3656,115 @@ onMounted(async () => {
   min-width: 110px;
 }
 
+.as-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--el-text-color-secondary);
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.as-del:hover {
+  background: var(--el-fill-color-light);
+  color: var(--el-color-danger);
+}
+
+.as-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  height: 38px;
+  border: none;
+  background: var(--el-fill-color-lighter);
+  color: var(--el-color-primary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.as-add:hover {
+  background: var(--el-color-primary-light-9);
+}
+
 .cap-doc-dim {
   margin-top: 6px;
   color: var(--el-text-color-secondary);
 }
 
+
+/* 线上执行：逐条列出，只读的才能勾 */
+.pg-hint { color: var(--el-text-color-secondary); font-size: 13px; }
+.pg { border: 1px solid var(--el-border-color-lighter); border-radius: 8px; overflow: hidden; }
+.pg-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--el-fill-color-lighter);
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  font-size: 13px;
+  color: var(--app-text-regular);
+}
+.pg-ok { color: var(--el-color-success-dark-2); }
+.pg-bad { color: var(--el-color-danger-dark-2); }
+.pg-spacer { flex: 1; }
+.pg-list { max-height: 320px; overflow: auto; }
+.pg-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 12px;
+  border-top: 1px solid var(--el-border-color-lighter);
+  cursor: pointer;
+}
+.pg-row:first-child { border-top: 0; }
+.pg-row.is-blocked { cursor: not-allowed; background: #fcfcfc; }
+.pg-row.is-blocked .pg-name { color: var(--el-text-color-secondary); }
+.pg-tag {
+  flex-shrink: 0;
+  margin-top: 3px;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 16px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+}
+.pg-tag.is-writes { color: var(--el-color-danger-dark-2); background: var(--el-color-danger-light-9); border-color: var(--el-color-danger-light-7); }
+.pg-tag.is-readonly { color: var(--el-color-success-dark-2); background: var(--el-color-success-light-9); border-color: var(--el-color-success-light-7); }
+.pg-tag.is-unknown { color: var(--el-text-color-secondary); background: var(--el-fill-color-lighter); border: 1px dashed #bfbfbf; }
+.pg-main { min-width: 0; display: flex; flex-direction: column; gap: 1px; font-size: 13px; }
+.pg-name { color: var(--el-text-color-primary); }
+.pg-path { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: #a6a6a6; word-break: break-all; }
+.pg-reason { font-size: 12px; color: #ad4e00; }
+.pg-empty { padding: 20px; text-align: center; color: var(--el-text-color-secondary); font-size: 13px; }
+</style>
+
+<style>
+.case-edit-dialog.el-dialog {
+  padding: 0;
+  border-radius: 14px;
+  overflow: hidden;
+}
+.case-edit-dialog .el-dialog__header {
+  margin: 0;
+  padding: 20px 20px 16px 24px;
+  border-bottom: 1px solid var(--el-border-color);
+}
+.case-edit-dialog .el-dialog__body {
+  overflow: hidden;
+  padding: 16px 24px 8px;
+}
+.case-edit-dialog .el-dialog__footer {
+  padding: 14px 24px;
+  border-top: 1px solid var(--el-border-color);
+  background: var(--el-fill-color-lighter);
+}
 </style>

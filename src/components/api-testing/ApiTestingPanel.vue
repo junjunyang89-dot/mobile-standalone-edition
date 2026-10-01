@@ -32,16 +32,14 @@
           <span class="kpi-label">通过率</span>
           <span class="kpi-icon is-green"><el-icon><CircleCheck /></el-icon></span>
         </div>
-        <div class="kpi-value">
-          {{ formatRate(stats.passRate) }}
-          <span
-            v-if="stats.passRateDelta != null"
-            class="kpi-delta"
-            :class="stats.passRateDelta >= 0 ? 'is-up' : 'is-down'"
-          >
-            {{ formatSigned(stats.passRateDelta, '%') }}
-          </span>
+        <!-- 分支用例和回归用例混在一个分母里，算出来的百分比看不出该找谁；后端按类型拆开前不显示 -->
+        <div
+          class="kpi-value is-pending"
+          title="分支用例挂了是这次改动有问题，回归用例挂了是回归了。混在一起的通过率没有意义，等后端按用例类型拆开统计后再显示"
+        >
+          待分开统计
         </div>
+        <div class="kpi-pending-sub">分支 / 回归分开后显示</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-top">
@@ -89,7 +87,11 @@
         </div>
         <ul v-else class="run-list">
           <li v-for="r in stats.recentRuns" :key="r.id" class="run-row">
-            <span class="run-dot" :class="r.status === 'PASSED' ? 'ok' : 'fail'" />
+            <span
+              class="run-dot"
+              :class="r.status === 'PASSED' ? 'ok' : r.status === 'BLOCKED' ? 'blocked' : 'fail'"
+              :title="r.status === 'BLOCKED' ? '没跑成：连不上 / 超时 / 登录失败' : undefined"
+            />
             <span class="method-tag" :class="methodClass(r.method)">{{ methodLabel(r.method) }}</span>
             <span class="run-path" :title="r.path || r.name">{{ r.path || r.name || '—' }}</span>
             <span class="run-latency">{{ formatLatency(r.durationMs) }}</span>
@@ -116,9 +118,6 @@
             <div>
               <div class="coll-name">{{ c.name }}</div>
               <div class="coll-meta">{{ c.caseCount }} 个用例</div>
-            </div>
-            <div class="coll-rate" :class="{ muted: c.passRate == null }">
-              {{ c.passRate == null ? '—' : `${c.passRate}%` }}
             </div>
           </li>
         </ul>
@@ -259,11 +258,6 @@ function goCases(project?: string) {
   } else {
     router.push('/api-collections')
   }
-}
-
-function formatRate(v: number | null | undefined) {
-  if (v == null || Number.isNaN(v)) return '—'
-  return `${v}%`
 }
 
 function formatSigned(v: number, suffix = '') {
@@ -445,6 +439,19 @@ onUnmounted(() => {
   font-weight: 600;
 }
 
+.kpi-value.is-pending {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--el-text-color-secondary);
+  cursor: help;
+}
+
+.kpi-pending-sub {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--el-text-color-placeholder);
+}
+
 .kpi-delta.is-up {
   color: var(--app-primary);
 }
@@ -537,6 +544,10 @@ onUnmounted(() => {
   background: var(--app-danger);
 }
 
+.run-dot.blocked {
+  background: var(--app-warning, var(--el-color-warning-dark-2));
+}
+
 .method-tag {
   display: inline-flex;
   align-items: center;
@@ -561,7 +572,7 @@ onUnmounted(() => {
 
 .m-put {
   background: var(--el-color-warning-light-9);
-  color: #d48806;
+  color: var(--el-color-warning-dark-2);
 }
 
 .m-del {

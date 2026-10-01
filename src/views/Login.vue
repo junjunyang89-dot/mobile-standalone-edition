@@ -96,7 +96,7 @@
 
         <div v-if="showServer" class="login-backend">
           <div class="login-backend-label">控制面地址</div>
-          <el-input v-model="apiBase" placeholder="http://192.168.x.x:3000/api" size="small">
+          <el-input v-model="apiBase" placeholder="http://192.168.x.x:3080/api" size="small">
             <template #append>
               <el-button :loading="applying" @click="applyBackend">应用</el-button>
             </template>
@@ -319,7 +319,7 @@ async function submit() {
   align-items: center;
   padding: 0 16px 0 82px;
   font-size: 12px;
-  color: #5b6472;
+  color: var(--app-text-regular);
   -webkit-app-region: drag;
   app-region: drag;
 }
@@ -358,7 +358,7 @@ async function submit() {
   justify-content: center;
   flex-shrink: 0;
   color: #fff;
-  background: #1890ff;
+  background: var(--el-color-primary);
 }
 
 .brand-mark--sm {
@@ -377,7 +377,7 @@ async function submit() {
 .login-sub {
   margin-top: 4px;
   font-size: 13px;
-  color: #8b95a5;
+  color: var(--el-text-color-secondary);
 }
 
 .login-form :deep(.el-form-item) {
@@ -387,7 +387,7 @@ async function submit() {
 .login-form :deep(.el-form-item__label) {
   margin-bottom: 6px;
   font-size: 13px;
-  color: #3d4450;
+  color: var(--app-text-regular);
 }
 
 .login-form :deep(.el-input__wrapper) {
@@ -397,7 +397,7 @@ async function submit() {
 }
 
 .login-form :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 1px #1890ff inset;
+  box-shadow: 0 0 0 1px var(--el-color-primary) inset;
 }
 
 .login-meta {
@@ -411,13 +411,13 @@ async function submit() {
   border: 0;
   padding: 0;
   background: none;
-  color: #1890ff;
+  color: var(--el-color-primary);
   font-size: 13px;
   cursor: pointer;
 }
 
 .login-link:hover {
-  color: #0f78d9;
+  color: var(--el-color-primary-dark-2);
 }
 
 .login-submit {
@@ -438,13 +438,13 @@ async function submit() {
   border: 0;
   padding: 0;
   background: none;
-  color: #8b95a5;
+  color: var(--el-text-color-secondary);
   font-size: 13px;
   cursor: pointer;
 }
 
 .server-toggle:hover {
-  color: #5b6472;
+  color: var(--app-text-regular);
 }
 
 .server-toggle-icon {
@@ -467,7 +467,7 @@ async function submit() {
 .login-backend-label {
   margin-bottom: 6px;
   font-size: 12px;
-  color: #5b6472;
+  color: var(--app-text-regular);
 }
 
 .login-foot {
@@ -484,10 +484,10 @@ async function submit() {
   align-items: center;
   justify-content: space-between;
   padding: 0 18px;
-  border-top: 1px solid #eef1f5;
+  border-top: 1px solid var(--el-border-color-lighter);
   font-size: 12px;
-  color: #8b95a5;
-  background: #fafbfc;
+  color: var(--el-text-color-secondary);
+  background: var(--el-fill-color-lighter);
 }
 
 .status-left {
@@ -504,11 +504,11 @@ async function submit() {
 }
 
 .status-dot.is-ok {
-  background: #22c55e;
+  background: var(--el-color-success);
 }
 
 .status-dot.is-down {
-  background: #ff4d4f;
+  background: var(--el-color-danger);
 }
 
 .login-chrome,

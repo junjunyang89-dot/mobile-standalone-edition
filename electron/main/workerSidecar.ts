@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync, createW
 import { join } from 'path'
 
 const WORKER_PORT = 3001
-const DEV_DEFAULT_CONTROL = 'http://127.0.0.1:3000/api'
+const DEV_DEFAULT_CONTROL = 'http://127.0.0.1:3080/api'
 
 export type NodeConfig = {
   controlPlaneUrl: string

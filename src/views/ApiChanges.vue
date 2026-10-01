@@ -36,7 +36,7 @@
             <el-option v-for="d in codeDirs" :key="'b' + d.id"
                        :label="d.label + (d.isBaseline ? '（基线）' : '')" :value="d.dirPath">
               <span>{{ d.label }}</span>
-              <span style="float: right; color: #909399; font-size: 12px">{{ shortPath(d.dirPath) }}</span>
+              <span style="float: right; color: var(--el-text-color-secondary); font-size: 12px">{{ shortPath(d.dirPath) }}</span>
             </el-option>
           </el-select>
         </el-form-item>
@@ -45,7 +45,7 @@
                      placeholder="本次提测那份代码">
             <el-option v-for="d in codeDirs" :key="'h' + d.id" :label="d.label" :value="d.dirPath">
               <span>{{ d.label }}</span>
-              <span style="float: right; color: #909399; font-size: 12px">{{ shortPath(d.dirPath) }}</span>
+              <span style="float: right; color: var(--el-text-color-secondary); font-size: 12px">{{ shortPath(d.dirPath) }}</span>
             </el-option>
           </el-select>
         </el-form-item>
@@ -68,7 +68,7 @@
               :disabled="!p.ready"
             >
               <span>{{ p.name || p.code }}</span>
-              <span v-if="!p.ready" style="float: right; color: #ff4d4f; font-size: 12px">未配仓库</span>
+              <span v-if="!p.ready" style="float: right; color: var(--el-color-danger); font-size: 12px">未配仓库</span>
             </el-option>
           </el-select>
         </el-form-item>
@@ -1386,7 +1386,7 @@ onMounted(() => {
   gap: 8px;
   margin: 26px 0 6px;
   padding-top: 8px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--el-border-color-lighter);
 }
 
 .section-no {
@@ -1459,7 +1459,7 @@ onMounted(() => {
 }
 
 .ep-card.breaking {
-  border-color: #fbc4c4;
+  border-color: var(--el-color-danger-light-7);
   background: #fef6f6;
 }
 
@@ -1495,7 +1495,7 @@ onMounted(() => {
 .ep-file {
   margin-top: 6px;
   font-size: 11px;
-  color: #c0c4cc;
+  color: var(--el-text-color-disabled);
   word-break: break-all;
 }
 
@@ -1551,7 +1551,7 @@ onMounted(() => {
 
 .dep-hint {
   font-size: 12px;
-  color: #c0c4cc;
+  color: var(--el-text-color-disabled);
   line-height: 24px;
 }
 
@@ -1561,7 +1561,7 @@ onMounted(() => {
   gap: 2px;
   margin-bottom: 12px;
   font-size: 12px;
-  color: #c0c4cc;
+  color: var(--el-text-color-disabled);
 }
 
 .finding-card {
@@ -1599,7 +1599,7 @@ onMounted(() => {
 .finding-basis {
   margin-top: 4px;
   font-size: 11px;
-  color: #c0c4cc;
+  color: var(--el-text-color-disabled);
   font-family: ui-monospace, Menlo, monospace;
 }
 
@@ -1618,7 +1618,7 @@ onMounted(() => {
   display: inline-block;
   margin-top: 8px;
   font-size: 12px;
-  color: #c0c4cc;
+  color: var(--el-text-color-disabled);
   cursor: help;
   border-bottom: 1px dashed var(--app-border);
 }
@@ -1633,10 +1633,10 @@ onMounted(() => {
 .impl-note {
   margin-top: 8px;
   padding: 6px 10px;
-  background: #fdf6ec;
+  background: var(--el-color-warning-light-9);
   border-radius: 4px;
   font-size: 12px;
-  color: #b88230;
+  color: var(--el-color-warning-dark-2);
   line-height: 1.6;
 }
 
@@ -1659,7 +1659,7 @@ onMounted(() => {
 
 .hint-basis {
   font-size: 11px;
-  color: #c0c4cc;
+  color: var(--el-text-color-disabled);
   font-family: ui-monospace, Menlo, monospace;
 }
 
@@ -1676,7 +1676,7 @@ onMounted(() => {
 }
 
 .muted {
-  color: #c0c4cc;
+  color: var(--el-text-color-disabled);
 }
 
 .history-toolbar {
@@ -1736,16 +1736,16 @@ onMounted(() => {
   line-height: 1.5;
 }
 
-.must-test{margin:12px 0;padding:12px 14px;background:#fff1f0;border:1px solid #ffa39e;border-radius:8px}
+.must-test{margin:12px 0;padding:12px 14px;background:var(--el-color-danger-light-9);border:1px solid var(--el-color-danger-light-7);border-radius:8px}
 .must-test .cr-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.must-notes{margin:0;padding-left:18px;font-size:12.5px;line-height:1.55;color:#595959}
+.must-notes{margin:0;padding-left:18px;font-size:12.5px;line-height:1.55;color:var(--app-text-regular)}
 .must-notes li{margin:2px 0}
-.case-review{margin:12px 0;padding:12px 14px;background:#fff7e6;border:1px solid #ffe0a3;border-radius:8px}
-.case-review.empty{background:#f6ffed;border-color:#b7eb8f}
-.case-review.empty .cr-head{color:#389e0d}
+.case-review{margin:12px 0;padding:12px 14px;background:var(--el-color-warning-light-9);border:1px solid #ffe0a3;border-radius:8px}
+.case-review.empty{background:var(--el-color-success-light-9);border-color:var(--el-color-success-light-7)}
+.case-review.empty .cr-head{color:var(--el-color-success-dark-2)}
 .case-review .cr-head{display:flex;align-items:center;gap:6px;color:#c67a13;font-size:14px}
 .case-review .cr-hint{color:#8a6d3b;font-size:12.5px;margin:4px 0 2px}
-.case-review .cr-ep{font-family:monospace;font-size:12.5px;color:#606266}
+.case-review .cr-ep{font-family:monospace;font-size:12.5px;color:var(--app-text-regular)}
 .case-review .cr-reason{margin:2px 0;font-size:12.5px}
 .cr-table{cursor:pointer}
 </style>

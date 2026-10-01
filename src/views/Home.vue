@@ -486,7 +486,7 @@ async function loadData(opts?: { silent?: boolean; keepDay?: boolean }) {
 }
 
 .day-summary.muted {
-  color: #c0c4cc;
+  color: var(--el-text-color-disabled);
 }
 
 .stat-pass {
@@ -505,7 +505,7 @@ async function loadData(opts?: { silent?: boolean; keepDay?: boolean }) {
 .stat-fail-btn {
   appearance: none;
   border: none;
-  background: #fef0f0;
+  background: var(--el-color-danger-light-9);
   color: var(--app-danger);
   font-weight: 700;
   font-size: 12px;
@@ -516,8 +516,8 @@ async function loadData(opts?: { silent?: boolean; keepDay?: boolean }) {
 }
 
 .stat-fail-btn:hover {
-  background: #fde2e2;
-  color: #e11d48;
+  background: var(--el-color-danger-light-8);
+  color: var(--el-color-danger);
 }
 
 .fail-empty {
@@ -535,8 +535,8 @@ async function loadData(opts?: { silent?: boolean; keepDay?: boolean }) {
 }
 
 .fail-item {
-  border: 1px solid #fde2e2;
-  background: #fff7f7;
+  border: 1px solid var(--el-color-danger-light-8);
+  background: var(--el-color-danger-light-9);
   border-radius: 8px;
   padding: 10px 12px;
 }
@@ -566,7 +566,7 @@ async function loadData(opts?: { silent?: boolean; keepDay?: boolean }) {
   word-break: break-word;
   font-size: 12px;
   line-height: 1.5;
-  color: #b91c1c;
+  color: var(--el-color-danger-dark-2);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   max-height: 160px;
   overflow: auto;
@@ -586,12 +586,12 @@ async function loadData(opts?: { silent?: boolean; keepDay?: boolean }) {
 }
 
 .week-cell {
-  border: 1px solid #eef0f3;
+  border: 1px solid var(--el-border-color-lighter);
   border-radius: 8px;
   padding: 10px 6px;
   text-align: center;
   cursor: pointer;
-  background: #fafbfc;
+  background: var(--el-fill-color-lighter);
   min-height: 84px;
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
 }
@@ -607,24 +607,24 @@ async function loadData(opts?: { silent?: boolean; keepDay?: boolean }) {
 }
 
 .week-cell.is-selected.is-pass {
-  background: #f0f9eb;
+  background: var(--el-color-success-light-9);
   border-color: var(--app-success);
   box-shadow: inset 0 -3px 0 var(--app-success);
 }
 
 .week-cell.is-pass:not(.is-selected) {
-  background: #f0f9eb;
-  border-color: #d1edc4;
+  background: var(--el-color-success-light-9);
+  border-color: var(--el-color-success-light-7);
 }
 
 .week-cell.is-fail:not(.is-selected) {
-  background: #fef0f0;
-  border-color: #f8d4d4;
+  background: var(--el-color-danger-light-9);
+  border-color: var(--el-color-danger-light-7);
 }
 
 .week-wd {
   font-size: 11px;
-  color: #a8abb2;
+  color: var(--el-text-color-disabled);
 }
 
 .week-date {
@@ -739,7 +739,7 @@ async function loadData(opts?: { silent?: boolean; keepDay?: boolean }) {
 }
 
 .feat.ep-android .feat-ep {
-  background: #f0f9eb;
+  background: var(--el-color-success-light-9);
   color: var(--app-success);
 }
 
@@ -749,8 +749,8 @@ async function loadData(opts?: { silent?: boolean; keepDay?: boolean }) {
 }
 
 .feat.is-success {
-  background: #f0f9eb;
-  border-color: #d1edc4;
+  background: var(--el-color-success-light-9);
+  border-color: var(--el-color-success-light-7);
 }
 
 .feat.is-success em {
@@ -758,8 +758,8 @@ async function loadData(opts?: { silent?: boolean; keepDay?: boolean }) {
 }
 
 .feat.is-failed {
-  background: #fef0f0;
-  border-color: #f8d4d4;
+  background: var(--el-color-danger-light-9);
+  border-color: var(--el-color-danger-light-7);
 }
 
 .feat.is-failed.is-clickable {
@@ -776,7 +776,7 @@ async function loadData(opts?: { silent?: boolean; keepDay?: boolean }) {
 }
 
 .feat.is-skipped {
-  background: #f4f4f5;
+  background: var(--el-fill-color-light);
 }
 
 .empty-inline {
@@ -787,7 +787,7 @@ async function loadData(opts?: { silent?: boolean; keepDay?: boolean }) {
 }
 
 .muted {
-  color: #a8abb2;
+  color: var(--el-text-color-disabled);
 }
 
 .panel-foot {
@@ -800,7 +800,7 @@ async function loadData(opts?: { silent?: boolean; keepDay?: boolean }) {
   padding: 14px 20px;
   border: 0;
   border-top: 1px solid var(--app-border);
-  background: #fafbfc;
+  background: var(--el-fill-color-lighter);
   color: var(--app-text-secondary);
   font-size: 13px;
   cursor: pointer;
@@ -809,7 +809,7 @@ async function loadData(opts?: { silent?: boolean; keepDay?: boolean }) {
 
 .panel-foot:hover {
   color: var(--app-primary);
-  background: #f5f9ff;
+  background: var(--el-color-primary-light-9);
 }
 
 @media (max-width: 900px) {

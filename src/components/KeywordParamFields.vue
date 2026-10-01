@@ -54,11 +54,39 @@
         </el-select>
       </div>
 
+      <el-select
+        v-else-if="def.type === 'string' && isComponentFlowId(def)"
+        v-model="params[def.name]"
+        filterable
+        clearable
+        placeholder="选择组件流程"
+        style="width: 100%"
+      >
+        <el-option
+          v-for="f in componentFlows || []"
+          :key="f.id"
+          :label="f.name || f.id"
+          :value="f.id"
+        />
+      </el-select>
+
       <el-input
         v-else-if="def.type === 'string'"
         v-model="params[def.name]"
         :placeholder="def.help || ''"
       />
+
+      <LocatorVarFields
+        v-if="isComponentFlowId(def)"
+        :names="componentLocatorVars"
+        :params="params"
+      />
+
+      <div v-if="isH5UrlParam(def)" class="element-pick-actions">
+        <el-button link type="primary" @click="emit('pick-h5-url', def.name)">
+          记不住？真机读当前 URL
+        </el-button>
+      </div>
 
       <el-input
         v-else-if="def.type === 'textarea'"
@@ -115,25 +143,34 @@
       </el-select>
 
       <!--
-        次级元素（「不符时点哪个元素」「滑到它出现为止」等）：主元素由外层步骤表单渲染，这里只管额外的。
-        留空的含义各关键字不同（点自己 / 不等待 / 只扫一遍），写死在这里必然对一半错一半，
-        所以交给各自 ParamDef 的 help 去说。
+        次级元素（「落点元素」「滑到它出现为止」等）：主元素由外层步骤表单渲染，这里只管额外的。
+        定位里有 ${变量} 才在选择器下面出输入框；没有变量就不占位置。
       -->
-      <ElementKeySelect
-        v-else-if="def.type === 'element'"
-        v-model="params[def.name]"
-        :elements="elementOptions || []"
-        :pages="pageOptions || []"
-        placeholder="先选页面，再选元素"
-      />
+      <template v-else-if="def.type === 'element'">
+        <ElementKeySelect
+          v-model="params[def.name]"
+          :elements="elementOptions || []"
+          :pages="pageOptions || []"
+          placeholder="先选页面，再选元素"
+        />
+        <LocatorVarFields
+          :names="varsOfElementParam(params[def.name])"
+          :params="params"
+        />
+      </template>
 
       <!-- 一批元素（如「要判定的元素」）：已选清单常驻在上方，加删都是一步 -->
-      <ElementKeyMultiSelect
-        v-else-if="def.type === 'elements'"
-        v-model="params[def.name]"
-        :elements="elementOptions || []"
-        :pages="pageOptions || []"
-      />
+      <template v-else-if="def.type === 'elements'">
+        <ElementKeyMultiSelect
+          v-model="params[def.name]"
+          :elements="elementOptions || []"
+          :pages="pageOptions || []"
+        />
+        <LocatorVarFields
+          :names="varsOfElementParam(params[def.name])"
+          :params="params"
+        />
+      </template>
 
       <el-input v-else v-model="params[def.name]" />
 
@@ -145,7 +182,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
+import LocatorVarFields from './LocatorVarFields.vue'
+import { elementLocatorVars } from '@/utils/locatorVars'
 import { useRouter } from 'vue-router'
 import { QuestionFilled } from '@element-plus/icons-vue'
 import ElementKeySelect from './ElementKeySelect.vue'
@@ -184,14 +223,26 @@ const props = defineProps<{
   schema: ParamDefDto[]
   /** 步骤的 params 对象，直接双向绑定 */
   params: Record<string, any>
-  /** 供次级元素参数（如「不符时点哪个元素」）下拉用；主元素由外层渲染 */
-  elementOptions?: Array<{ nameEn: string; nameZh?: string; pageId?: string | null }>
+  /** 供次级元素参数下拉用；主元素由外层渲染。带上定位串，才能判断要不要出文案变量框 */
+  elementOptions?: Array<{
+    nameEn: string
+    nameZh?: string
+    pageId?: string | null
+    locatorValue?: string
+    locatorFallbacks?: string
+  }>
   /** 页面字典：级联「页面 → 元素」展示中文页名 */
   pageOptions?: Array<{ pageId?: string; nameZh?: string }>
-  /** 当前步骤关键字。INPUT 的「输入内容」要能选环境变量 */
+  /** 当前步骤关键字。INPUT / EditText输入 的「输入内容」要能选环境变量 */
   keywordCode?: string
   /** 流程登记的环境：同名变量只点亮这一边，避免测试/生产同时高亮 */
   environment?: string
+  /** 「调用组件」下拉：只列已存为组件的流程 */
+  componentFlows?: Array<{ id: string; name?: string }>
+}>()
+
+const emit = defineEmits<{
+  'pick-h5-url': [paramName: string]
 }>()
 
 const emit = defineEmits<{
@@ -202,13 +253,86 @@ const router = useRouter()
 const testVars = ref<EnvVar[]>([])
 const prodVars = ref<EnvVar[]>([])
 
+function usesEnvTextKeyword(code?: string) {
+  const c = String(code || '').toUpperCase()
+  return c === 'INPUT' || c === 'INPUT_EDITTEXT' || c === 'EDITTEXT'
+}
+
 function isInputText(def: ParamDefDto) {
-  return props.keywordCode === 'INPUT' && def.name === 'text'
+  return usesEnvTextKeyword(props.keywordCode) && def.name === 'text'
+}
+
+/** H5 打开/断言：地址来自真机当前页，不要手抄 */
+function isComponentFlowId(def: ParamDefDto) {
+  return String(props.keywordCode || '').toUpperCase() === 'CALL_COMPONENT' && def.name === 'flowId'
+}
+
+const componentLocatorVars = ref<string[]>([])
+
+watch(
+  () => [props.keywordCode, props.params?.flowId],
+  async ([code, flowId]) => {
+    if (String(code || '').toUpperCase() !== 'CALL_COMPONENT') {
+      componentLocatorVars.value = []
+      return
+    }
+    const id = String(flowId || '').trim()
+    if (!id) {
+      componentLocatorVars.value = []
+      return
+    }
+    try {
+      componentLocatorVars.value = (await apiClient.getFlowLocatorVariables(id)) || []
+    } catch {
+      componentLocatorVars.value = []
+    }
+  },
+  { immediate: true }
+)
+
+/** 次级元素定位里的 ${变量}。没选元素、或定位是固定文案时返回空，输入框不渲染 */
+function varsOfElementParam(raw: unknown): string[] {
+  const keys = Array.isArray(raw) ? raw : String(raw ?? '').split(/[\n\r,;，、；]+/)
+  const names: string[] = []
+  const seen = new Set<string>()
+  for (const key of keys) {
+    const k = String(key || '').trim()
+    if (!k) continue
+    const el = (props.elementOptions || []).find((e) => e.nameEn === k)
+    for (const name of elementLocatorVars(el)) {
+      if (!seen.has(name)) {
+        seen.add(name)
+        names.push(name)
+      }
+    }
+  }
+  return names
+}
+
+function isH5UrlParam(def: ParamDefDto) {
+  const code = String(props.keywordCode || '').toUpperCase()
+  if (!code.includes('H5')) return false
+  return def.name === 'url' || def.name === 'expected' || def.name === 'pageUrl'
+}
+
+function isHorizontalSwipe() {
+  const d = String(props.params?.direction || '').toLowerCase()
+  return d === 'left' || d === 'right'
 }
 
 function fieldHelp(def: ParamDefDto) {
   if (isInputText(def)) {
     return '选环境变量会写入 ${变量名}，执行时按当前环境（测试 / 线上）取值——同一条流程两边都能跑。也可直接填固定文案。'
+  }
+  if (def.name === 'distance') {
+    return isHorizontalSwipe()
+      ? '左右滑按屏宽算每次滑多远。short≈屏宽 12%；normal≈半个屏宽；long≈大幅横滑。仍偏大时用「幅度百分比」覆盖。'
+      : '上下滑按屏高算每次滑多远。short≈屏高 12%；normal≈半个屏高；long≈大幅翻页。仍偏大时用「幅度百分比」覆盖。'
+  }
+  if (def.name === 'distancePercent') {
+    return isHorizontalSwipe()
+      ? '按屏宽百分比自定义单次横滑距离，填了就覆盖上面的档位。建议 3～15；0 或不填则用档位。'
+      : '按屏高百分比自定义单次行程，填了就覆盖上面的档位。建议 3～15；0 或不填则用档位。'
   }
   return def.help || ''
 }
@@ -275,11 +399,15 @@ async function loadEnvVars() {
   }
 }
 
-onMounted(() => {
-  if (props.keywordCode === 'INPUT') {
-    void loadEnvVars()
-  }
-})
+watch(
+  () => props.keywordCode,
+  (code) => {
+    if (usesEnvTextKeyword(code)) {
+      void loadEnvVars()
+    }
+  },
+  { immediate: true }
+)
 
 /**
  * 主元素（elementKey）绑在步骤自身、由外层表单渲染；嵌套步骤有专用编辑器。
@@ -316,13 +444,16 @@ function displayLabel(def: ParamDefDto) {
   if (def.type !== 'number') return label
   return label
     .replace(/次数$/u, '')
-    .replace(/(毫秒|秒)$/u, '')
+    .replace(/(毫秒|秒|百分比)$/u, '')
     .trim() || label
 }
 
 function numberUnit(def: ParamDefDto): string {
   if (def.name === 'retryTimes' || /times$/i.test(def.name) || /次数$/.test(def.label || '') || def.label === '失败重试') {
     return '次'
+  }
+  if (/Percent$/i.test(def.name) || /百分比/.test(def.label || '')) {
+    return '%'
   }
   if (/ms$/i.test(def.name) || /毫秒/.test(def.label || '')) {
     return '毫秒'
@@ -351,6 +482,11 @@ const OPTION_LABELS: Record<string, Record<string, string>> = {
     left: 'left（左滑）',
     right: 'right（右滑）'
   },
+  distance: {
+    short: 'short（小幅，约屏高一成多）',
+    normal: 'normal（约半个屏高）',
+    long: 'long（大幅翻页）'
+  },
   clickMethod: {
     AUTO: '自动（勾选单次；登录等按钮 iOS 可补点）',
     ELEMENT: '仅元素 click（适合抽屉/开关/勾选，只点一次）',
@@ -369,6 +505,14 @@ const OPTION_LABELS: Record<string, Record<string, string>> = {
 }
 
 function optionLabel(name: string, option: string) {
+  if (name === 'distance' && isHorizontalSwipe()) {
+    const horizontal: Record<string, string> = {
+      short: 'short（小幅，约屏宽一成多）',
+      normal: 'normal（约半个屏宽）',
+      long: 'long（大幅横滑）'
+    }
+    return horizontal[option] || option
+  }
   return OPTION_LABELS[name]?.[option] || option
 }
 
@@ -457,6 +601,9 @@ watch(
   padding: 0;
   height: auto;
 }
+.element-pick-actions {
+  margin-top: 4px;
+}
 .param-label,
 .param-bool-title {
   display: inline-flex;
@@ -464,7 +611,7 @@ watch(
   gap: 4px;
 }
 .param-help-icon {
-  color: #c0c4cc;
+  color: var(--el-text-color-disabled);
   cursor: pointer;
   font-size: 14px;
 }
@@ -474,6 +621,6 @@ watch(
 .param-help-pop {
   font-size: 12px;
   line-height: 1.65;
-  color: #606266;
+  color: var(--app-text-regular);
 }
 </style>
