@@ -135,20 +135,57 @@
               <template v-if="activeTab(c) === 'resp' || activeTab(c) === 'reqBody'">
                 <div class="rr-viewer-head">
                   <span>{{ activeTab(c) === 'resp' ? contentTypeLabel(c) : '请求体' }}</span>
+                  <input
+                    v-model="searchState[c.id]"
+                    class="rr-search"
+                    type="search"
+                    placeholder="搜字段 / 内容"
+                    @keydown.enter.prevent="jumpMatch(c, 1)"
+                  />
+                  <span v-if="(searchState[c.id] || '').trim()" class="rr-search-meta">
+                    {{
+                      bodyMatchCount(c)
+                        ? `${(matchIndex[c.id] || 0) + 1}/${bodyMatchCount(c)}`
+                        : '无匹配'
+                    }}
+                  </span>
+                  <button
+                    v-if="bodyMatchCount(c) > 1"
+                    type="button"
+                    class="rr-mini"
+                    title="上一个"
+                    @click="jumpMatch(c, -1)"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    v-if="bodyMatchCount(c) > 1"
+                    type="button"
+                    class="rr-mini"
+                    title="下一个"
+                    @click="jumpMatch(c, 1)"
+                  >
+                    ↓
+                  </button>
                   <span class="rr-spacer" />
                   <button type="button" class="rr-mini" @click="copyText(activeTab(c) === 'resp' ? c.bodyPreview : c.reqBody)">
                     ⧉ 复制
                   </button>
                   <button v-if="activeTab(c) === 'resp'" type="button" class="rr-mini" @click="downloadBody(c)">↓ 下载</button>
                 </div>
-                <div class="rr-code" :class="{ 'is-full': fullState[c.id] }">
+                <div
+                  class="rr-code"
+                  :class="{ 'is-full': fullState[c.id] }"
+                  :ref="(el) => setCodeRef(c.id, el)"
+                >
                   <div
-                    v-for="(ln, i) in codeLines(c.id + ':' + activeTab(c), activeTab(c) === 'resp' ? c.bodyPreview : c.reqBody)"
+                    v-for="(ln, i) in displayLines(c)"
                     :key="i"
                     class="rr-line"
+                    :class="{ 'is-hit': ln.hasHit }"
                   >
                     <span class="rr-ln">{{ i + 1 }}</span>
-                    <span class="rr-lc" v-html="ln" />
+                    <span class="rr-lc" v-html="ln.html" />
                   </div>
                 </div>
               </template>
@@ -172,7 +209,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { apiClient } from '../api'
 import { guardProdRun } from '../utils/writeEffect'
@@ -194,6 +231,10 @@ const rerunning = ref(false)
 const openState = reactive<Record<string, boolean>>({})
 const tabState = reactive<Record<string, string>>({})
 const fullState = reactive<Record<string, boolean>>({})
+/** 每条用例各自的搜索词；响应体可能很长，分开记才不会串 */
+const searchState = reactive<Record<string, string>>({})
+const matchIndex = reactive<Record<string, number>>({})
+const codeRefs = new Map<string, HTMLElement>()
 let lineCache = new Map<string, string[]>()
 
 watch(
@@ -212,9 +253,12 @@ async function load() {
   run.value = null
   cases.value = []
   lineCache = new Map()
+  codeRefs.clear()
   for (const k of Object.keys(openState)) delete openState[k]
   for (const k of Object.keys(tabState)) delete tabState[k]
   for (const k of Object.keys(fullState)) delete fullState[k]
+  for (const k of Object.keys(searchState)) delete searchState[k]
+  for (const k of Object.keys(matchIndex)) delete matchIndex[k]
   loadCaseKindIndex().then((m) => (kindIndex.value = m))
   try {
     const d = await apiClient.getApiTestRunDetail(currentId.value)
@@ -512,6 +556,68 @@ function codeLines(key: string, raw?: string) {
   lineCache.set(key, lines)
   return lines
 }
+
+function bodyRawOf(c: any) {
+  return activeTab(c) === 'resp' ? c.bodyPreview : c.reqBody
+}
+
+function escapeRegExp(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function bodyMatchCount(c: any) {
+  const q = (searchState[c.id] || '').trim()
+  if (!q) return 0
+  return pretty(bodyRawOf(c)).match(new RegExp(escapeRegExp(q), 'gi'))?.length ?? 0
+}
+
+/** 在已高亮的 HTML 上行内再标搜索命中；query 先 escape，才能对上 &quot; 这类实体 */
+function decorateSearch(html: string, query: string) {
+  if (!query) return html
+  const q = escapeHtml(query)
+  return html.replace(new RegExp(escapeRegExp(q), 'gi'), (m) => `<mark class="rr-hl">${m}</mark>`)
+}
+
+function displayLines(c: any) {
+  const tab = activeTab(c)
+  const raw = bodyRawOf(c)
+  const q = (searchState[c.id] || '').trim()
+  return codeLines(`${c.id}:${tab}`, raw).map((html) => {
+    const decorated = decorateSearch(html, q)
+    return { html: decorated, hasHit: q ? decorated.includes('<mark class="rr-hl">') : false }
+  })
+}
+
+function setCodeRef(id: string, el: unknown) {
+  if (el instanceof HTMLElement) codeRefs.set(id, el)
+  else codeRefs.delete(id)
+}
+
+async function jumpMatch(c: any, step: number) {
+  await nextTick()
+  const root = codeRefs.get(c.id)
+  if (!root) return
+  const marks = root.querySelectorAll('mark.rr-hl')
+  if (!marks.length) return
+  const n = marks.length
+  const cur = matchIndex[c.id] || 0
+  const next = step === 0 ? 0 : (cur + step + n) % n
+  matchIndex[c.id] = next
+  marks.forEach((m, i) => m.classList.toggle('rr-hl-active', i === next))
+  marks[next]?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+}
+
+watch(
+  () => ({ ...searchState }),
+  async () => {
+    await nextTick()
+    for (const c of cases.value) {
+      if (!(searchState[c.id] || '').trim()) continue
+      matchIndex[c.id] = 0
+      await jumpMatch(c, 0)
+    }
+  }
+)
 
 async function copyText(s?: string) {
   try {
@@ -1002,11 +1108,48 @@ function dur(ms?: number) {
 .rr-viewer-head {
   display: flex;
   align-items: center;
+  gap: 6px;
   padding: 8px 12px;
   font-size: 11.5px;
   color: var(--el-text-color-secondary);
   background: var(--el-fill-color-lighter);
   border-bottom: 1px solid var(--el-border-color-lighter);
+}
+.rr-search {
+  flex: 1;
+  min-width: 120px;
+  max-width: 280px;
+  height: 26px;
+  margin: 0 4px 0 12px;
+  padding: 0 10px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 6px;
+  background: var(--el-bg-color);
+  color: var(--el-text-color-primary);
+  font-size: 12px;
+  outline: none;
+}
+.rr-search:focus {
+  border-color: var(--el-color-primary);
+}
+.rr-search-meta {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
+}
+.rr-line.is-hit {
+  background: var(--el-color-warning-light-9);
+}
+.rr-lc :deep(mark.rr-hl) {
+  background: #fde68a;
+  color: inherit;
+  padding: 0 1px;
+  border-radius: 2px;
+}
+.rr-lc :deep(mark.rr-hl-active) {
+  background: #f59e0b;
+  color: #111;
 }
 .rr-code {
   max-height: 320px;
