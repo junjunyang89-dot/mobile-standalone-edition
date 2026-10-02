@@ -10,7 +10,7 @@
           <el-icon class="el-icon--left"><Camera /></el-icon>
           Inspector 截图识别
         </el-button>
-        <el-button @click="inspectorVisible = true">
+        <el-button @click="openInspector()">
           <el-icon class="el-icon--left"><Iphone /></el-icon>
           真机点选
         </el-button>
@@ -378,10 +378,16 @@
         </div>
 
         <div v-show="elementFormTab === 'locator'" class="tab-pane-body">
-          <p class="locator-guide">
-            点左侧圆点设为「主定位」，执行时优先用。多个框都能填备用，主定位找不到时按顺序再试。
-            要用 XPath 当主定位，点 XPath 那一行的圆点即可。
-          </p>
+          <div class="locator-toolbar">
+            <p class="locator-guide">
+              点左侧圆点设为「主定位」，执行时优先用。多个框都能填备用，主定位找不到时按顺序再试。
+              要用 XPath 当主定位，点 XPath 那一行的圆点即可。
+            </p>
+            <el-button type="primary" plain :disabled="!form.appId" @click="openFillBackInspect">
+              <el-icon class="el-icon--left"><Iphone /></el-icon>
+              真机定位
+            </el-button>
+          </div>
           <el-form-item label-width="0" prop="locatorValue" class="locator-form-item">
             <el-radio-group
               v-model="form.locatorType"
@@ -635,10 +641,12 @@
 
     <DeviceInspectDrawer
       v-model="inspectorVisible"
-      :app-id="filterAppId"
-      :platform="filterPlatform || 'ANDROID'"
-      :page-id="filterPageId"
+      :app-id="inspectAppId"
+      :platform="inspectPlatform"
+      :page-id="inspectPageId"
+      :fill-back="inspectFillBack"
       @saved="loadList"
+      @fill-back="onInspectFillBack"
     />
   </div>
 </template>
@@ -655,6 +663,84 @@ import { normalizePageId, suggestPageId } from '@/utils/uiPage'
 const route = useRoute()
 const router = useRouter()
 const inspectorVisible = ref(false)
+/** true=从编辑弹窗回填定位；false=工具栏采集入库 */
+const inspectFillBack = ref(false)
+
+const inspectAppId = computed(() =>
+  inspectFillBack.value ? form.appId || filterAppId.value : filterAppId.value
+)
+const inspectPlatform = computed(() =>
+  inspectFillBack.value
+    ? form.platform || filterPlatform.value || 'ANDROID'
+    : filterPlatform.value || 'ANDROID'
+)
+const inspectPageId = computed(() =>
+  inspectFillBack.value ? form.pageId || filterPageId.value : filterPageId.value
+)
+
+function openInspector(fillBack = false) {
+  inspectFillBack.value = fillBack
+  if (fillBack && !form.appId) {
+    elementFormTab.value = 'basic'
+    ElMessage.warning('请先选择应用')
+    return
+  }
+  inspectorVisible.value = true
+}
+
+function openFillBackInspect() {
+  openInspector(true)
+}
+
+function onInspectFillBack(payload: {
+  primaryType: string
+  primaryValue: string
+  locators: Array<{ locatorType: string; locatorValue: string }>
+  nameZh?: string
+  nameEn?: string
+  visualHint?: string
+}) {
+  const primaryType = String(payload?.primaryType || '').trim()
+  const primaryValue = String(payload?.primaryValue || '').trim()
+  if (!primaryType || !primaryValue) {
+    ElMessage.warning('没有可用的定位结果')
+    return
+  }
+
+  const valueByType = new Map<string, string>()
+  for (const slot of locatorSlots.value) {
+    if (slot.value.trim()) valueByType.set(slot.type, slot.value)
+  }
+  for (const loc of payload.locators || []) {
+    const t = String(loc?.locatorType || '').trim()
+    const v = String(loc?.locatorValue || '').trim()
+    if (!t || !v) continue
+    if (t.toLowerCase() === 'coordinate') continue
+    // 主定位强制覆盖；其它类型只填空槽，避免冲掉人工改过的备用
+    if (t === primaryType || !valueByType.get(t)?.trim()) {
+      valueByType.set(t, v)
+    }
+  }
+  valueByType.set(primaryType, primaryValue)
+
+  const order: string[] = []
+  const pushType = (t: string) => {
+    if (!t || order.includes(t)) return
+    order.push(t)
+  }
+  for (const slot of locatorSlots.value) pushType(slot.type)
+  pushType(primaryType)
+  for (const t of valueByType.keys()) pushType(t)
+
+  locatorSlots.value = order.map((t) => makeSlot(t, valueByType.get(t) || ''))
+  form.locatorType = primaryType
+  form.locatorValue = primaryValue
+  if (!form.nameZh.trim() && payload.nameZh) form.nameZh = payload.nameZh
+  if (!form.nameEn.trim() && payload.nameEn) form.nameEn = payload.nameEn
+  if (!form.visualHint.trim() && payload.visualHint) form.visualHint = payload.visualHint
+  elementFormTab.value = 'locator'
+  ElMessage.success(`已回填主定位 ${primaryType}，共 ${locatorSlots.value.filter((s) => s.value.trim()).length} 条`)
+}
 
 const platforms = [
   { value: 'ANDROID', label: 'Android' },
@@ -1836,8 +1922,6 @@ async function handleDelete(row: any) {
   }
 }
 
-/** —— 真机点选（逻辑在 DeviceInspectDrawer） —— */
-
 onMounted(async () => {
   await loadApps()
   await loadPages()
@@ -2170,8 +2254,16 @@ onMounted(async () => {
   gap: 8px;
   width: 100%;
 }
+.locator-toolbar {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
 .locator-guide {
-  margin: 0 0 12px;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
   padding: 10px 12px;
   border-radius: 8px;
   background: #f0f7ff;
@@ -2179,6 +2271,10 @@ onMounted(async () => {
   color: #334155;
   font-size: 12px;
   line-height: 1.55;
+}
+.locator-toolbar .el-button {
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 .locator-slot {
   display: flex;

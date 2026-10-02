@@ -209,7 +209,7 @@
             <span class="flow-desc">{{ row.description || '—' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="290" fixed="right">
+        <el-table-column label="操作" width="380" fixed="right">
           <template #default="{ row }">
             <el-button type="success" link size="small" @click="openExecute(row)">试跑</el-button>
             <el-button
@@ -222,6 +222,16 @@
               环境检查
             </el-button>
             <el-button type="primary" link size="small" @click="openEdit(row)">编辑</el-button>
+            <el-button
+              v-if="siblingPlatform(row.platform)"
+              type="primary"
+              link
+              size="small"
+              :loading="cloningId === row.id"
+              @click="cloneToSibling(row)"
+            >
+              生成{{ platformShort(siblingPlatform(row.platform)) }}流程
+            </el-button>
             <el-button v-perm:delete type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
@@ -265,6 +275,62 @@
       </div>
       <template #footer>
         <el-button @click="envScanVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <!--
+      跨平台克隆结果：新流程已生成，这里告诉人「元素覆盖到哪一步」——
+      哪些直接能跑、哪些 iOS 侧元素还没定位、哪些目标平台压根没有。
+      流程逻辑是跨平台复用的，差异只在每个元素的 locator 值，所以人只要去补 locator。
+    -->
+    <el-dialog v-model="cloneVisible" width="640px" title="跨平台流程已生成" destroy-on-close>
+      <template v-if="cloneResult">
+        <el-alert
+          :type="cloneResult.missing?.length || cloneResult.needLocator?.length ? 'warning' : 'success'"
+          :closable="false"
+          show-icon
+          :title="`已生成「${cloneResult.flow?.name}」（${cloneResult.targetLabel}），共 ${cloneResult.elementCount} 个元素引用`"
+        />
+        <div class="clone-cover">
+          <div class="clone-row">
+            <el-tag type="success" size="small">已就绪 {{ cloneResult.ready?.length || 0 }}</el-tag>
+            <span class="clone-hint">{{ cloneResult.targetLabel }}侧已有可用元素，直接能跑</span>
+          </div>
+          <div class="clone-keys" v-if="cloneResult.ready?.length">
+            <el-tag v-for="k in cloneResult.ready" :key="k" size="small" effect="plain">{{ k }}</el-tag>
+          </div>
+
+          <div class="clone-row">
+            <el-tag type="warning" size="small">待定位 {{ cloneResult.needLocator?.length || 0 }}</el-tag>
+            <span class="clone-hint">同名元素已在，但 {{ cloneResult.targetLabel }} 的 locator 还没定——去元素库补定位值</span>
+          </div>
+          <div class="clone-keys" v-if="cloneResult.needLocator?.length">
+            <el-tag v-for="k in cloneResult.needLocator" :key="k" size="small" type="warning" effect="plain">{{ k }}</el-tag>
+          </div>
+
+          <div class="clone-row">
+            <el-tag type="danger" size="small">缺失 {{ cloneResult.missing?.length || 0 }}</el-tag>
+            <span class="clone-hint">{{ cloneResult.targetLabel }} 侧还没有这个元素，需先新建并定位</span>
+          </div>
+          <div class="clone-keys" v-if="cloneResult.missing?.length">
+            <el-tag v-for="k in cloneResult.missing" :key="k" size="small" type="danger" effect="plain">{{ k }}</el-tag>
+          </div>
+
+          <div class="clone-row" v-if="cloneResult.referencedComponents?.length">
+            <el-tag type="info" size="small">引用组件 {{ cloneResult.referencedComponents.length }}</el-tag>
+            <span class="clone-hint">这些子流程/组件也要有对应平台版本才能跑</span>
+          </div>
+        </div>
+      </template>
+      <template #footer>
+        <el-button @click="cloneVisible = false">关闭</el-button>
+        <el-button
+          v-if="cloneResult?.flow?.id"
+          type="primary"
+          @click="cloneVisible = false; openEdit(cloneResult.flow)"
+        >
+          打开编辑
+        </el-button>
       </template>
     </el-dialog>
 
@@ -3312,6 +3378,43 @@ const envScanHits = ref<
 >([])
 const scanningId = ref('')
 
+// ---- 跨平台克隆：按一条流程生成另一平台的草稿 + 元素覆盖报告 ----
+const cloningId = ref('')
+const cloneVisible = ref(false)
+const cloneResult = ref<any | null>(null)
+
+/** 只在 ANDROID / IOS 之间互生；其它平台不显示按钮 */
+function siblingPlatform(platform?: string): string {
+  const p = String(platform || '').toUpperCase()
+  if (p === 'ANDROID') return 'IOS'
+  if (p === 'IOS') return 'ANDROID'
+  return ''
+}
+
+function platformShort(platform?: string): string {
+  const p = String(platform || '').toUpperCase()
+  if (p === 'IOS') return 'iOS'
+  if (p === 'ANDROID') return 'Android'
+  if (p === 'HARMONYOS') return '鸿蒙'
+  return platform || ''
+}
+
+async function cloneToSibling(row: any) {
+  const target = siblingPlatform(row.platform)
+  if (!target) return
+  cloningId.value = row.id
+  try {
+    const r = await apiClient.cloneUiFlowToPlatform(row.id, target)
+    cloneResult.value = { ...r, targetLabel: platformShort(target) }
+    cloneVisible.value = true
+    await loadList()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '生成失败')
+  } finally {
+    cloningId.value = ''
+  }
+}
+
 async function openEnvScan(row: any) {
   scanningId.value = row.id
   try {
@@ -4107,6 +4210,29 @@ onMounted(async () => {
   margin-top: 12px;
   max-height: 420px;
   overflow-y: auto;
+}
+
+.clone-cover {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.clone-cover .clone-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.clone-cover .clone-hint {
+  font-size: 12.5px;
+  color: var(--el-text-color-secondary);
+}
+.clone-cover .clone-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  padding: 2px 0 2px 2px;
 }
 
 .env-scan-item {

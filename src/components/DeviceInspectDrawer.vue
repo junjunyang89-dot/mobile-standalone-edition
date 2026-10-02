@@ -1,7 +1,7 @@
 <template>
   <el-drawer
     :model-value="modelValue"
-    :title="pickTapOffset ? '真机点选点击位置' : '真机点选采集'"
+    :title="drawerTitle"
     size="92%"
     destroy-on-close
     append-to-body
@@ -117,7 +117,7 @@
           <p v-if="lastHit && lastHit.x != null && !pickedChip" class="shot-pixel-hint">
             点在截图 {{ lastHit.x }}, {{ lastHit.y }}
           </p>
-          <div v-if="tapOffset" class="tap-offset-card">
+          <div v-if="tapOffset && pickTapOffset" class="tap-offset-card">
             <div class="inspector-side-title">相对该控件的点击位置</div>
             <p class="tap-offset-nums">横向 {{ tapOffset.x }}% · 纵向 {{ tapOffset.y }}%</p>
             <p class="tap-offset-hint">
@@ -187,7 +187,22 @@
             </div>
           </div>
         </div>
-        <div v-if="selected && !pickTapOffset" class="inspector-form">
+        <div v-if="selected && fillBack" class="inspector-form">
+          <div class="inspector-side-title">回填到编辑弹窗</div>
+          <p class="fill-back-hint">
+            不新建库元素。主定位用当前选中方案，其它候选一并写入备用定位框（空的才填，已有值不覆盖）。
+          </p>
+          <div class="fill-back-preview">
+            <el-tag size="small" :type="locatorTagType(form.locatorType)" effect="plain">{{ form.locatorType }}</el-tag>
+            <code class="fill-back-value">{{ form.locatorValue }}</code>
+          </div>
+          <div class="inspector-actions">
+            <el-button type="primary" :disabled="!form.locatorValue.trim()" @click="applyFillBack">
+              回填定位
+            </el-button>
+          </div>
+        </div>
+        <div v-if="selected && !pickTapOffset && !fillBack" class="inspector-form">
           <div class="inspector-side-title">写入元素库</div>
           <el-alert
             v-if="formNotice"
@@ -322,13 +337,29 @@ const props = defineProps<{
   pickTapOffset?: boolean
   /** 步骤已绑元素，百分比相对它算 */
   elementKey?: string
+  /** 从新增/编辑元素弹窗进来：点选后回填定位，不入库 */
+  fillBack?: boolean
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   saved: [payload: { nameEn: string; nameZh: string; promoted: boolean }]
   'tap-offset': [payload: { offsetXPercent: number; offsetYPercent: number }]
+  'fill-back': [payload: {
+    primaryType: string
+    primaryValue: string
+    locators: Array<{ locatorType: string; locatorValue: string }>
+    nameZh?: string
+    nameEn?: string
+    visualHint?: string
+  }]
 }>()
+
+const drawerTitle = computed(() => {
+  if (props.pickTapOffset) return '真机点选点击位置'
+  if (props.fillBack) return '真机定位回填'
+  return '真机点选采集'
+})
 
 const devices = ref<any[]>([])
 const deviceId = ref('')
@@ -461,6 +492,40 @@ function applyTapOffset() {
   emit('tap-offset', {
     offsetXPercent: tapOffset.value.x,
     offsetYPercent: tapOffset.value.y
+  })
+  close()
+}
+
+function applyFillBack() {
+  const primaryType = String(form.locatorType || '').trim()
+  const primaryValue = String(form.locatorValue || '').trim()
+  if (!primaryType || !primaryValue) {
+    showFormNotice('warning', '还没选定位', '请先在截图或控件树上点选，再选一条定位方案')
+    return
+  }
+  const seen = new Set<string>()
+  const locators: Array<{ locatorType: string; locatorValue: string }> = []
+  const push = (type: string, value: string) => {
+    const t = String(type || '').trim()
+    const v = String(value || '').trim()
+    if (!t || !v) return
+    if (t.toLowerCase() === 'coordinate') return
+    const key = `${t}\0${v}`
+    if (seen.has(key)) return
+    seen.add(key)
+    locators.push({ locatorType: t, locatorValue: v })
+  }
+  push(primaryType, primaryValue)
+  for (const c of candidates.value || []) {
+    push(String(c?.locatorType || ''), String(c?.locatorValue || ''))
+  }
+  emit('fill-back', {
+    primaryType,
+    primaryValue,
+    locators,
+    nameZh: String(form.nameZh || '').trim() || undefined,
+    nameEn: String(form.nameEn || '').trim() || undefined,
+    visualHint: String(form.visualHint || '').trim() || undefined
   })
   close()
 }
@@ -1258,6 +1323,30 @@ async function createElement(promote: boolean) {
   font-size: 16px;
   font-weight: 600;
   color: var(--app-text);
+}
+.fill-back-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.5;
+}
+.fill-back-preview {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--el-fill-color-lighter);
+  border: 1px solid var(--el-border-color-lighter);
+}
+.fill-back-value {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  word-break: break-all;
+  color: var(--el-text-color-primary);
 }
 .tap-offset-hint {
   margin: 0 0 10px;

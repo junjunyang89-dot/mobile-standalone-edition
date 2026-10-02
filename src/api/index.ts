@@ -1684,6 +1684,17 @@ class ApiClient {
   }
 
   /**
+   * 跨平台克隆：按一条流程生成另一平台的流程（如 Android → iOS），步骤原样带走，
+   * platform 改为目标平台。返回 { flow, elementCount, ready, needLocator, missing, referencedComponents }。
+   */
+  async cloneUiFlowToPlatform(id: string, platform: string, environment?: string) {
+    return this.request<any>(`/ui-flows/${encodeURIComponent(id)}/clone-to-platform`, {
+      method: 'POST',
+      body: JSON.stringify({ platform, environment })
+    })
+  }
+
+  /**
    * 用已审元素编一条停用草稿。模型 10～40 秒，校验失败会再试一次，所以这里给 120 秒。
    */
   async composeUiFlowByAi(body: AiComposeRequest) {
