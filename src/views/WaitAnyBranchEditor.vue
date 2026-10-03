@@ -52,6 +52,7 @@
             v-model="cand.elementKey"
             :elements="elementOptions"
             :pages="pageOptions"
+            :params="ensureStepParams(step)"
             placeholder="先选页面，再选该页下的元素"
           />
           <div class="element-pick-actions">
@@ -286,6 +287,13 @@ function migrateNoneMessage() {
 function clearNoneMessage() {
   delete props.step.params.noneMessage
   delete props.step.params.endStatus
+}
+
+function ensureStepParams(step: FlowStep) {
+  if (!step.params || typeof step.params !== 'object') {
+    step.params = {}
+  }
+  return step.params
 }
 
 const candidates = computed<Candidate[]>(() => {

@@ -150,9 +150,16 @@
                   <el-tag size="small" :type="statusTagType(row.status)">{{ statusLabel(row.status) }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column label="操作" width="180" fixed="right">
+              <el-table-column label="操作" width="220" fixed="right">
                 <template #default="{ row }">
                   <el-button type="primary" link size="small" @click="openEdit(row)">编辑</el-button>
+                  <el-button
+                    v-if="copyTargetPlatform(row)"
+                    type="primary"
+                    link
+                    size="small"
+                    @click="copyToOtherPlatform(row)"
+                  >{{ copyActionLabel(row) }}</el-button>
                   <el-button
                     v-if="row.status !== 'ACTIVE'"
                     type="success"
@@ -247,9 +254,16 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="200" fixed="right">
+          <el-table-column label="操作" width="240" fixed="right">
             <template #default="{ row }">
               <el-button type="primary" link size="small" @click="openEdit(row)">编辑</el-button>
+              <el-button
+                v-if="copyTargetPlatform(row)"
+                type="primary"
+                link
+                size="small"
+                @click="copyToOtherPlatform(row)"
+              >{{ copyActionLabel(row) }}</el-button>
               <el-button
                 v-if="row.status !== 'ACTIVE'"
                 type="success"
@@ -331,12 +345,21 @@
             </el-col>
             <el-col :span="12">
               <el-form-item label="中文名称" prop="nameZh">
-                <el-input v-model="form.nameZh" placeholder="如 登录按钮" />
+                <!-- 失焦时问一次 AI；人手改过英文名的不动 -->
+                <el-input
+                  v-model="form.nameZh"
+                  placeholder="如 登录按钮"
+                  @blur="fillElementKeyByAi()"
+                />
               </el-form-item>
             </el-col>
             <el-col :span="12">
               <el-form-item label="英文名称" prop="nameEn">
-                <el-input v-model="form.nameEn" placeholder="流程引用 key，如 login_btn" />
+                <el-input v-model="form.nameEn" placeholder="流程引用 key，如 login_btn">
+                  <template #append>
+                    <el-button :loading="suggestingKey" @click="fillElementKeyByAi(true)">AI 生成</el-button>
+                  </template>
+                </el-input>
               </el-form-item>
             </el-col>
             <el-col :span="24">
@@ -1081,6 +1104,7 @@ watch(newPageNameZh, (n) => {
 })
 
 const suggestingCode = ref(false)
+const suggestingKey = ref(false)
 
 // ---------- Inspector 截图识别 ----------
 
@@ -1180,12 +1204,42 @@ async function fillPageCodeByAi(force = false) {
       newPageId.value = res.code
     } else if (force) {
       // 明确点了按钮却没给出结果，要说一声，别让人以为按钮坏了
-      ElMessage.info('AI 没能翻译出编码，保留当前编码，可自己改')
+      ElMessage.info('Cursor 没能翻译出编码，保留当前编码，可自己改')
     }
-  } catch {
-    // 翻不出来不影响建页面——随机码兜底，静默即可
+  } catch (e: any) {
+    // 翻不出来不影响建页面；点了按钮时说清楚，别让人以为还在走千问
+    if (force) {
+      ElMessage.warning(e?.message || 'Cursor 翻译失败，可自己改编码')
+    }
   } finally {
     suggestingCode.value = false
+  }
+}
+
+/**
+ * 中文名 → 英文 nameEn。只在英文名还空着时自动填；人手改过的不动。
+ * force=true 是点「AI 生成」，允许覆盖。
+ */
+async function fillElementKeyByAi(force = false) {
+  const name = (form.nameZh || '').trim()
+  if (!name) return
+  const current = (form.nameEn || '').trim()
+  if (!force && current) return
+
+  suggestingKey.value = true
+  try {
+    const res = await apiClient.suggestElementKey(name)
+    if (res?.key) {
+      form.nameEn = res.key
+    } else if (force) {
+      ElMessage.info('Cursor 没能翻译出英文名，可自己改')
+    }
+  } catch (e: any) {
+    if (force) {
+      ElMessage.warning(e?.message || 'Cursor 翻译失败，可自己改英文名')
+    }
+  } finally {
+    suggestingKey.value = false
   }
 }
 
@@ -1908,6 +1962,39 @@ async function promoteActive(row: any) {
     await loadList()
   } catch (e: any) {
     ElMessage.error(e?.message || '选用失败')
+  }
+}
+
+/** Android ↔ iOS；鸿蒙不互拷。返回目标平台大写，不可拷则 null */
+function copyTargetPlatform(row: { platform?: string }): string | null {
+  const p = String(row?.platform || '').trim().toUpperCase()
+  if (p === 'ANDROID') return 'IOS'
+  if (p === 'IOS') return 'ANDROID'
+  return null
+}
+
+function copyActionLabel(row: { platform?: string }) {
+  const t = copyTargetPlatform(row)
+  if (t === 'IOS') return '复制到iOS'
+  if (t === 'ANDROID') return '复制到安卓'
+  return '复制'
+}
+
+async function copyToOtherPlatform(row: any) {
+  const to = copyTargetPlatform(row)
+  if (!to) return
+  const toLabel = to === 'IOS' ? 'iOS' : '安卓'
+  await ElMessageBox.confirm(
+    `把「${row.nameZh || row.nameEn}」复制到 ${toLabel}？\n中英文名、页面、说明会带过去，定位值留空，到目标平台再补。`,
+    `复制到${toLabel}`,
+    { type: 'info', confirmButtonText: '复制', cancelButtonText: '取消' }
+  )
+  try {
+    await apiClient.copyUiElementToPlatform(row.id, to)
+    ElMessage.success(`已复制到 ${toLabel}（定位待补）`)
+    await loadList()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '复制失败')
   }
 }
 

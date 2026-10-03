@@ -1570,6 +1570,14 @@ class ApiClient {
     )
   }
 
+  /** 单条复制到另一平台：名字/页面带走，xpath 等定位留空 */
+  async copyUiElementToPlatform(id: string, toPlatform: string) {
+    return this.request<any>(`/ui-elements/${encodeURIComponent(id)}/copy-to-platform`, {
+      method: 'POST',
+      body: JSON.stringify({ toPlatform })
+    })
+  }
+
   async deleteUiElement(id: string) {
     return this.request<{ ok: boolean }>(`/ui-elements/${id}`, { method: 'DELETE' })
   }

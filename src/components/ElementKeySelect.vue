@@ -1,102 +1,118 @@
 <template>
-  <el-popover
-    v-model:visible="open"
-    placement="bottom-start"
-    :width="panelWidth"
-    :disabled="disabled"
-    trigger="click"
-    :teleported="true"
-    popper-class="element-key-select-popper"
-    @after-enter="focusSearch"
-  >
-    <template #reference>
-      <div
-        class="eks-trigger"
-        :class="{ 'is-disabled': disabled, 'is-open': open }"
-      >
-        <span v-if="displayText" class="eks-value" :title="displayText">{{ displayText }}</span>
-        <span v-else class="eks-placeholder">{{ placeholder }}</span>
-        <span class="eks-actions">
-          <el-icon
-            v-if="modelValue && !disabled"
-            class="eks-clear"
-            @click.stop="clear"
-          >
-            <CircleClose />
-          </el-icon>
-          <el-icon class="eks-arrow"><ArrowDown /></el-icon>
-        </span>
-      </div>
-    </template>
-
-    <div class="eks-panel" @keydown.stop>
-      <el-input
-        ref="searchRef"
-        v-model="keyword"
-        clearable
-        size="small"
-        placeholder="搜索页面或元素（中文 / 英文 key）"
-        @keydown.esc.stop="close"
-      />
-
-      <div v-if="!filteredPages.length" class="eks-empty">无匹配结果</div>
-
-      <!-- 有关键字：扁平列出「页面 / 元素」，一眼扫完 -->
-      <el-scrollbar v-else-if="keywordTrim" max-height="280px">
+  <div class="eks-wrap">
+    <el-popover
+      v-model:visible="open"
+      placement="bottom-start"
+      :width="panelWidth"
+      :disabled="disabled"
+      trigger="click"
+      :teleported="true"
+      popper-class="element-key-select-popper"
+      @after-enter="focusSearch"
+    >
+      <template #reference>
         <div
-          v-for="hit in flatHits"
-          :key="hit.en"
-          class="eks-hit"
-          :class="{ 'is-active': hit.en === modelValue }"
-          @click="pick(hit.en)"
+          class="eks-trigger"
+          :class="{ 'is-disabled': disabled, 'is-open': open }"
         >
-          <span class="eks-hit-page">{{ hit.pageTitle }}</span>
-          <span class="eks-hit-sep">/</span>
-          <span class="eks-hit-el">{{ hit.elLabel }}</span>
+          <span v-if="displayText" class="eks-value" :title="displayText">{{ displayText }}</span>
+          <span v-else class="eks-placeholder">{{ placeholder }}</span>
+          <span class="eks-actions">
+            <el-icon
+              v-if="modelValue && !disabled"
+              class="eks-clear"
+              @click.stop="clear"
+            >
+              <CircleClose />
+            </el-icon>
+            <el-icon class="eks-arrow"><ArrowDown /></el-icon>
+          </span>
         </div>
-      </el-scrollbar>
+      </template>
 
-      <!-- 无关键字：先选页面，再展开该页元素 -->
-      <div v-else class="eks-cols">
-        <el-scrollbar max-height="280px" class="eks-col">
+      <div class="eks-panel" @keydown.stop>
+        <el-input
+          ref="searchRef"
+          v-model="keyword"
+          clearable
+          size="small"
+          placeholder="搜索页面或元素（中文 / 英文 key）"
+          @keydown.esc.stop="close"
+        />
+
+        <div v-if="!filteredPages.length" class="eks-empty">无匹配结果</div>
+
+        <!-- 有关键字：扁平列出「页面 / 元素」，一眼扫完 -->
+        <el-scrollbar v-else-if="keywordTrim" max-height="280px">
           <div
-            v-for="pg in filteredPages"
-            :key="pg.pageId"
-            class="eks-page"
-            :class="{ 'is-active': pg.pageId === activePageId }"
-            @click="activePageId = pg.pageId"
+            v-for="hit in flatHits"
+            :key="hit.en"
+            class="eks-hit"
+            :class="{ 'is-active': hit.en === modelValue }"
+            @click="pick(hit.en)"
           >
-            <span class="eks-page-name">{{ pg.title }}</span>
-            <span class="eks-page-count">{{ pg.elements.length }}</span>
+            <span class="eks-hit-page">{{ hit.pageTitle }}</span>
+            <span class="eks-hit-sep">/</span>
+            <span class="eks-hit-el">{{ hit.elLabel }}</span>
           </div>
         </el-scrollbar>
-        <el-scrollbar max-height="280px" class="eks-col eks-col-el">
-          <template v-if="activePage">
+
+        <!-- 无关键字：先选页面，再展开该页元素 -->
+        <div v-else class="eks-cols">
+          <el-scrollbar max-height="280px" class="eks-col">
             <div
-              v-for="el in activePage.elements"
-              :key="el.en"
-              class="eks-el"
-              :class="{ 'is-active': el.en === modelValue }"
-              @click="pick(el.en)"
+              v-for="pg in filteredPages"
+              :key="pg.pageId"
+              class="eks-page"
+              :class="{ 'is-active': pg.pageId === activePageId }"
+              @click="activePageId = pg.pageId"
             >
-              {{ el.label }}
+              <span class="eks-page-name">{{ pg.title }}</span>
+              <span class="eks-page-count">{{ pg.elements.length }}</span>
             </div>
-          </template>
-          <div v-else class="eks-empty soft">请选择左侧页面</div>
-        </el-scrollbar>
+          </el-scrollbar>
+          <el-scrollbar max-height="280px" class="eks-col eks-col-el">
+            <template v-if="activePage">
+              <div
+                v-for="el in activePage.elements"
+                :key="el.en"
+                class="eks-el"
+                :class="{ 'is-active': el.en === modelValue }"
+                @click="pick(el.en)"
+              >
+                {{ el.label }}
+              </div>
+            </template>
+            <div v-else class="eks-empty soft">请选择左侧页面</div>
+          </el-scrollbar>
+        </div>
       </div>
-    </div>
-  </el-popover>
+    </el-popover>
+
+    <!--
+      定位里有 ${变量} 就露出来——编排时必须能填值。
+      传了 params 才渲染（写进步骤参数）；批量添加器用 ElementKeySelect 时不传 params，避免误出。
+    -->
+    <LocatorVarFields
+      v-if="params && locatorVarNames.length"
+      :names="locatorVarNames"
+      :params="params"
+    />
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { ArrowDown, CircleClose } from '@element-plus/icons-vue'
+import LocatorVarFields from './LocatorVarFields.vue'
+import { elementLocatorVars } from '@/utils/locatorVars'
 
 export type ElementOption = {
   nameEn?: string
   nameZh?: string
   pageId?: string | null
+  locatorValue?: string
+  locatorFallbacks?: string
 }
 
 export type PageOption = {
@@ -111,6 +127,8 @@ const props = withDefaults(
     pages?: PageOption[]
     placeholder?: string
     disabled?: boolean
+    /** 步骤 params：有定位变量时写入这里，不传则不展示变量入口 */
+    params?: Record<string, any>
   }>(),
   {
     modelValue: '',
@@ -120,6 +138,13 @@ const props = withDefaults(
     disabled: false
   }
 )
+
+const locatorVarNames = computed(() => {
+  const key = String(props.modelValue || '').trim()
+  if (!key) return []
+  const el = (props.elements || []).find((e) => e.nameEn === key)
+  return elementLocatorVars(el)
+})
 
 const emit = defineEmits<{
   'update:modelValue': [string]
@@ -284,6 +309,15 @@ function clear() {
 </script>
 
 <style scoped>
+.eks-wrap {
+  width: 100%;
+}
+.eks-wrap {
+  width: 100%;
+}
+.eks-wrap {
+  width: 100%;
+}
 .eks-trigger {
   display: flex;
   align-items: center;

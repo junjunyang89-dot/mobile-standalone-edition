@@ -21,6 +21,7 @@
           :elements="elementOptions"
           :pages="pageOptions"
           placeholder="强烈建议填，如首页标志元素"
+          :params="step.params"
         />
         <div class="dp-tip">
           <b>不填会有坑</b>：应用刚启动时弹窗往往还没渲染出来，扫一遍必然扑空，
@@ -82,6 +83,7 @@
             :elements="elementOptions"
             :pages="pageOptions"
             placeholder="选「同意」「我知道了」「关闭」等按钮元素"
+            :params="step.params"
           />
           <div class="dp-tip">
             填的是<b>点了能关掉弹窗的那个元素</b>，不是弹窗容器——执行时探测到它就直接点它

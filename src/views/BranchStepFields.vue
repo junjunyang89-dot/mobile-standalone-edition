@@ -13,6 +13,7 @@
         v-model="step.elementKey"
         :elements="elementOptions"
         :pages="pageOptions"
+        :params="ensureStepParams(step)"
         placeholder="先选页面，再选该页下的元素"
       />
       <div class="element-pick-actions">
@@ -167,6 +168,13 @@ const elementFieldLabel = computed(() => {
 
 function isScrollUntilStep(code: string) {
   return code === 'SCROLL_UNTIL' || code === 'SCROLL_UNTIL_IOS'
+}
+
+function ensureStepParams(step: FlowStep) {
+  if (!step.params || typeof step.params !== 'object') {
+    step.params = {}
+  }
+  return step.params
 }
 
 </script>

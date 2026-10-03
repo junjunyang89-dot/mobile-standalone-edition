@@ -151,11 +151,8 @@
           v-model="params[def.name]"
           :elements="elementOptions || []"
           :pages="pageOptions || []"
-          placeholder="先选页面，再选元素"
-        />
-        <LocatorVarFields
-          :names="varsOfElementParam(params[def.name])"
           :params="params"
+          placeholder="先选页面，再选元素"
         />
       </template>
 

@@ -286,10 +286,10 @@
     <el-dialog v-model="cloneVisible" width="640px" title="跨平台流程已生成" destroy-on-close>
       <template v-if="cloneResult">
         <el-alert
-          :type="cloneResult.missing?.length || cloneResult.needLocator?.length ? 'warning' : 'success'"
+          :type="cloneResult.missing?.length || cloneResult.needLocator?.length || cloneResult.sourceMissing?.length ? 'warning' : 'success'"
           :closable="false"
           show-icon
-          :title="`已生成「${cloneResult.flow?.name}」（${cloneResult.targetLabel}），共 ${cloneResult.elementCount} 个元素引用`"
+          :title="`已生成「${cloneResult.flow?.name}」（${cloneResult.targetLabel}），共 ${cloneResult.elementCount} 个元素引用${cloneRemappedEntries.length ? '，已纠正 ' + cloneRemappedEntries.length + ' 处幽灵引用' : ''}`"
         />
         <div class="clone-cover">
           <div class="clone-row">
@@ -314,6 +314,28 @@
           </div>
           <div class="clone-keys" v-if="cloneResult.missing?.length">
             <el-tag v-for="k in cloneResult.missing" :key="k" size="small" type="danger" effect="plain">{{ k }}</el-tag>
+          </div>
+
+          <div class="clone-row" v-if="cloneRemappedEntries.length">
+            <el-tag type="success" size="small">已纠正幽灵引用 {{ cloneRemappedEntries.length }}</el-tag>
+            <span class="clone-hint">源流程写了库里没有的英文名（多半 AI 编排编错），已改成两端都有的近似元素</span>
+          </div>
+          <div class="clone-keys" v-if="cloneRemappedEntries.length">
+            <el-tag
+              v-for="[from, to] in cloneRemappedEntries"
+              :key="from"
+              size="small"
+              type="success"
+              effect="plain"
+            >{{ from }} → {{ to }}</el-tag>
+          </div>
+
+          <div class="clone-row" v-if="cloneResult.sourceMissing?.length">
+            <el-tag type="danger" size="small">源也没有 {{ cloneResult.sourceMissing.length }}</el-tag>
+            <span class="clone-hint">源流程引用了元素库不存在的名字，且无法自动纠正——请先改源流程或补元素</span>
+          </div>
+          <div class="clone-keys" v-if="cloneResult.sourceMissing?.length">
+            <el-tag v-for="k in cloneResult.sourceMissing" :key="'sm-'+k" size="small" type="danger" effect="plain">{{ k }}</el-tag>
           </div>
 
           <div class="clone-row" v-if="cloneResult.referencedComponents?.length">
@@ -494,7 +516,7 @@
               <span class="exec-var-name">{{ v }}</span>
               <el-input v-model="execForm.params[v]" size="default" :placeholder="`填入 ${v} 的值`" />
             </div>
-            <div class="exec-hint">这些是流程里写成 ${'{'}变量{'}'} 的定位片段，每次执行按当前数据填</div>
+            <div class="exec-hint">元素定位里的 ${'{'}变量{'}'}；编排步骤里已经填过的不会再出现，这里只收还没给值的</div>
           </div>
         </div>
 
@@ -1167,6 +1189,7 @@
                 v-model="selectedStep.elementKey"
                 :elements="elementOptions"
                 :pages="flowPageOptions"
+                :params="ensureStepParams(selectedStep)"
                 :placeholder="elementSelectPlaceholder"
               />
               <div class="element-pick-actions">
@@ -2003,6 +2026,14 @@ async function loadElementsForFlow() {
     elementOptions.value = []
     flowPageOptions.value = []
   }
+}
+
+function ensureStepParams(step: { params?: Record<string, any> } | null | undefined) {
+  if (!step) return {}
+  if (!step.params || typeof step.params !== 'object') {
+    step.params = {}
+  }
+  return step.params
 }
 
 /** 当前页直接弹出真机点选，不跳转元素库整页 */
@@ -3382,6 +3413,11 @@ const scanningId = ref('')
 const cloningId = ref('')
 const cloneVisible = ref(false)
 const cloneResult = ref<any | null>(null)
+const cloneRemappedEntries = computed(() => {
+  const m = cloneResult.value?.remapped
+  if (!m || typeof m !== 'object') return [] as Array<[string, string]>
+  return Object.entries(m) as Array<[string, string]>
+})
 
 /** 只在 ANDROID / IOS 之间互生；其它平台不显示按钮 */
 function siblingPlatform(platform?: string): string {
