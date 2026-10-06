@@ -102,6 +102,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '上线看板' }
       },
       {
+        path: 'release-merge',
+        name: 'ReleaseMerge',
+        component: () => import('../views/ReleaseMerge.vue'),
+        meta: { title: '合并到 master' }
+      },
+      {
         path: 'change-review',
         name: 'ChangeReview',
         component: () => import('../views/ChangeReview.vue'),

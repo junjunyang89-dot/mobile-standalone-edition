@@ -2444,6 +2444,38 @@ class ApiClient {
     })
   }
 
+  /** 合并上线：设置（令牌只回 tokenSet，不回值） */
+  async getReleaseMergeSettings() {
+    return this.request<any>('/release-merge/settings')
+  }
+
+  async saveReleaseMergeSettings(body: {
+    reposDir?: string
+    gitlabBaseUrl?: string
+    token?: string
+    clearToken?: boolean
+  }) {
+    return this.request<any>('/release-merge/settings', { method: 'PUT', body: JSON.stringify(body) })
+  }
+
+  async testReleaseMergeToken() {
+    return this.request<any>('/release-merge/settings/test', { method: 'POST' })
+  }
+
+  /** 合并上线：核对。text 是粘贴的「项目：分支」；rows 用于单行改项目后重核 */
+  async checkReleaseMerge(body: { text?: string; rows?: { projectCode: string; branch: string; raw?: string }[] }) {
+    return this.request<any>('/release-merge/check', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  /** 合并上线：通过 GitLab 合到 master。sha 是核对时的分支提交，acked 是已确认的提醒 code */
+  async mergeReleaseBranch(body: { projectCode: string; branch: string; sha: string; acked: string[] }) {
+    return this.request<any>('/release-merge/merge', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async getReleaseMergeLogs(limit = 50) {
+    return this.request<any[]>(`/release-merge/logs?limit=${limit}`)
+  }
+
   /** 上线看板：从 Wiki 拉表并按项目汇总 */
   async getReleaseGoLiveBoard(wikiUrl: string) {
     const q = new URLSearchParams({ wikiUrl })

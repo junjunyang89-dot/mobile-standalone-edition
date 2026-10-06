@@ -45,6 +45,7 @@ const titleMap: Record<string, string> = {
   '/special-report': '版本质量卡',
   '/release-doc': '发版文档与邮件管理',
   '/release-go-live': '上线看板',
+  '/release-merge': '合并到 master',
   '/version-archives': '版本需求归档',
   '/change-review': '本周改动 / 漏测看板',
   '/bug-management': 'Bug 管理',

@@ -159,9 +159,9 @@
             <span>APP发版</span>
           </template>
           <el-menu-item index="/release-doc">发版文档</el-menu-item>
+          <el-menu-item v-if="canVisit('/release-merge')" index="/release-merge">合并到 master</el-menu-item>
           <el-menu-item index="/release-go-live">上线看板</el-menu-item>
           <el-menu-item index="/version-archives">版本需求归档</el-menu-item>
-          <el-menu-item index="/change-review">周改动漏测</el-menu-item>
         </el-sub-menu>
 
         <el-sub-menu index="other">
@@ -433,6 +433,7 @@ const defaultOpeneds = computed(() => {
   if (
     p.startsWith('/release-doc') ||
     p.startsWith('/release-go-live') ||
+    p.startsWith('/release-merge') ||
     p.startsWith('/version-archives') ||
     p.startsWith('/change-review')
   ) {

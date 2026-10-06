@@ -25,12 +25,8 @@
             <div class="login-title">
               {{ bootstrapping ? '创建第一个管理员' : 'APP自动化管理平台' }}
             </div>
-            <div class="login-sub">
-              {{
-                bootstrapping
-                  ? '平台还没有任何账号。创建管理员后权限立即生效。'
-                  : '登录后开始使用'
-              }}
+            <div v-if="bootstrapping" class="login-sub">
+              平台还没有任何账号。创建管理员后权限立即生效。
             </div>
           </div>
         </div>
