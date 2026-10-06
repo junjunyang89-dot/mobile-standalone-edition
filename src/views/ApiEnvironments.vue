@@ -20,46 +20,6 @@
 
     <div class="env-layout">
       <div class="env-main">
-        <section class="panel">
-          <div class="panel-head">
-            <span class="panel-title">
-              <el-icon><Link /></el-icon>
-              兜底 baseUrl
-            </span>
-            <span class="env-chip" :class="current === 'PROD' ? 'is-prod' : 'is-test'">
-              {{ current === 'PROD' ? 'PROD 环境' : 'TEST 环境' }}
-            </span>
-          </div>
-          <div class="base-box">
-            <span class="base-k">当前</span>
-            <code class="base-v">{{ currentEnv.baseUrl || '（未配置）' }}</code>
-          </div>
-          <el-button type="primary" class="base-btn" @click="$router.push('/api-projects')">
-            去项目管理改地址
-          </el-button>
-        </section>
-
-        <section class="panel db-panel">
-          <button type="button" class="collapse-head" @click="dbOpen = !dbOpen">
-            <span class="panel-title">
-              <el-icon><Coin /></el-icon>
-              数据库断言连接
-            </span>
-            <span class="db-status" :class="{ ok: dbConfigured }">{{ dbConfigured ? '已配置' : '未配置' }}</span>
-            <el-icon class="collapse-caret" :class="{ open: dbOpen }"><ArrowRight /></el-icon>
-          </button>
-          <div v-show="dbOpen" class="db-form">
-            <el-input v-model="db.dbHost" placeholder="库地址，如 10.0.0.12" />
-            <el-input v-model.number="db.dbPort" placeholder="3306" />
-            <el-input v-model="db.dbName" placeholder="库名" />
-            <el-input v-model="db.dbUser" placeholder="只读账号" />
-            <el-input v-model="db.dbPassword" type="password" show-password placeholder="密码" />
-            <el-button type="primary" :loading="dbSaving" @click="saveDb">保存</el-button>
-            <el-button :loading="dbChecking" :disabled="!dbConfigured" @click="checkDb">测试连接</el-button>
-          </div>
-          <div v-if="dbOpen && dbMsg" class="db-msg" :class="{ bad: !dbOk }">{{ dbMsg }}</div>
-        </section>
-
         <section class="var-card">
           <div class="var-card-head">
             <div class="var-card-title">
@@ -194,9 +154,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowRight, Coin, Key, Link } from '@element-plus/icons-vue'
+import { ArrowRight, Key } from '@element-plus/icons-vue'
 import { apiClient } from '../api'
 
 const ENV_TABS = [
@@ -206,8 +166,6 @@ const ENV_TABS = [
 
 const howtoOpen = ref(false)
 const builtinOpen = ref(true)
-const dbOpen = ref(false)
-
 const BUILTINS = [
   { name: '$timestamp', ref: '{{$timestamp}}', desc: '13 位毫秒时间戳' },
   { name: '$timestampSec', ref: '{{$timestampSec}}', desc: '10 位秒级时间戳' },
@@ -229,71 +187,6 @@ const form = ref<{ name: string; value: string; secret: boolean; description: st
   secret: false,
   description: ''
 })
-
-const currentEnv = computed(() => envs.value.find((e) => e.environment === current.value) || {})
-
-const db = reactive({ dbHost: '', dbPort: undefined as number | undefined, dbName: '', dbUser: '', dbPassword: '' })
-const dbSaving = ref(false)
-const dbChecking = ref(false)
-const dbMsg = ref('')
-const dbOk = ref(true)
-
-const dbConfigured = computed(() => !!(db.dbHost && db.dbName))
-
-function syncDbForm() {
-  const e: any = currentEnv.value || {}
-  db.dbHost = e.dbHost || ''
-  db.dbPort = e.dbPort || undefined
-  db.dbName = e.dbName || ''
-  db.dbUser = e.dbUser || ''
-  db.dbPassword = e.dbPassword || ''
-  dbMsg.value = ''
-}
-
-async function saveDb() {
-  const e: any = currentEnv.value || {}
-  if (!e.baseUrl) {
-    ElMessage.warning('这个环境还没有 baseUrl，先去「项目管理」点项目的「地址」配一个')
-    return
-  }
-  dbSaving.value = true
-  try {
-    await apiClient.saveApiTestEnv(current.value, {
-      name: e.name,
-      baseUrl: e.baseUrl,
-      defaultHeaders: e.defaultHeaders,
-      defaultToken: e.defaultToken,
-      enabled: e.enabled,
-      dbHost: db.dbHost.trim() || undefined,
-      dbPort: db.dbPort || undefined,
-      dbName: db.dbName.trim() || undefined,
-      dbUser: db.dbUser.trim() || undefined,
-      dbPassword: db.dbPassword || undefined
-    })
-    await loadEnvs()
-    syncDbForm()
-    ElMessage.success('已保存')
-  } catch (e: any) {
-    ElMessage.error(e?.message || '保存失败')
-  } finally {
-    dbSaving.value = false
-  }
-}
-
-async function checkDb() {
-  dbChecking.value = true
-  dbMsg.value = ''
-  try {
-    const r = await apiClient.checkApiTestEnvDb(current.value)
-    dbOk.value = r.ok
-    dbMsg.value = r.message
-  } catch (e: any) {
-    dbOk.value = false
-    dbMsg.value = e?.message || '连接测试失败'
-  } finally {
-    dbChecking.value = false
-  }
-}
 
 function refOf(name: string) {
   return `{{${name}}}`
@@ -334,7 +227,6 @@ async function loadVariables() {
 function switchEnv(env: string) {
   current.value = env
   loadVariables()
-  syncDbForm()
 }
 
 function openAdd() {
@@ -419,7 +311,6 @@ async function copy(text: string) {
 
 onMounted(async () => {
   await loadEnvs()
-  syncDbForm()
   await loadVariables()
 })
 </script>
@@ -502,7 +393,6 @@ onMounted(async () => {
   border-radius: 10px;
   padding: 14px 16px;
 }
-.panel-head,
 .collapse-head,
 .var-card-head {
   display: flex;
@@ -525,43 +415,6 @@ onMounted(async () => {
   font-weight: 650;
   color: var(--el-text-color-primary);
 }
-.env-chip {
-  margin-left: auto;
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--el-color-success-light-9);
-  color: var(--el-color-success);
-}
-.env-chip.is-prod {
-  background: var(--el-color-danger-light-9);
-  color: var(--el-color-danger);
-}
-.base-box {
-  margin: 12px 0 10px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--el-color-primary-light-9);
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-.base-k {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-.base-v {
-  font-size: 13px;
-  color: var(--el-text-color-primary);
-}
-.db-status {
-  margin-left: auto;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-.db-status.ok {
-  color: var(--el-color-success);
-}
 .collapse-caret {
   color: var(--el-text-color-disabled);
   transition: transform 0.15s;
@@ -571,23 +424,6 @@ onMounted(async () => {
 }
 .side-caret {
   margin-right: 2px;
-}
-.db-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
-}
-.db-form :deep(.el-input) {
-  width: 160px;
-}
-.db-msg {
-  margin-top: 8px;
-  font-size: 13px;
-  color: var(--el-color-success);
-}
-.db-msg.bad {
-  color: var(--el-color-danger);
 }
 .var-card {
   padding: 0;

@@ -50,6 +50,17 @@
                   :class="{ 'is-done': data.coreCovered >= data.coreTotal }"
                   :title="`核心接口 ${data.coreTotal} 个，已有启用用例 ${data.coreCovered} 个`"
                 >核心 {{ data.coreCovered }}/{{ data.coreTotal }}</span>
+                <span
+                  v-if="data.changeCount"
+                  class="tree-change"
+                  :title="`在测分支改了 ${data.changeCount} 个接口：${(data.changeBranches || []).join('、')}`"
+                >改动 {{ data.changeCount }}</span>
+                <span
+                  v-if="data.kind === 'interface' && data.changeFlag"
+                  class="change-tag"
+                  :class="changeFlagMeta(data.changeFlag).cls"
+                  :title="data.changeNote || changeFlagMeta(data.changeFlag).text"
+                >{{ changeFlagMeta(data.changeFlag).text }}</span>
                 <span v-if="data.statusTag" class="tree-status" :class="statusClass(data.statusTag)">
                   {{ data.statusTag }}
                 </span>
@@ -63,10 +74,10 @@
           </div>
           <div v-else-if="!loading" class="nav-empty">暂无集合</div>
         </div>
-        <div v-if="navTotal > NAV_PAGE_SIZE" class="nav-pagination">
+        <div v-if="navPages.length > 1" class="nav-pagination">
           <el-pagination
             v-model:current-page="navPage"
-            :page-size="NAV_PAGE_SIZE"
+            :page-count="navPages.length"
             :total="navTotal"
             :pager-count="5"
             layout="total, prev, pager, next"
@@ -115,18 +126,36 @@
                 {{ collectionStatusTag }}
               </span>
             </div>
-            <el-button
-              v-if="!selectedCollection.virtual && !selectedInterface"
-              type="primary"
-              @click="run(selectedCollection)"
-            >
-              <el-icon><VideoPlay /></el-icon>
-              {{ selectedCollection.requirementNo ? '运行本需求单' : '执行集合' }}
-            </el-button>
-            <el-button v-else-if="selectedCollection.virtual && !selectedInterface" type="primary" @click="openCreateFromSelection">
-              <el-icon><Plus /></el-icon>新建集合
-            </el-button>
+            <div class="head-actions">
+              <el-button
+                v-if="canReleaseBranch"
+                :type="mergeHint?.status === 'MERGED' || mergeHint?.status === 'GONE' ? 'success' : 'default'"
+                plain
+                :loading="releasingBranch"
+                @click="releaseBranch"
+              >分支已上线</el-button>
+              <el-button
+                v-if="!selectedCollection.virtual && !selectedInterface"
+                type="primary"
+                @click="run(selectedCollection)"
+              >
+                <el-icon><VideoPlay /></el-icon>
+                {{ selectedCollection.requirementNo ? '运行本需求单' : '执行集合' }}
+              </el-button>
+              <el-button v-else-if="selectedCollection.virtual && !selectedInterface" type="primary" @click="openCreateFromSelection">
+                <el-icon><Plus /></el-icon>新建集合
+              </el-button>
+            </div>
           </div>
+
+          <el-alert
+            v-if="canReleaseBranch && mergeHint && (mergeHint.status === 'MERGED' || mergeHint.status === 'GONE')"
+            type="success"
+            :closable="false"
+            show-icon
+            class="merge-hint"
+            :title="mergeHint.message"
+          />
 
           <div v-if="selectedCollection.requirementNo && !selectedInterface" class="progress-block">
             <div class="progress-label">
@@ -185,7 +214,11 @@
                     class="kind-tag"
                     :class="CASE_KIND_META[kindOf(row)!].cls"
                     :title="caseKindTitle(row)"
-                  >{{ CASE_KIND_META[kindOf(row)!].text }}</span><span v-if="row.testOnly" class="test-only-tag">仅测试</span>{{ row.name }}
+                  >{{ CASE_KIND_META[kindOf(row)!].text }}</span><span v-if="row.testOnly" class="test-only-tag">仅测试</span><span
+                    v-if="row.intent === 'NEGATIVE'"
+                    class="intent-tag"
+                    :title="row.expectNote || '故意传不对的参数，看接口怎么处理'"
+                  >异常输入</span><AssertionSourceTag :assertions="row.assertions" />{{ row.name }}
                 </template>
               </el-table-column>
               <el-table-column label="说明" min-width="160" show-overflow-tooltip prop="description" />
@@ -243,6 +276,13 @@
               <span class="pill pill-ctrl">Controller</span>
             </div>
             <el-button
+              v-if="selectedController.label === 'UnknownController' && selectedController.code"
+              :loading="backfilling"
+              @click="backfillControllers(selectedController.code)"
+            >
+              从本地仓库补齐 Controller
+            </el-button>
+            <el-button
               v-if="selectedController.runCollectionId"
               type="primary"
               @click="runLiveProject(selectedController)"
@@ -284,6 +324,23 @@
                   <span class="iface-cell">
                     <span class="path-main">
                       <span v-if="row.level === 'CORE'" class="core-tag">核心</span>{{ row.title }}
+                      <el-tooltip v-if="row.branchChanges.length" placement="top" :show-after="150">
+                        <template #content>
+                          <div class="branch-change-tip">
+                            <div class="bct-head">在测分支改了这个接口，上线后全量会换成分支版本</div>
+                            <div v-for="b in row.branchChanges" :key="b.branch" class="bct-row">
+                              <span class="bct-branch">{{ b.branch }}</span>
+                              <span>{{ changeFlagMeta(b.changeFlag).text }}</span>
+                              <span v-if="b.changeNote" class="bct-note">{{ b.changeNote }}</span>
+                              <span v-if="b.analyzedAt" class="bct-time">{{ formatChangeTime(b.analyzedAt) }} 分析</span>
+                            </div>
+                          </div>
+                        </template>
+                        <span class="change-tag" :class="changeFlagMeta(row.branchChanges[0].changeFlag).cls" @click.stop>
+                          {{ changeFlagMeta(row.branchChanges[0].changeFlag).text }}<template v-if="row.branchChanges.length > 1">
+                            · {{ row.branchChanges.length }} 个分支</template>
+                        </span>
+                      </el-tooltip>
                     </span>
                     <span class="path-sub">{{ row.path }}</span>
                   </span>
@@ -294,7 +351,11 @@
                     class="kind-tag"
                     :class="CASE_KIND_META[kindOf(row)!].cls"
                     :title="caseKindTitle(row)"
-                  >{{ CASE_KIND_META[kindOf(row)!].text }}</span><span v-if="row.testOnly" class="test-only-tag">仅测试</span>{{ scenarioOf(row) }}
+                  >{{ CASE_KIND_META[kindOf(row)!].text }}</span><span v-if="row.testOnly" class="test-only-tag">仅测试</span><span
+                    v-if="row.intent === 'NEGATIVE'"
+                    class="intent-tag"
+                    :title="row.expectNote || '故意传不对的参数，看接口怎么处理'"
+                  >异常输入</span><AssertionSourceTag :assertions="row.assertions" />{{ scenarioOf(row) }}
                 </span>
               </template>
             </el-table-column>
@@ -598,21 +659,42 @@
                 placeholder="content-type"
                 class="as-path"
               />
-              <el-input
-                v-else-if="a.type === 'db' || a.type === 'dbDelta'"
-                v-model="a.path"
-                placeholder="SELECT COUNT(*) FROM 表 WHERE 条件"
-                class="as-path"
-              />
+              <template v-else-if="a.type === 'db' || a.type === 'dbDelta'">
+                <el-select
+                  v-if="caseDbOptions.length > 1 || a.conn"
+                  v-model="a.conn"
+                  clearable
+                  :placeholder="caseDbOptions.length > 1 ? '选库' : '自动选库'"
+                  class="as-conn"
+                  :class="{ 'need-pick': caseDbOptions.length > 1 && !a.conn }"
+                  :title="caseDbOptions.length > 1 && !a.conn ? '这个项目能用的库不止一个，不选的话执行时会报「选库失败」' : ''"
+                >
+                  <el-option v-for="n in caseDbOptions" :key="n" :label="n" :value="n" />
+                  <el-option v-if="a.conn && !caseDbOptions.includes(a.conn)" :label="`${a.conn}（项目没绑这个库）`" :value="a.conn" />
+                </el-select>
+                <el-input
+                  v-model="a.path"
+                  placeholder="SELECT COUNT(*) FROM 表 WHERE 条件"
+                  class="as-path"
+                />
+              </template>
               <el-select
                 v-if="a.type !== 'status' && a.type !== 'bodyIncludes'"
                 v-model="a.op"
                 style="width: 104px"
               >
-                <el-option v-for="o in assertOps" :key="o.v" :label="o.l" :value="o.v" />
+                <el-option
+                  v-for="o in assertOps.filter((o) => o.v !== 'type' || a.type === 'jsonPath')"
+                  :key="o.v"
+                  :label="o.l"
+                  :value="o.v"
+                />
+              </el-select>
+              <el-select v-if="a.op === 'type'" v-model="a.value" class="as-val" placeholder="类型">
+                <el-option v-for="t in JSON_TYPES" :key="t" :label="t" :value="t" />
               </el-select>
               <el-input
-                v-if="a.op !== 'exists' && a.op !== 'notEmpty'"
+                v-else-if="a.op !== 'exists' && a.op !== 'notEmpty'"
                 v-model="a.value"
                 placeholder="期望值"
                 class="as-val"
@@ -730,7 +812,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowRight, Close, CopyDocument, Delete, FolderOpened, Plus, Search, VideoPlay } from '@element-plus/icons-vue'
-import { apiClient } from '../api'
+import { apiClient, type DbConnection } from '../api'
 import KvTable, { type KvRow, type KvVariable } from '../components/KvTable.vue'
 import type { MustTestItem } from '../components/api-testing/MustTestBoard.vue'
 import {
@@ -750,6 +832,7 @@ import {
   type ApiCaseKind
 } from '../utils/caseKind'
 import BranchTriageDrawer from '../components/api-testing/BranchTriageDrawer.vue'
+import AssertionSourceTag from '../components/AssertionSourceTag.vue'
 
 type TreeNode = {
   nodeKey: string
@@ -772,6 +855,12 @@ type TreeNode = {
   endpointId?: string
   coreTotal?: number
   coreCovered?: number
+  /** 全量 Controller 下被在测分支改过的接口数 */
+  changeCount?: number
+  changeBranches?: string[]
+  /** 分支里这条接口的改动：NEW / FIELD_CHANGED / REMOVED … */
+  changeFlag?: string
+  changeNote?: string
   /** Controller 下的接口路径和用例名，树上搜接口时靠它命中 */
   searchText?: string
   children?: TreeNode[]
@@ -830,35 +919,87 @@ function countNavUnits(nodes: TreeNode[], kind: string): number {
   return n
 }
 
-/** 只留 [from, to) 区间内的单位节点，没有剩下单位的文件夹一并去掉 */
-function sliceNavUnits(nodes: TreeNode[], kind: string, from: number, to: number, counter: { i: number }): TreeNode[] {
+/** 按项目把单位分组，组内保持树上的顺序；不在项目下的单位各自一组 */
+function navUnitGroups(nodes: TreeNode[], kind: string, out: string[][] = [], current: string[] | null = null): string[][] {
+  for (const n of nodes) {
+    if (n.kind === kind) {
+      if (current) current.push(n.nodeKey)
+      else out.push([n.nodeKey])
+    } else if (n.children?.length) {
+      if (n.kind === 'project' && !current) {
+        const g: string[] = []
+        out.push(g)
+        navUnitGroups(n.children, kind, out, g)
+      } else {
+        navUnitGroups(n.children, kind, out, current)
+      }
+    }
+  }
+  return out
+}
+
+/**
+ * 每页的单位 nodeKey。同一个项目放进同一页——按条数硬切的话，项目在两页各出现一次、
+ * 角标都是全量数，看着像建了两个同名项目。项目本身超过一页才拆，后几页项目名标「续」。
+ */
+const navPages = computed<string[][]>(() => {
+  const pages: string[][] = []
+  let cur: string[] = []
+  for (const g of navUnitGroups(filteredTree.value, navUnitKind.value)) {
+    if (!g.length) continue
+    if (cur.length && cur.length + g.length > NAV_PAGE_SIZE) {
+      pages.push(cur)
+      cur = []
+    }
+    for (const k of g) {
+      if (cur.length >= NAV_PAGE_SIZE) {
+        pages.push(cur)
+        cur = []
+      }
+      cur.push(k)
+    }
+  }
+  if (cur.length) pages.push(cur)
+  return pages
+})
+
+function firstUnitKey(node: TreeNode, kind: string): string | null {
+  for (const c of node.children || []) {
+    if (c.kind === kind) return c.nodeKey
+    const k = firstUnitKey(c, kind)
+    if (k) return k
+  }
+  return null
+}
+
+/** 只留这一页的单位节点，没有剩下单位的文件夹一并去掉 */
+function keepNavUnits(nodes: TreeNode[], kind: string, keep: Set<string>): TreeNode[] {
   const out: TreeNode[] = []
   for (const node of nodes) {
-    if (counter.i >= to) break
     if (node.kind === kind) {
-      if (counter.i >= from) out.push(node)
-      counter.i++
+      if (keep.has(node.nodeKey)) out.push(node)
       continue
     }
     if (!node.children?.length) continue
-    const children = sliceNavUnits(node.children, kind, from, to, counter)
-    if (children.length) out.push({ ...node, children })
+    const children = keepNavUnits(node.children, kind, keep)
+    if (!children.length) continue
+    const first = node.kind === 'project' ? firstUnitKey(node, kind) : null
+    out.push({ ...node, children, ...(first && !keep.has(first) ? { label: `${node.label}（续）` } : {}) })
   }
   return out
 }
 
 const navTotal = computed(() => countNavUnits(filteredTree.value, navUnitKind.value))
 const visibleTree = computed(() => {
-  if (navTotal.value <= NAV_PAGE_SIZE) return filteredTree.value
-  const from = (navPage.value - 1) * NAV_PAGE_SIZE
-  return sliceNavUnits(filteredTree.value, navUnitKind.value, from, from + NAV_PAGE_SIZE, { i: 0 })
+  if (navPages.value.length <= 1) return filteredTree.value
+  const page = navPages.value[Math.min(navPage.value, navPages.value.length) - 1] || []
+  return keepNavUnits(filteredTree.value, navUnitKind.value, new Set(page))
 })
 watch([treeKeyword, projectFilter, scope], () => {
   navPage.value = 1
 })
-watch(navTotal, (total) => {
-  const pages = Math.max(1, Math.ceil(total / NAV_PAGE_SIZE))
-  if (navPage.value > pages) navPage.value = pages
+watch(navPages, (pages) => {
+  if (navPage.value > Math.max(1, pages.length)) navPage.value = Math.max(1, pages.length)
 })
 const treeRef = ref()
 /** 树每次换数据都会重建节点，手动展开的要记下来，否则点一下集合别的都收起了 */
@@ -954,7 +1095,40 @@ const paramRows = ref<KvRow[]>([])
 const headerRows = ref<KvRow[]>([])
 const assertRaw = ref(false)
 
-type AssertRow = { type: string; path: string; op: string; value: string }
+/** source/evidence/sig：打开时这条断言的出处和原样，没改过才原样写回出处，改过就算人工 */
+type AssertRow = {
+  type: string
+  path: string
+  op: string
+  value: string
+  /** 查库断言查哪个连接；空＝按用例的项目自动选 */
+  conn?: string
+  source?: string
+  evidence?: string
+  sig?: string
+}
+const assertSig = (r: AssertRow) => [r.type, r.path, r.op, r.value, r.conn || ''].join('\u0001')
+
+/** 用例所属项目能用的库：绑了这个项目的，项目一个没绑时退到通用的 */
+const dbConns = ref<DbConnection[]>([])
+const caseDbOptions = computed(() => {
+  const pj = String(caseForm.value.project || '').toLowerCase()
+  const usable = (env: string) => {
+    const inEnv = dbConns.value.filter((c) => c.environment === env)
+    const bound = inEnv.filter((c) => c.projects.some((p) => p.toLowerCase() === pj))
+    return bound.length ? bound : inEnv.filter((c) => !c.projects.length)
+  }
+  const names = new Set([...usable('TEST'), ...usable('PROD')].map((c) => c.name))
+  return [...names]
+})
+
+async function loadDbConns() {
+  try {
+    dbConns.value = await apiClient.listDbConnections()
+  } catch {
+    dbConns.value = []
+  }
+}
 const assertRows = ref<AssertRow[]>([])
 /** 表格编辑不了的断言原样留着——编辑器不认识不等于它没用 */
 const assertUnknown = ref<any[]>([])
@@ -970,8 +1144,10 @@ const assertOps = [
   { v: 'gte', l: '大于等于' },
   { v: 'lt', l: '小于' },
   { v: 'lte', l: '小于等于' },
-  { v: 'matches', l: '匹配正则' }
+  { v: 'matches', l: '匹配正则' },
+  { v: 'type', l: '类型是' }
 ]
+const JSON_TYPES = ['number', 'string', 'boolean', 'object', 'array']
 
 function activeCount(rows: KvRow[]) {
   const n = rows.filter((r) => r.enabled && r.key.trim()).length
@@ -1089,30 +1265,47 @@ function assertsToRows(json?: string) {
         type: a.type,
         path: String(path),
         op,
-        value: value == null ? '' : String(value)
+        value: value == null ? '' : String(value),
+        ...(a.conn ? { conn: String(a.conn) } : {})
       })
     } else if (a?.type === 'bodyIncludes') {
       assertRows.value.push({ type: 'bodyIncludes', path: '', op: 'contains', value: String(a.value ?? '') })
     } else {
       assertUnknown.value.push(a)
+      continue
     }
+    const row = assertRows.value[assertRows.value.length - 1]
+    if (a.source) {
+      row.source = String(a.source)
+      if (a.evidence) row.evidence = String(a.evidence)
+    }
+    row.sig = assertSig(row)
   }
 }
 
 function rowsToAsserts() {
   const out: any[] = []
   for (const a of assertRows.value) {
+    let o: any
     if (a.type === 'status') {
-      out.push({ type: 'status', equals: Number(a.value) || 200 })
+      o = { type: 'status', equals: Number(a.value) || 200 }
     } else if (a.type === 'bodyIncludes') {
-      out.push({ type: 'bodyIncludes', value: a.value })
+      o = { type: 'bodyIncludes', value: a.value }
     } else if (a.type === 'header') {
-      out.push({ type: 'header', name: a.path, op: a.op, value: a.value })
+      o = { type: 'header', name: a.path, op: a.op, value: a.value }
     } else if (a.type === 'db' || a.type === 'dbDelta') {
-      out.push({ type: a.type, sql: a.path, op: a.op, value: a.value })
+      o = { type: a.type, sql: a.path, op: a.op, value: a.value }
+      if (a.conn) o.conn = a.conn
     } else {
-      out.push({ type: 'jsonPath', path: a.path, op: a.op, value: a.value })
+      o = { type: 'jsonPath', path: a.path, op: a.op, value: a.value }
     }
+    if (a.sig && a.sig === assertSig(a)) {
+      if (a.source) o.source = a.source
+      if (a.evidence) o.evidence = a.evidence
+    } else {
+      o.source = 'manual'
+    }
+    out.push(o)
   }
   return JSON.stringify(out.concat(assertUnknown.value))
 }
@@ -1134,6 +1327,7 @@ function loadEditorRows() {
   assertsToRows(caseForm.value.assertions)
   assertRaw.value = false
   editTab.value = 'basic'
+  if (assertRows.value.some((a) => a.type === 'db' || a.type === 'dbDelta') || !dbConns.value.length) loadDbConns()
 }
 
 const caseForm = ref({
@@ -1403,6 +1597,7 @@ const ifaceGroups = computed(() =>
       path: g.path,
       title: g.title,
       level: g.level,
+      branchChanges: g.branchChanges || [],
       caseCount: cases.length,
       enabledCount: cases.filter((c) => c.enabled).length,
       allCases: cases,
@@ -1541,6 +1736,20 @@ function projectShort(code?: string) {
   return code.replace(/^app-/, '').replace(/-/g, ' ')
 }
 
+function changeFlagMeta(flag?: string | null) {
+  const f = String(flag || '').toUpperCase()
+  if (f === 'NEW') return { text: '新增', cls: 'cg-new' }
+  if (f === 'REMOVED' || f === 'DELETED') return { text: '分支删除', cls: 'cg-removed' }
+  if (f === 'PARAM_CHANGED') return { text: '入参变更', cls: 'cg-param' }
+  if (f === 'FIELD_CHANGED') return { text: '字段变更', cls: 'cg-field' }
+  return { text: '实现变更', cls: 'cg-impl' }
+}
+
+function formatChangeTime(v: string) {
+  const s = String(v || '').replace('T', ' ')
+  return s.length >= 16 ? s.slice(5, 16) : s
+}
+
 function statusClass(tag: string) {
   if (tag === '已验证' || tag === '已上线') return 'ts-ok'
   if (tag === '进行中') return 'ts-run'
@@ -1672,6 +1881,8 @@ function buildTree(categories: any[]): TreeNode[] {
             meta: String(ctrl.caseCount ?? 0),
             coreTotal: Number(ctrl.coreTotal || 0),
             coreCovered: Number(ctrl.coreCovered || 0),
+            changeCount: Number(ctrl.changeCount || 0),
+            changeBranches: ctrl.changeBranches || [],
             searchText: ctrl.searchText || ''
           }))
         }
@@ -1756,6 +1967,41 @@ async function loadTree() {
   }
 }
 
+const backfilling = ref(false)
+
+async function backfillControllers(project: string) {
+  backfilling.value = true
+  try {
+    const r = await apiClient.backfillControllers(project)
+    const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
+    const line = (x: { method: string; path: string }, tail = '') =>
+      `<div style="font-family:monospace;font-size:12px">${esc(x.method)} ${esc(x.path)}${tail}</div>`
+    const parts = [
+      `<div>仓库：<code>${esc(r.repo)}</code>${r.repoGuessed ? '（按项目名在本地找到，已记到项目上）' : ''}</div>`,
+      `<div style="margin-top:6px">共 ${r.total} 个接口，补上 ${r.matched.length} 个</div>`
+    ]
+    if (r.matched.length) {
+      parts.push('<div style="margin-top:8px;font-weight:600">已补齐</div>')
+      r.matched.forEach((m) => parts.push(line(m, ` → ${esc(m.controller || '')}`)))
+    }
+    if (r.ambiguous.length) {
+      parts.push('<div style="margin-top:8px;font-weight:600">对上多个方法，没自动填</div>')
+      r.ambiguous.forEach((m) => parts.push(line(m, `<br>&nbsp;&nbsp;${(m.candidates || []).map(esc).join('<br>&nbsp;&nbsp;')}`)))
+    }
+    if (r.notFound.length) {
+      parts.push(`<div style="margin-top:8px;font-weight:600;color:#c45656">仓库里找不到（可能不是 ${esc(project)} 的接口）</div>`)
+      r.notFound.forEach((m) => parts.push(line(m)))
+    }
+    if (!r.total) parts.push('<div style="margin-top:6px">这个项目下的接口都已经有 Controller 了</div>')
+    await loadTree()
+    await ElMessageBox.alert(parts.join(''), '补齐 Controller', { dangerouslyUseHTMLString: true, confirmButtonText: '知道了' })
+  } catch (e: any) {
+    if (e !== 'cancel' && e !== 'close') ElMessage.error(e?.message || '补齐失败')
+  } finally {
+    backfilling.value = false
+  }
+}
+
 async function refreshCurrentCases() {
   if (selectedController.value) {
     await refreshLiveInterfaces()
@@ -1804,6 +2050,7 @@ async function onNodeClick(data: TreeNode) {
       }
       selectedCollection.value = collectionCtx
     }
+    loadMergeHint()
     if (data.children?.length) expandTreeNode(data.nodeKey)
     if (collectionCtx?.id) {
       await loadCollectionCases(collectionCtx.id)
@@ -1927,6 +2174,8 @@ function interfaceNodesFromCol(col: any, projectCode: string, parentNodeKey: str
         sourceBranch: col.sourceBranch,
         linkId: item.linkId,
         endpointId: item.endpointId,
+        changeFlag: item.changeFlag || undefined,
+        changeNote: item.changeNote || undefined,
         statusTag: item.statusTag || (caseCount > 0 ? '进行中' : '待测'),
         meta: caseCount > 0 ? String(caseCount) : undefined
       }
@@ -1950,7 +2199,16 @@ function buildInterfaceChildren(
 ): TreeNode[] {
   const grouped = new Map<
     string,
-    { method: string; path: string; cases: any[]; controller?: string; linkId?: string; endpointId?: string }
+    {
+      method: string
+      path: string
+      cases: any[]
+      controller?: string
+      linkId?: string
+      endpointId?: string
+      changeFlag?: string
+      changeNote?: string
+    }
   >()
   for (const ep of endpoints) {
     const method = String(ep.httpMethod || ep.method || 'GET').toUpperCase()
@@ -1964,6 +2222,8 @@ function buildInterfaceChildren(
         cases: [],
         linkId: ep.id,
         endpointId: ep.endpointId,
+        changeFlag: parent.sourceBranch ? ep.changeFlag || undefined : undefined,
+        changeNote: parent.sourceBranch ? ep.changeNote || undefined : undefined,
         controller: ep.summary?.split('·')?.[0]?.trim() || String(ep.handler || '').split('.')[0] || '—'
       })
     }
@@ -1999,6 +2259,8 @@ function buildInterfaceChildren(
       sourceBranch: parent.sourceBranch,
       linkId: item.linkId,
       endpointId: item.endpointId,
+      changeFlag: item.changeFlag,
+      changeNote: item.changeNote,
       statusTag: interfaceStatusTag(item.cases),
       meta: item.cases.length ? String(item.cases.length) : undefined
     }))
@@ -2010,9 +2272,15 @@ async function fetchEndpointsForCollection(data: TreeNode) {
   }
   if (data.sourceBranch && data.project) {
     const res = await apiClient.fetchApiEndpoints({ project: data.project })
-    return (res.items || []).filter(
-      (ep: any) => String(ep.sourceBranch || '').trim() === data.sourceBranch
-    )
+    const branch = data.sourceBranch
+    const out: any[] = []
+    for (const ep of (res.items || []) as any[]) {
+      // 变更按分支存：同一个接口在几个分支上可能标得不一样，这里取这个分支自己的
+      const own = (ep.branches || []).find((b: any) => b.branch === branch)
+      if (own) out.push({ ...ep, changeFlag: own.changeFlag, changeNote: own.changeNote })
+      else if (String(ep.sourceBranch || '').trim() === branch) out.push(ep)
+    }
+    return out
   }
   return []
 }
@@ -2066,22 +2334,25 @@ function clearProjectFilter() {
 
 function navPageOf(nodeKey: string): number | null {
   const kind = navUnitKind.value
-  let i = 0
   const contains = (n: TreeNode): boolean =>
     n.nodeKey === nodeKey || (n.children || []).some(contains)
-  const walk = (nodes: TreeNode[]): number | null => {
+  let unitKey: string | null = null
+  const walk = (nodes: TreeNode[]): boolean => {
     for (const n of nodes) {
       if (n.kind === kind) {
-        if (contains(n)) return Math.floor(i / NAV_PAGE_SIZE) + 1
-        i++
-      } else if (n.children?.length) {
-        const hit = walk(n.children)
-        if (hit) return hit
+        if (contains(n)) {
+          unitKey = n.nodeKey
+          return true
+        }
+      } else if (n.children?.length && walk(n.children)) {
+        return true
       }
     }
-    return null
+    return false
   }
-  return walk(filteredTree.value)
+  if (!walk(filteredTree.value) || !unitKey) return null
+  const i = navPages.value.findIndex((p) => p.includes(unitKey!))
+  return i < 0 ? null : i + 1
 }
 
 async function selectTreeNode(data: TreeNode) {
@@ -2253,6 +2524,60 @@ async function archiveCollection(c: any) {
     await loadTree()
   } catch (e: any) {
     ElMessage.error(e?.message || '归档失败')
+  }
+}
+
+const canReleaseBranch = computed(() => {
+  const c = selectedCollection.value
+  return scope.value === 'TEST' && !selectedInterface.value && !!c?.sourceBranch && !c?.requirementNo && !!c?.project
+})
+const mergeHint = ref<{ status: string; message: string } | null>(null)
+const releasingBranch = ref(false)
+let mergeHintSeq = 0
+
+async function loadMergeHint() {
+  const c = selectedCollection.value
+  const seq = ++mergeHintSeq
+  mergeHint.value = null
+  if (!c?.sourceBranch || !c?.project || c?.requirementNo) return
+  try {
+    const r = await apiClient.getBranchMergeStatus(c.project, c.sourceBranch)
+    if (seq === mergeHintSeq) mergeHint.value = r
+  } catch {
+    // 只是提示，拉不到就不提示
+  }
+}
+
+async function releaseBranch() {
+  const c = selectedCollection.value
+  if (!c?.sourceBranch || !c?.project) return
+  const branch = c.sourceBranch
+  try {
+    await ElMessageBox.confirm(
+      `确认「${branch}」已上线？\n` +
+        '· 全量里被这个分支改过的接口换成分支版本\n' +
+        '· 这个分支新增的接口并入全量，删掉的接口标废弃\n' +
+        '· 分支下的用例挪进全量用例，转成回归用例\n' +
+        '· 分支集合归档',
+      '分支已上线',
+      { type: 'warning', confirmButtonText: '确认上线', customStyle: { whiteSpace: 'pre-line' } }
+    )
+  } catch {
+    return
+  }
+  releasingBranch.value = true
+  try {
+    const r = await apiClient.releaseApiTestBranch(c.project, branch)
+    ElMessage.success(
+      `「${branch}」已并入全量：接口更新 ${r.endpointsUpdated}、新增 ${r.endpointsAdded}、废弃 ${r.endpointsDeprecated}，用例挪入 ${r.casesMoved} 条`
+    )
+    selectedCollection.value = null
+    mergeHint.value = null
+    await loadTree()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '上线失败')
+  } finally {
+    releasingBranch.value = false
   }
 }
 
@@ -2931,6 +3256,55 @@ onMounted(async () => {
 .tree-core + .tree-badge {
   margin-left: 6px;
 }
+.tree-change {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 16px;
+  color: #b45309;
+  background: #fef3c7;
+}
+.tree-core + .tree-change,
+.tree-change + .tree-badge,
+.tree-change + .tree-status {
+  margin-left: 6px;
+}
+.change-tag {
+  display: inline-block;
+  flex-shrink: 0;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 18px;
+  font-weight: 500;
+  cursor: default;
+  white-space: nowrap;
+}
+.change-tag.cg-new { color: #047857; background: #d1fae5; }
+.change-tag.cg-param { color: #b91c1c; background: #fee2e2; }
+.change-tag.cg-field { color: #b45309; background: #fef3c7; }
+.change-tag.cg-impl { color: #1d4ed8; background: #dbeafe; }
+.change-tag.cg-removed { color: #6b7280; background: #f3f4f6; text-decoration: line-through; }
+.branch-change-tip { max-width: 420px; font-size: 12px; line-height: 1.6; }
+.bct-head { margin-bottom: 4px; opacity: 0.8; }
+.bct-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.bct-branch { font-family: ui-monospace, Menlo, monospace; font-weight: 600; }
+.bct-note, .bct-time { opacity: 0.75; }
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.head-actions .el-button + .el-button {
+  margin-left: 0;
+}
+.merge-hint {
+  margin-bottom: 12px;
+}
 .core-tag {
   display: inline-block;
   margin-right: 6px;
@@ -2966,6 +3340,16 @@ onMounted(async () => {
   line-height: 18px;
   color: var(--el-color-warning-dark-2);
   background: var(--el-color-warning-light-9);
+}
+.intent-tag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--el-color-danger-dark-2);
+  border: 1px solid var(--el-color-danger-light-5);
 }
 .st-pass { color: var(--el-color-success); }
 .st-pending { color: var(--el-text-color-secondary); }
@@ -3644,6 +4028,15 @@ onMounted(async () => {
 .as-path {
   width: 190px;
   flex-shrink: 0;
+}
+
+.as-conn {
+  width: 110px;
+  flex-shrink: 0;
+}
+
+.as-conn.need-pick :deep(.el-select__wrapper) {
+  box-shadow: 0 0 0 1px var(--el-color-warning) inset;
 }
 
 .as-path :deep(.el-input__inner),

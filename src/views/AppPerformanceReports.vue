@@ -5,9 +5,6 @@
         <div class="card-header">
           <div>
             <span class="page-title">完美世界电竞 · 性能报告</span>
-            <p class="page-sub">
-              App 应用程序性能测试结果（流程性能 / 遍历探索）。执行与曲线仍在「性能测试」菜单；此处专注查看报告。
-            </p>
           </div>
           <div class="header-actions">
             <el-button @click="router.push('/performance-baseline')">新建性能测试</el-button>
@@ -272,14 +269,6 @@ onMounted(() => {
   font-size: 16px;
   font-weight: 600;
   color: var(--app-text);
-}
-
-.page-sub {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: var(--el-text-color-placeholder);
-  line-height: 1.45;
-  max-width: 640px;
 }
 
 .header-actions {

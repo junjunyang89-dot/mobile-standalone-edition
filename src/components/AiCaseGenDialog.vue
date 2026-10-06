@@ -36,6 +36,20 @@
               @click="onlyUncovered = false"
             >全部 {{ totalCount }}</button>
           </div>
+          <template v-if="levelCounts">
+            <label class="f-label">级别</label>
+            <div class="lv-row">
+              <button
+                v-for="o in LEVELS"
+                :key="o.value"
+                type="button"
+                class="chip"
+                :class="{ active: levels.includes(o.value) }"
+                @click="toggleLevel(o.value)"
+              >{{ o.label }} <span class="chip-n">{{ levelNum(o.value) }}</span></button>
+              <span class="lv-hint">不选＝不按级别筛</span>
+            </div>
+          </template>
         </div>
       </template>
 
@@ -58,6 +72,7 @@
             <span class="fact-label">个失败</span>
           </div>
         </div>
+        <div v-if="job.sourceRef" class="src-ref">源码：{{ job.sourceRef }}</div>
         <el-progress
           :percentage="job.total ? Math.round((job.done / job.total) * 100) : 0"
           :show-text="false"
@@ -100,9 +115,9 @@
             v-perm:write
             type="primary"
             :loading="starting"
-            :disabled="!(onlyUncovered ? uncoveredCount : totalCount)"
+            :disabled="!scopeCount"
             @click="start"
-          >开始生成 {{ onlyUncovered ? uncoveredCount : totalCount }} 个</el-button>
+          >开始生成 {{ scopeCount }} 个</el-button>
         </template>
         <template v-else>
           <el-button v-if="job.running" :loading="cancelling || job.cancelled" @click="cancel">
@@ -123,7 +138,7 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Close } from '@element-plus/icons-vue'
-import { apiClient, type AiCaseJob } from '../api'
+import { apiClient, type AiCaseJob, type ApiEndpointLevel } from '../api'
 
 const props = defineProps<{
   modelValue: boolean
@@ -131,7 +146,32 @@ const props = defineProps<{
   sourceDir?: string
   uncoveredCount: number
   totalCount: number
+  /** 各级别的接口数；给了才显示级别筛选 */
+  levelCounts?: Record<ApiEndpointLevel, { total: number; uncovered: number }>
 }>()
+
+const LEVELS: { value: ApiEndpointLevel; label: string }[] = [
+  { value: 'CORE', label: '核心' },
+  { value: 'IMPORTANT', label: '重要' },
+  { value: 'NORMAL', label: '一般' },
+  { value: 'UNUSED', label: '无人调用' }
+]
+// 无人调用的接口生成用例没意义；只有后台在调的先不管
+const levels = ref<ApiEndpointLevel[]>(['CORE', 'IMPORTANT'])
+
+function toggleLevel(v: ApiEndpointLevel) {
+  levels.value = levels.value.includes(v) ? levels.value.filter((x) => x !== v) : [...levels.value, v]
+}
+
+function levelNum(v: ApiEndpointLevel) {
+  const c = props.levelCounts?.[v]
+  return c ? (onlyUncovered.value ? c.uncovered : c.total) : 0
+}
+
+const scopeCount = computed(() => {
+  if (props.levelCounts && levels.value.length) return levels.value.reduce((s, v) => s + levelNum(v), 0)
+  return onlyUncovered.value ? props.uncoveredCount : props.totalCount
+})
 
 const emit = defineEmits<{
   (e: 'update:modelValue', v: boolean): void
@@ -193,7 +233,8 @@ async function start() {
     job.value = await apiClient.startAiCases({
       project: props.project,
       onlyUncovered: onlyUncovered.value,
-      dir: props.sourceDir || undefined
+      dir: props.sourceDir || undefined,
+      levels: props.levelCounts && levels.value.length ? levels.value : undefined
     })
     lastDone = 0
     poll()
@@ -308,6 +349,23 @@ onBeforeUnmount(stopPolling)
   color: var(--el-text-color-primary);
   font-weight: 600;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+.lv-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.lv-hint {
+  margin-left: 4px;
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+}
+.src-ref {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .facts {
   display: flex;

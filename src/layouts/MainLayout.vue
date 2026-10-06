@@ -76,7 +76,7 @@
           <el-menu-item v-if="canVisit('/api-environments')" index="/api-environments">环境变量</el-menu-item>
           <el-menu-item index="/api-reports">执行报告</el-menu-item>
           <el-menu-item index="/api-changes">接口对比分析</el-menu-item>
-          <el-menu-item index="/coverage-gap">覆盖差集</el-menu-item>
+          <el-menu-item index="/api-changes-v2">接口对比分析2</el-menu-item>
         </el-sub-menu>
 
         <el-sub-menu v-if="canVisit('/api-schedules')" index="schedules">
@@ -102,6 +102,7 @@
           <el-menu-item v-if="canVisit('/ui-inspector-import')" index="/ui-inspector-import">Inspector XML 导入</el-menu-item>
           <el-menu-item v-if="canVisit('/ui-keywords')" index="/ui-keywords">关键字库</el-menu-item>
           <el-menu-item v-if="canVisit('/app-online-regression')" index="/app-online-regression">APP回归</el-menu-item>
+          <el-menu-item v-if="canVisit('/reports')" index="/reports">APP UI测试报告</el-menu-item>
         </el-sub-menu>
 
         <el-sub-menu index="tools">
@@ -111,21 +112,10 @@
           </template>
           <el-menu-item index="/packet-capture">抓包</el-menu-item>
           <el-menu-item index="/status-monitor">状态监控</el-menu-item>
+          <el-menu-item v-if="canVisit('/redis-tool')" index="/redis-tool">Redis 查询</el-menu-item>
+          <el-menu-item v-if="canVisit('/kafka-tool')" index="/kafka-tool">Kafka 查询</el-menu-item>
           <el-menu-item v-if="canVisit('/incident-playbooks')" index="/incident-playbooks">事故沉淀</el-menu-item>
-        </el-sub-menu>
-
-        <el-sub-menu index="reports">
-          <template #title>
-            <el-icon><Document /></el-icon>
-            <span>测试报告</span>
-          </template>
-          <el-menu-item index="/reports">APP UI测试报告</el-menu-item>
-          <el-sub-menu index="reports-esports">
-            <template #title>
-              <span>完美世界电竞</span>
-            </template>
-            <el-menu-item index="/reports/esports/performance">性能报告</el-menu-item>
-          </el-sub-menu>
+          <el-menu-item index="/tracking-check">埋点校验</el-menu-item>
         </el-sub-menu>
 
         <el-sub-menu index="perf-test">
@@ -138,6 +128,7 @@
               <span>完美世界电竞</span>
             </template>
             <el-menu-item index="/performance-baseline">安卓性能测试</el-menu-item>
+            <el-menu-item index="/reports/esports/performance">性能报告</el-menu-item>
             <el-menu-item index="/special-report">版本质量卡</el-menu-item>
             <el-menu-item index="/performance">性能监控</el-menu-item>
           </el-sub-menu>
@@ -169,16 +160,15 @@
           </template>
           <el-menu-item index="/release-doc">发版文档</el-menu-item>
           <el-menu-item index="/release-go-live">上线看板</el-menu-item>
+          <el-menu-item index="/version-archives">版本需求归档</el-menu-item>
+          <el-menu-item index="/change-review">周改动漏测</el-menu-item>
         </el-sub-menu>
 
         <el-sub-menu index="other">
           <template #title>
             <el-icon><Setting /></el-icon>
-            <span>其他</span>
+            <span>权限与设置</span>
           </template>
-          <el-menu-item index="/tracking-check">埋点校验</el-menu-item>
-          <el-menu-item index="/version-archives">版本需求归档</el-menu-item>
-          <el-menu-item index="/change-review">周改动漏测</el-menu-item>
           <el-menu-item v-if="canManageUsers" index="/platform-users">账号与权限</el-menu-item>
           <el-menu-item index="/settings">设置</el-menu-item>
         </el-sub-menu>
@@ -322,7 +312,8 @@ const showAppAutoMenu = computed(
     canVisit('/ui-elements') ||
     canVisit('/ui-inspector-import') ||
     canVisit('/ui-keywords') ||
-    canVisit('/app-online-regression')
+    canVisit('/app-online-regression') ||
+    canVisit('/reports')
 )
 
 const pwdVisible = ref(false)
@@ -408,7 +399,9 @@ const defaultOpeneds = computed(() => {
     p.startsWith('/ui-keywords') ||
     p.startsWith('/ui-elements') ||
     p.startsWith('/ui-inspector-import') ||
-    p.startsWith('/app-online-regression')
+    p.startsWith('/app-online-regression') ||
+    p === '/reports' ||
+    (p.startsWith('/reports/') && !p.startsWith('/reports/esports'))
   ) {
     return ['app-auto']
   }
@@ -420,31 +413,32 @@ const defaultOpeneds = computed(() => {
   if (p.startsWith('/api-')) {
     return ['api-test']
   }
-  if (p.startsWith('/reports/esports')) {
-    return ['reports', 'reports-esports']
-  }
-  if (p.startsWith('/reports')) {
-    return ['reports']
-  }
-  if (p.startsWith('/performance-baseline') || p.startsWith('/performance')) {
+  if (p.startsWith('/reports/esports') || p.startsWith('/performance-baseline') || p.startsWith('/performance')) {
     return ['perf-test', 'perf-app']
   }
   if (p.startsWith('/knowledge-handbook')) {
     const cat = String(route.query.category || 'app')
     return ['knowledge-handbook', handbookGroupIdForCategory(cat)]
   }
-  if (p.startsWith('/packet-capture') || p.startsWith('/incident-playbooks') || p.startsWith('/status-monitor')) {
+  if (
+    p.startsWith('/packet-capture') ||
+    p.startsWith('/incident-playbooks') ||
+    p.startsWith('/status-monitor') ||
+    p.startsWith('/redis-tool') ||
+    p.startsWith('/kafka-tool') ||
+    p.startsWith('/tracking-check')
+  ) {
     return ['tools']
   }
-  if (p.startsWith('/release-doc') || p.startsWith('/release-go-live')) {
-    return ['app-release']
-  }
   if (
-    p.startsWith('/settings') ||
-    p.startsWith('/tracking-check') ||
+    p.startsWith('/release-doc') ||
+    p.startsWith('/release-go-live') ||
     p.startsWith('/version-archives') ||
     p.startsWith('/change-review')
   ) {
+    return ['app-release']
+  }
+  if (p.startsWith('/settings') || p.startsWith('/platform-users')) {
     return ['other']
   }
   return ['main', 'assets']

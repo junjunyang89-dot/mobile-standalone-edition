@@ -5,10 +5,6 @@
         <div class="card-header">
           <div>
             <span class="card-title">发版文档与邮件管理</span>
-            <p class="card-sub">
-              发版文档生成 Wiki 表格；发版邮件按模版组草稿并发送。
-              代码真实改动与漏测对照请用侧栏「周改动漏测」。
-            </p>
           </div>
         </div>
       </template>

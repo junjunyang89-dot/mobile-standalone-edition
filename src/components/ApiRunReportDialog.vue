@@ -61,6 +61,12 @@
         <section v-for="c in cases" :key="c.id" class="rr-case" :class="statusCls(c)">
           <header class="rr-case-head" @click="toggleCase(c)">
             <span class="rr-badge">{{ statusText(c) }}</span>
+            <span
+              v-if="c.intent"
+              class="rr-intent"
+              :class="c.intent"
+              :title="c.intent === 'NEGATIVE' ? '故意传不对的参数，看接口怎么处理；报错可能正是期望的结果' : '正常用法'"
+            >{{ c.intent === 'NEGATIVE' ? '异常输入' : '正常' }}</span>
             <span class="rr-case-name" :title="c.name">{{ c.name || fallbackTitle(c) }}</span>
             <span class="rr-spacer" />
             <span v-if="c.httpStatus" class="rr-http mono" :class="httpOk(c) ? 'is-ok' : 'is-bad'">
@@ -71,6 +77,9 @@
           </header>
 
           <div v-if="isOpen(c)" class="rr-case-body">
+            <div v-if="c.expectNote" class="rr-expect" :class="{ suspect: c.expectNote.includes('疑似问题') }">
+              {{ c.expectNote }}
+            </div>
             <div v-if="c.url" class="rr-url">
               <span class="rr-method mono">{{ (c.method || 'GET').toUpperCase() }}</span>
               <span class="rr-url-text mono" :title="c.url">
@@ -79,48 +88,13 @@
               <button type="button" class="rr-mini" @click="copyText(c.url)">⧉ 复制</button>
             </div>
 
-            <template v-if="c.status !== 'PASSED'">
-              <div class="rr-section-title">失败原因</div>
-              <ol class="rr-steps">
-                <li v-for="(st, i) in reasonsOf(c)" :key="i" class="rr-step" :class="'is-' + st.kind">
-                  <div class="rr-step-row">
-                    <span class="rr-step-no">{{ i + 1 }}</span>
-                    <span class="rr-step-title">{{ st.title }}</span>
-                    <span v-if="st.tag" class="rr-step-tag">{{ st.tag }}</span>
-                  </div>
-                  <div class="rr-step-text">
-                    <template v-if="st.kind === 'assert'">
-                      期望 <code class="rr-code-inline">{{ st.expect }}</code>
-                      <template v-if="st.actual">
-                        <span class="rr-dot">·</span>实际 <b class="rr-actual mono">{{ st.actual }}</b>
-                      </template>
-                    </template>
-                    <template v-else>
-                      {{ st.lead }}<code v-if="st.code" class="rr-code-inline">{{ st.code }}</code>{{ st.tail }}
-                    </template>
-                  </div>
-                  <div v-if="st.kind === 'pre' && i < reasonsOf(c).length - 1" class="rr-step-link">↓ 由此导致</div>
-                </li>
-              </ol>
-            </template>
-            <template v-else-if="passedAsserts(c).length">
-              <div class="rr-section-title">断言</div>
-              <div class="rr-asserts">
-                <div v-for="(a, i) in passedAsserts(c)" :key="i" class="rr-assert">
-                  <span class="rr-assert-ok">✓</span>
-                  <code class="rr-code-inline">{{ a.expect }}</code>
-                  <span v-if="a.actual" class="rr-assert-actual">实际 <b class="mono">{{ a.actual }}</b></span>
-                </div>
-              </div>
-            </template>
-
             <div v-if="tabsOf(c).length" class="rr-tabs">
               <button
                 v-for="t in tabsOf(c)"
                 :key="t.key"
                 type="button"
                 class="rr-tab"
-                :class="{ active: activeTab(c) === t.key }"
+                :class="{ active: activeTab(c) === t.key, 'is-fail': t.key === 'check' && c.status !== 'PASSED' }"
                 @click="tabState[c.id] = t.key"
               >
                 {{ t.label }}<span class="rr-tab-count">{{ t.count }}</span>
@@ -132,7 +106,40 @@
             </div>
 
             <div v-if="tabsOf(c).length" class="rr-viewer">
-              <template v-if="activeTab(c) === 'resp' || activeTab(c) === 'reqBody'">
+              <div v-if="activeTab(c) === 'check'" class="rr-check" :class="{ 'is-full': fullState[c.id] }">
+                <ol v-if="c.status !== 'PASSED'" class="rr-steps">
+                  <li v-for="(st, i) in reasonsOf(c)" :key="i" class="rr-step" :class="'is-' + st.kind">
+                    <div class="rr-step-row">
+                      <span class="rr-step-no">{{ i + 1 }}</span>
+                      <span class="rr-step-title">{{ st.title }}</span>
+                      <span v-if="st.tag" class="rr-step-tag">{{ st.tag }}</span>
+                    </div>
+                    <div class="rr-step-text">
+                      <template v-if="st.kind === 'assert'">
+                        期望 <code class="rr-code-inline">{{ st.expect }}</code>
+                        <template v-if="st.actual">
+                          <span class="rr-dot">·</span>实际 <b class="rr-actual mono">{{ st.actual }}</b>
+                        </template>
+                      </template>
+                      <template v-else>
+                        {{ st.lead }}<code v-if="st.code" class="rr-code-inline">{{ st.code }}</code>{{ st.tail }}
+                      </template>
+                    </div>
+                    <div v-if="st.kind === 'pre' && i < reasonsOf(c).length - 1" class="rr-step-link">↓ 由此导致</div>
+                  </li>
+                </ol>
+                <div v-if="c.status !== 'PASSED' && passedAsserts(c).length" class="rr-check-sub">
+                  其余 {{ passedAsserts(c).length }} 条断言通过
+                </div>
+                <div v-if="c.status === 'PASSED' || passedAsserts(c).length" class="rr-asserts">
+                  <div v-for="(a, i) in passedAsserts(c)" :key="i" class="rr-assert">
+                    <span class="rr-assert-ok">✓</span>
+                    <code class="rr-code-inline">{{ a.expect }}</code>
+                    <span v-if="a.actual" class="rr-assert-actual">实际 <b class="mono">{{ a.actual }}</b></span>
+                  </div>
+                </div>
+              </div>
+              <template v-else-if="activeTab(c) === 'resp' || activeTab(c) === 'reqBody'">
                 <div class="rr-viewer-head">
                   <span>{{ activeTab(c) === 'resp' ? contentTypeLabel(c) : '请求体' }}</span>
                   <input
@@ -411,7 +418,7 @@ function assertTag(expr: string) {
   if (expr.startsWith('耗时')) return '耗时'
   if (expr.startsWith('jsonPath')) return 'jsonPath'
   if (expr.startsWith('dbDelta')) return 'dbDelta'
-  if (expr.startsWith('db') || expr.startsWith('库查询')) return 'db'
+  if (expr.startsWith('db') || expr.startsWith('库查询') || expr.startsWith('选库')) return 'db'
   return ''
 }
 
@@ -494,12 +501,19 @@ function maskHeader(key: string, value: string) {
 
 function byteSize(s?: string) {
   const n = s ? new TextEncoder().encode(s).length : 0
-  if (n < 10240) return String(n)
-  return (n / 1024).toFixed(1) + 'KB'
+  if (n < 1024) return n + ' B'
+  return (n / 1024).toFixed(1) + ' KB'
 }
 
+/** 第一个页签放断言 / 失败原因：断言可能几十条，摊在页签上面会把弹窗撑得很长 */
 function tabsOf(c: any) {
   const tabs: Array<{ key: string; label: string; count: string | number }> = []
+  if (c.status !== 'PASSED') {
+    tabs.push({ key: 'check', label: '失败原因', count: reasonsOf(c).length })
+  } else {
+    const n = passedAsserts(c).length
+    if (n) tabs.push({ key: 'check', label: '断言', count: n })
+  }
   if (c.bodyPreview) tabs.push({ key: 'resp', label: '响应体', count: byteSize(c.bodyPreview) })
   const rh = headerRows(c.respHeaders).length
   if (rh) tabs.push({ key: 'respHeaders', label: '响应头', count: rh })
@@ -922,6 +936,33 @@ function dur(ms?: number) {
 .rr-case.is-pass .rr-badge { background: var(--el-color-success); }
 .rr-case.is-fail .rr-badge { background: var(--el-color-danger); }
 .rr-case.is-blocked .rr-badge { background: var(--el-color-warning-dark-2); }
+.rr-intent {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  color: var(--el-color-warning-dark-2);
+  background: var(--el-color-warning-light-9);
+  border: 1px solid var(--el-color-warning-light-5);
+}
+.rr-intent.NORMAL {
+  color: var(--el-color-success-dark-2);
+  background: var(--el-color-success-light-9);
+  border-color: var(--el-color-success-light-5);
+}
+.rr-expect {
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  border-radius: 4px;
+  color: var(--el-text-color-regular);
+  background: var(--el-fill-color-light);
+}
+.rr-expect.suspect {
+  color: var(--el-color-danger-dark-2);
+  background: var(--el-color-danger-light-9);
+}
 .rr-case-name {
   font-size: 14px;
   font-weight: 600;
@@ -980,21 +1021,6 @@ function dur(ms?: number) {
 }
 .rr-mini:hover { border-color: var(--el-color-primary-light-5); color: var(--el-color-primary); }
 .rr-mini + .rr-mini { margin-left: 6px; }
-
-.rr-section-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 14px 0 8px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-.rr-section-title::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--el-fill-color-dark);
-}
 
 /* 失败原因 */
 .rr-steps {
@@ -1098,6 +1124,9 @@ function dur(ms?: number) {
   color: var(--el-text-color-secondary);
 }
 .rr-tab.active .rr-tab-count { background: var(--el-color-primary-light-8); color: var(--el-color-primary); }
+.rr-tab.is-fail { color: var(--el-color-danger); }
+.rr-tab.is-fail .rr-tab-count { background: var(--el-color-danger-light-9); color: var(--el-color-danger); }
+.rr-tab.is-fail.active { border-bottom-color: var(--el-color-danger); }
 .rr-tabs .rr-link { margin-bottom: 6px; }
 
 .rr-viewer {
@@ -1159,8 +1188,19 @@ function dur(ms?: number) {
   font-size: 12px;
   line-height: 1.75;
 }
+.rr-check {
+  max-height: 320px;
+  overflow: auto;
+  padding: 10px 12px;
+}
+.rr-check-sub {
+  margin: 12px 0 6px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
 .rr-code.is-full,
-.rr-kv.is-full { max-height: none; }
+.rr-kv.is-full,
+.rr-check.is-full { max-height: none; }
 .rr-line { display: flex; }
 .rr-ln {
   width: 44px;

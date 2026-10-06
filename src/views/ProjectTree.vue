@@ -30,6 +30,7 @@
             <template #default="{ data }">
               <span class="tree-node">
                 <el-tag v-if="data.type === 'CATEGORY'" size="small" type="info">{{ data.label }}</el-tag>
+                <el-tag v-else-if="data.type === 'KIND'" size="small" :type="kindType(data.kind)">{{ data.label }}</el-tag>
                 <template v-else>
                   <el-tag size="small" :type="kindType(data.kind)">{{ kindLabel(data.kind) }}</el-tag>
                   <span class="pname" :title="data.label">{{ data.label }}</span>
@@ -123,13 +124,24 @@ type ProjectNode = {
   children: ModuleNode[]
 }
 
+type KindNode = {
+  key: string
+  label: string
+  type: 'KIND'
+  kind: string
+  total?: number
+  projectCount?: number
+  counts?: Record<string, number>
+  children: ProjectNode[]
+}
+
 type CategoryNode = {
   key: string
   label: string
   type: 'CATEGORY'
   projectCount?: number
   counts?: Record<string, number>
-  children: ProjectNode[]
+  children: KindNode[]
 }
 
 const MODULE_COLS: Array<{ key: ModuleKey; label: string; route: string }> = [
@@ -151,17 +163,27 @@ const selectedKey = ref('')
 const navTree = computed(() =>
   nodes.value.map((cat) => ({
     ...cat,
-    children: (cat.children || []).map((p) => ({ ...p, children: undefined }))
+    children: (cat.children || []).map((k) => ({
+      ...k,
+      children: (k.children || []).map((p) => ({ ...p, children: undefined }))
+    }))
   }))
 )
 
 const selected = computed(() => findNode(selectedKey.value))
 
-const tableMode = computed(() => (selected.value?.type === 'PROJECT' ? 'module' : 'project'))
+const tableMode = computed(() => {
+  const t = selected.value?.type
+  if (t === 'PROJECT') return 'module'
+  return 'project'
+})
 
 const tableRows = computed(() => {
   const node = selected.value
   if (!node) return []
+  if (node.type === 'CATEGORY') {
+    return (node.children || []).flatMap((k) => k.children || [])
+  }
   return node.children || []
 })
 
@@ -169,6 +191,7 @@ const crumb = computed(() => {
   const node = selected.value
   if (!node) return '选左侧一层，右边列出对应数据'
   if (node.type === 'CATEGORY') return `${node.label} · 项目`
+  if (node.type === 'KIND') return `${parentLabel(node.key)} / ${node.label} · 项目`
   return `${parentLabel(node.key)} / ${node.label} · 模块`
 })
 
@@ -188,7 +211,7 @@ async function load() {
   }
 }
 
-function onTreeClick(data: CategoryNode | ProjectNode) {
+function onTreeClick(data: CategoryNode | KindNode | ProjectNode) {
   selectedKey.value = data.key
 }
 
@@ -205,19 +228,26 @@ function onRowClick(row: ProjectNode | ModuleNode) {
   router.push({ path: col.route, query })
 }
 
-function findNode(key: string): CategoryNode | ProjectNode | null {
+function findNode(key: string): CategoryNode | KindNode | ProjectNode | null {
   if (!key) return null
   for (const cat of nodes.value) {
     if (cat.key === key) return cat
-    const proj = (cat.children || []).find((p) => p.key === key)
-    if (proj) return proj
+    for (const kind of cat.children || []) {
+      if (kind.key === key) return kind
+      const proj = (kind.children || []).find((p) => p.key === key)
+      if (proj) return proj
+    }
   }
   return null
 }
 
-function parentLabel(projectKey: string) {
+function parentLabel(nodeKey: string) {
   for (const cat of nodes.value) {
-    if ((cat.children || []).some((p) => p.key === projectKey)) return cat.label
+    if (cat.key === nodeKey) return cat.label
+    for (const kind of cat.children || []) {
+      if (kind.key === nodeKey) return cat.label
+      if ((kind.children || []).some((p) => p.key === nodeKey)) return `${cat.label} / ${kind.label}`
+    }
   }
   return ''
 }
@@ -229,11 +259,11 @@ function countOf(row: ProjectNode, key: ModuleKey) {
 }
 
 function kindType(k: string) {
-  return k === 'CLIENT' ? 'success' : k === 'H5' ? 'warning' : ''
+  return k === 'CLIENT' ? 'success' : k === 'FRONTEND' || k === 'H5' ? 'warning' : ''
 }
 
 function kindLabel(k: string) {
-  return k === 'CLIENT' ? '客户端' : k === 'H5' ? 'H5' : '后台'
+  return k === 'CLIENT' ? '客户端' : k === 'FRONTEND' || k === 'H5' ? '前端' : '后端'
 }
 
 onMounted(load)

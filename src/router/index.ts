@@ -244,6 +244,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '接口对比分析' }
       },
       {
+        path: 'api-changes-v2',
+        name: 'ApiChangesV2',
+        component: () => import('../views/ApiChangesV2.vue'),
+        meta: { title: '接口对比分析2' }
+      },
+      {
         path: 'knowledge-handbook',
         name: 'KnowledgeHandbook',
         component: () => import('../views/KnowledgeHandbook.vue'),
@@ -290,12 +296,6 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '需求登记' }
       },
       {
-        path: 'coverage-gap',
-        name: 'CoverageGap',
-        component: () => import('../views/CoverageGap.vue'),
-        meta: { title: '接口覆盖差集' }
-      },
-      {
         path: 'packet-capture',
         name: 'PacketCapture',
         component: () => import('../views/PacketCapture.vue'),
@@ -306,6 +306,18 @@ const routes: RouteRecordRaw[] = [
         name: 'StatusMonitor',
         component: () => import('../views/StatusMonitor.vue'),
         meta: { title: '状态监控' }
+      },
+      {
+        path: 'redis-tool',
+        name: 'RedisTool',
+        component: () => import('../views/RedisTool.vue'),
+        meta: { title: 'Redis 查询' }
+      },
+      {
+        path: 'kafka-tool',
+        name: 'KafkaTool',
+        component: () => import('../views/KafkaTool.vue'),
+        meta: { title: 'Kafka 查询' }
       },
       {
         path: 'incident-playbooks',

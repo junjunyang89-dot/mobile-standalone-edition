@@ -3,91 +3,141 @@
     <el-card class="main-card" shadow="never">
       <template #header>
         <div class="card-header">
-          <div>
-            <span class="card-title">接口对比分析</span>
-            <p class="card-sub">
-              本次提测动了哪些接口、返回体多了/少了哪些字段、涉及哪些表。
-              全程只读，不动你的代码；分析成功会自动存一份，可在历史里复看。
-            </p>
-          </div>
+          <span class="card-title">接口对比分析</span>
           <el-button @click="openHistory">历史报告</el-button>
         </div>
       </template>
 
-      <el-radio-group v-model="mode" class="mode-switch" @change="onModeChange">
+      <el-radio-group v-model="mode" size="small" class="mode-switch" @change="onModeChange">
         <el-radio-button label="branch">分支对比</el-radio-button>
         <el-radio-button label="dir">目录对比</el-radio-button>
       </el-radio-group>
-      <div class="mode-hint">
-        {{ mode === 'branch'
-          ? '从本地 git 仓库读分支，按「共同祖先起这个分支干了什么」比。'
-          : '不需要 git：把两个分支各拷一份到本地，直接比目录。拿不到内网时用这个。' }}
+      <div v-if="mode === 'dir'" class="mode-hint">
+        不需要 git：把两个分支各拷一份到本地，直接比目录。拿不到内网时用这个。
       </div>
 
-      <el-form v-if="mode === 'dir'" :inline="true" class="filter-bar">
-        <el-form-item label="项目">
-          <el-select v-model="project" filterable clearable style="width: 200px" placeholder="不选则不同步清单">
-            <el-option v-for="p in projects" :key="'d-' + p.code" :label="p.name || p.code" :value="p.code" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="基线目录">
-          <el-select v-model="baseDir" filterable allow-create style="width: 320px"
-                     placeholder="选已保存的目录，或直接粘路径">
-            <el-option v-for="d in codeDirs" :key="'b' + d.id"
-                       :label="d.label + (d.isBaseline ? '（基线）' : '')" :value="d.dirPath">
-              <span>{{ d.label }}</span>
-              <span style="float: right; color: var(--el-text-color-secondary); font-size: 12px">{{ shortPath(d.dirPath) }}</span>
-            </el-option>
-          </el-select>
-        </el-form-item>
-        <el-form-item label="待测目录">
-          <el-select v-model="headDir" filterable allow-create style="width: 320px"
-                     placeholder="本次提测那份代码">
-            <el-option v-for="d in codeDirs" :key="'h' + d.id" :label="d.label" :value="d.dirPath">
-              <span>{{ d.label }}</span>
-              <span style="float: right; color: var(--el-text-color-secondary); font-size: 12px">{{ shortPath(d.dirPath) }}</span>
-            </el-option>
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" :loading="loading" :disabled="!baseDir || !headDir" @click="analyzeDirs">
+      <template v-if="mode === 'dir'">
+        <div class="cmp-grid">
+          <div class="cmp-field">
+            <label class="cmp-label">项目</label>
+            <ProjectCascadeSelect
+              v-model="project"
+              :groups="projectGroups"
+              width="100%"
+              placeholder="从项目管理里选"
+              @change="loadCodeDirs"
+            />
+          </div>
+          <div class="cmp-field">
+            <label class="cmp-label">基线目录</label>
+            <el-select v-model="baseDir" filterable allow-create class="cmp-select mono"
+                       placeholder="选已保存的目录，或直接粘路径">
+              <el-option v-for="d in codeDirs" :key="'b' + d.id"
+                         :label="d.label + (d.isBaseline ? '（基线）' : '')" :value="d.dirPath">
+                <span>{{ d.label }}</span>
+                <span class="opt-sub">{{ shortPath(d.dirPath) }}</span>
+              </el-option>
+            </el-select>
+          </div>
+          <div class="cmp-field">
+            <label class="cmp-label">待测目录</label>
+            <el-select v-model="headDir" filterable allow-create class="cmp-select mono"
+                       placeholder="本次提测那份代码">
+              <el-option v-for="d in codeDirs" :key="'h' + d.id" :label="d.label" :value="d.dirPath">
+                <span>{{ d.label }}</span>
+                <span class="opt-sub">{{ shortPath(d.dirPath) }}</span>
+              </el-option>
+            </el-select>
+          </div>
+        </div>
+        <div class="cmp-actions">
+          <el-button type="primary" :loading="loading" :disabled="!project || !baseDir || !headDir" @click="analyzeDirs">
             开始分析
           </el-button>
           <el-button @click="openDirMgr">管理目录</el-button>
-        </el-form-item>
-      </el-form>
+        </div>
+      </template>
 
-      <el-form v-else :inline="true" class="filter-bar">
-        <el-form-item label="项目">
-          <el-select v-model="project" filterable style="width: 200px" @change="onProjectChange">
-            <el-option
-              v-for="p in projects"
-              :key="p.code"
-              :label="p.name || p.code"
-              :value="p.code"
-              :disabled="!p.ready"
-            >
-              <span>{{ p.name || p.code }}</span>
-              <span v-if="!p.ready" style="float: right; color: var(--el-color-danger); font-size: 12px">未配仓库</span>
-            </el-option>
-          </el-select>
-        </el-form-item>
-        <el-form-item label="基线分支">
-          <el-select v-model="baseRef" filterable allow-create style="width: 240px" placeholder="如 master / testing">
-            <el-option v-for="b in branches" :key="'b-' + b" :label="b" :value="b" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="待测分支">
-          <el-select v-model="headRef" filterable allow-create style="width: 280px" placeholder="本次提测的分支">
-            <el-option v-for="b in branches" :key="'h-' + b" :label="b" :value="b" />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" :loading="loading" :disabled="!project" @click="analyze">
+      <template v-else>
+        <div class="cmp-grid">
+          <div class="cmp-field">
+            <label class="cmp-label">项目</label>
+            <ProjectCascadeSelect
+              v-model="project"
+              :groups="projectGroups"
+              width="100%"
+              placeholder="从项目管理里选"
+              require-ready
+              @change="onProjectChange"
+            />
+          </div>
+          <div class="cmp-field">
+            <label class="cmp-label">基线分支</label>
+            <el-select v-model="baseRef" filterable allow-create class="cmp-select mono" placeholder="如 master / testing"
+                       :loading="branchLoading">
+              <el-option v-for="b in branches" :key="'b-' + b" :label="b" :value="b" />
+            </el-select>
+          </div>
+          <div class="cmp-field">
+            <label class="cmp-label">待测分支</label>
+            <el-select v-model="headRef" filterable allow-create class="cmp-select mono" placeholder="本次提测的分支"
+                       :loading="branchLoading">
+              <el-option v-for="b in branches" :key="'h-' + b" :label="b" :value="b" />
+            </el-select>
+          </div>
+        </div>
+        <div class="cmp-actions">
+          <el-button type="primary" :loading="loading" :disabled="!project || branchLoading" @click="analyze">
             开始分析
           </el-button>
-        </el-form-item>
-      </el-form>
+          <span v-if="branchLoading" class="sync-line">正在拉取最新代码…</span>
+          <span v-else-if="syncMsg && !syncBad" class="sync-line">{{ syncMsg }}</span>
+        </div>
+      </template>
+
+      <div v-if="mode === 'branch' && syncFailure" class="sync-fail">
+        <el-icon class="sync-fail-icon"><WarningFilled /></el-icon>
+        <div class="sync-fail-body">
+          <div class="sync-fail-title">
+            拉取最新代码失败，用的是本地代码
+            <span class="sync-fail-tag">结果可能不是最新</span>
+          </div>
+          <div class="sync-fail-detail">{{ syncFailure }}</div>
+        </div>
+        <el-popover
+          v-model:visible="syncHelpVisible"
+          placement="bottom-end"
+          :width="340"
+          trigger="click"
+          popper-class="sync-help-popper"
+        >
+          <template #reference>
+            <button type="button" class="sync-fail-link">怎么办</button>
+          </template>
+          <div class="sync-help">
+            <div class="sync-help-head">
+              <span class="sync-help-badge">!</span>
+              <span class="sync-help-title">拉不到最新代码</span>
+            </div>
+            <p class="sync-help-lead">连上公司 <b>VPN / 内网</b>，大多能解决。</p>
+            <div class="sync-help-actions">
+              <el-button type="primary" :loading="branchLoading" @click="retrySync">
+                <el-icon v-if="!branchLoading"><Refresh /></el-icon>
+                <span>重新拉取</span>
+              </el-button>
+              <button type="button" class="sync-help-toggle" @click="syncHelpMore = !syncHelpMore">
+                {{ syncHelpMore ? '收起' : '其它办法' }}
+                <el-icon :class="{ up: syncHelpMore }"><ArrowDown /></el-icon>
+              </button>
+            </div>
+            <ul v-if="syncHelpMore" class="sync-help-list">
+              <li>核对「项目管理」里的 <b>GitLab 地址</b></li>
+              <li>本机能 <code>git clone</code> 这个地址</li>
+              <li>或切「<a class="sync-help-link" @click="switchToDirMode">目录对比</a>」，用本地两份代码比</li>
+            </ul>
+          </div>
+        </el-popover>
+      </div>
 
       <el-alert
         v-if="errorMsg"
@@ -98,19 +148,23 @@
         style="margin-bottom: 12px"
       />
 
-      <el-empty
-        v-if="!report && !loading && !errorMsg"
-        :description="mode === 'branch'
-          ? '选项目和分支，点「开始分析」。分支列表会从本地仓库自动读出来'
-          : '填两个本地目录，点「开始分析」。目录里若套了一层工程根会自动定位'"
-      />
+      <div v-if="!report && !loading && !errorMsg" class="cmp-empty">
+        <div class="cmp-empty-icon">📦</div>
+        <div>
+          <div class="cmp-empty-title">还没有分析结果</div>
+          <div class="cmp-empty-sub">
+            {{ mode === 'branch'
+              ? '选项目和分支，点「开始分析」。分支列表会从本地仓库自动读出来。'
+              : '填两个本地目录，点「开始分析」。目录里若套了一层工程根会自动定位。' }}
+          </div>
+        </div>
+      </div>
 
       <template v-if="report">
         <div class="summary-head">
           <span class="summary-ref">{{ report.baseRef }} → <b>{{ report.headRef }}</b></span>
           <span class="summary-files">共 {{ report.changedFiles }} 个文件有差异</span>
         </div>
-
         <!--
           同步是跟着分析自动做的，但不显示出来的话「同步没同步过」只能靠猜，
           而猜错的方向是「以为同步了其实没有」——那会让人拿着上一版的清单去排测试
@@ -122,7 +176,6 @@
         >
           <template v-if="report.catalogSync.skipped">
             接口没有进清单：{{ report.catalogSync.reason || '这次同步被跳过了' }}
-            <a v-if="mode === 'dir'" class="catalog-link" @click="scrollToForm">选一个项目再分析一次</a>
           </template>
           <template v-else>
             已同步到<a class="catalog-link" @click="goCatalog">接口清单</a>：
@@ -180,352 +233,71 @@
             </el-table-column>
           </el-table>
         </div>
-        <div v-if="report.mustTest?.items?.length" id="sec-must" class="must-test">
-          <div class="cr-head">
-            <b>必测清单</b>
-            <el-tag size="small" type="danger">P0 {{ report.mustTest.p0 }}</el-tag>
-            <el-tag size="small" type="warning">P1 {{ report.mustTest.p1 }}</el-tag>
-            <el-tag size="small" type="info">P2 {{ report.mustTest.p2 }}</el-tag>
-          </div>
-          <div class="cr-hint">{{ report.mustTest.hint }}</div>
-          <el-table :data="report.mustTest.items" size="small" border style="margin-top:8px">
-            <el-table-column label="优先级" width="72" align="center">
-              <template #default="{ row }">
-                <el-tag size="small" :type="row.priority === 'P0' ? 'danger' : row.priority === 'P1' ? 'warning' : 'info'">
-                  {{ row.priority }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="接口 / 对象" min-width="220">
-              <template #default="{ row }">
-                <span v-if="row.httpMethod" class="cr-ep">{{ row.httpMethod }} {{ row.path }}</span>
-                <span v-else>{{ row.title }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="title" label="测什么" min-width="160" show-overflow-tooltip />
-            <el-table-column prop="why" label="为什么必测" min-width="180" show-overflow-tooltip />
-            <el-table-column label="接口测试要注意什么" min-width="320">
-              <template #default="{ row }">
-                <ul class="must-notes">
-                  <li v-for="(n, i) in row.notes" :key="i">{{ n }}</li>
-                </ul>
-              </template>
-            </el-table-column>
-          </el-table>
-        </div>
-        <div class="stat-row">
+        <div class="stat-row" role="tablist">
           <a
             v-for="s in statCards"
             :key="s.key"
+            role="tab"
             class="stat-card"
-            :class="{ danger: s.danger, empty: !s.value }"
-            @click="scrollTo(s.key)"
+            :class="{ danger: s.danger, empty: !s.value, active: isStatActive(s.key) }"
+            :aria-selected="isStatActive(s.key)"
+            @click="pickStat(s.key)"
           >
             <div class="stat-num">{{ s.value }}</div>
             <div class="stat-label">{{ s.label }}</div>
           </a>
         </div>
 
-        <div v-if="report.notes?.length" class="report-notes">
-          <span v-for="(n, i) in report.notes" :key="i">{{ n }}</span>
+        <div v-if="reportNotes.length" class="report-notes">
+          <span v-for="(n, i) in reportNotes" :key="i">{{ n }}</span>
         </div>
 
-        <!-- 先列可能挂前端的：字段删了、类型变了。这两类不看会直接线上炸 -->
-        <template v-if="breakingCount">
-          <div id="sec-breaking" class="section-head danger">
-            <span class="section-no">1</span>
-            <span class="section-name">先确认这些 —— 可能不兼容的变更（{{ breakingCount }}）</span>
-          </div>
-          <p class="section-sub">
-            字段被删、或类型变了。字段名还在、抓包看着正常，但前端按老类型解析会静默出错——
-            这类最难定位到后端。<b>先拿这几条去问开发是不是有意为之。</b>
-          </p>
-          <div v-for="(e, i) in visibleBreaking" :key="'brk-' + i" class="ep-card breaking">
-            <div class="ep-head">
-              <el-tag size="small" :type="methodTag(e.httpMethod)">{{ e.httpMethod }}</el-tag>
-              <span class="ep-path">{{ e.path }}</span>
-              <span v-if="e.summary" class="ep-summary">{{ e.summary }}</span>
+        <EndpointDiffView
+          v-if="activeSec === 'ep'"
+          v-model:filter="epFilter"
+          :report="report"
+          :project="reportProjectCode"
+          :refs="reportRefs"
+          @open-table="openTableImpact"
+          @open-schema="openSchemaFor"
+          @edit-case="goReviewCase"
+        />
+
+        <template v-else>
+          <p class="section-sub">这些改动没能挂到具体接口上。能挂上的（读写的表、调到的实现、接口上的安全问题）都已经放进对应接口里了。</p>
+          <el-empty
+            v-if="!linked.unlinkedCount"
+            :description="skipItems.length ? '没有要单独测的，剩下的都是不用测的改动' : '全部都挂到接口上了'"
+            :image-size="60"
+          />
+
+          <section v-if="dtoItems.length" class="ul-sec">
+            <div class="section-head"><span class="section-name">公共返回体（{{ dtoItems.length }}）</span></div>
+            <p class="section-sub">被多处引用、或没能连回具体接口的返回体，用到它的接口都会受影响。</p>
+            <div v-for="d in dtoItems" :key="d.ref.path" class="ul-dto">
+              <div class="ul-dto-head">
+                <code>{{ d.ref.path }}</code>
+                <span class="muted">{{ d.file }}</span>
+              </div>
+              <JsonDiffView :blocks="d.blocks" :project="reportProjectCode" :endpoint="d.ref" :marks="otherMarks" />
             </div>
-            <ul class="field-list">
-              <li v-for="(f, j) in breakingFields(e)" :key="j" :class="fieldClass(f.changeType)">
-                {{ changeLabel(f.changeType) }} {{ fieldName(f) }}
-                <span class="ftype">{{ typeText(f) }}</span>
-              </li>
-            </ul>
-          </div>
-          <el-button v-if="breakingEndpoints.length > 1" link type="primary"
-                     @click="showAllBreaking = !showAllBreaking">
-            {{ showAllBreaking ? '收起' : `展开其余 ${breakingEndpoints.length - 1} 条` }}
-          </el-button>
-        </template>
+          </section>
 
-        <div id="sec-endpoints" class="section-head">
-          <span class="section-no">2</span>
-          <span class="section-name">这些接口要测（{{ report.endpoints.length }}）</span>
-        </div>
-        <p class="section-sub">
-          按风险排好序了：<b>不兼容</b> 优先，其次<b>新接口</b>，再是<b>只改了实现</b>的（签名没变但行为可能变）。
-          标「未覆盖」的就是本次要补接口用例的。
-        </p>
-        <el-empty v-if="!report.endpoints.length" description="没有接口变更" :image-size="60" />
-        <div v-for="(e, i) in visibleEndpoints" :key="'ep-' + i" class="ep-card">
-          <div class="ep-head">
-            <el-tag size="small" :type="riskTag(e.risk)">{{ riskLabel(e.risk) }}</el-tag>
-            <el-tag size="small" :type="methodTag(e.httpMethod)">{{ e.httpMethod }}</el-tag>
-            <span class="ep-path">{{ e.path }}</span>
-            <span v-if="e.summary" class="ep-summary">{{ e.summary }}</span>
-            <span class="ep-spacer" />
-            <el-tag v-if="e.testCases > 0" size="small" type="success" effect="plain">
-              已有用例 {{ e.testCases }}
-            </el-tag>
-            <el-tag v-else size="small" type="info" effect="plain">未覆盖</el-tag>
-          </div>
-
-          <div v-if="e.params?.length" class="sub-label">入参</div>
-          <ul v-if="e.params?.length" class="field-list">
-            <li v-for="(pm, j) in e.params" :key="'p' + j" :class="fieldClass(pm.changeType)">
-              {{ changeLabel(pm.changeType) }} [{{ pm.source }}] {{ pm.name }}
-              <span class="ftype">{{ paramTypeText(pm) }}</span>
-              <el-tag v-if="pm.required && pm.changeType === 'ADDED'" size="small" type="danger" effect="plain">
-                必填
-              </el-tag>
-            </li>
-          </ul>
-
-          <div v-if="e.bodyFields?.length" class="sub-label">请求体字段</div>
-          <ul v-if="e.bodyFields?.length" class="field-list">
-            <li v-for="(f, j) in e.bodyFields" :key="'bf' + j" :class="fieldClass(f.changeType)">
-              {{ changeLabel(f.changeType) }} {{ fieldName(f) }}
-              <span class="ftype">{{ typeText(f) }}</span>
-            </li>
-          </ul>
-
-          <div v-if="e.fields.length" class="sub-label">返回体字段</div>
-          <ul v-if="e.fields.length" class="field-list">
-            <li v-for="(f, j) in e.fields" :key="j" :class="fieldClass(f.changeType)">
-              {{ changeLabel(f.changeType) }} {{ fieldName(f) }}
-              <span class="ftype">{{ typeText(f) }}</span>
-            </li>
-          </ul>
-
-          <!--
-            完整字段清单：抓包时逐字段对照用。默认收起——有的接口几十个字段，
-            全铺开会把「本次改了什么」淹掉；要对字段的时候再展开。
-          -->
-          <div v-if="(e.responseFields?.length || e.requestFields?.length)" class="all-fields">
-            <el-button link type="primary" @click="toggleFields(e.path)">
-              {{ openFields.has(e.path) ? '收起' : '查看该接口全部字段' }}
-              （请求 {{ e.requestFields?.length || 0 }} / 返回 {{ e.responseFields?.length || 0 }}）
-            </el-button>
-            <template v-if="openFields.has(e.path)">
-              <div v-if="e.requestFields?.length" class="sub-label">请求体全部字段</div>
-              <el-table v-if="e.requestFields?.length" :data="e.requestFields" size="small" border>
-                <el-table-column label="字段" min-width="220">
-                  <template #default="{ row }">
-                    <span :style="{ paddingLeft: row.depth * 14 + 'px' }" class="fld-path">{{ row.path }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="type" label="类型" width="180" />
-                <el-table-column label="说明" min-width="200">
-                  <template #default="{ row }">
-                    <span v-if="row.comment">{{ row.comment }}</span>
-                    <span v-else class="muted">代码里没写注释</span>
-                  </template>
-                </el-table-column>
-                <el-table-column label="本次" width="90" align="center">
-                  <template #default="{ row }">
-                    <el-tag v-if="row.changeType" size="small" :type="row.changeType === 'ADDED' ? 'success' : 'warning'">
-                      {{ changeLabel(row.changeType) }}
-                    </el-tag>
-                    <span v-else class="muted">—</span>
-                  </template>
-                </el-table-column>
-              </el-table>
-
-              <div v-if="e.responseFields?.length" class="sub-label">返回体全部字段</div>
-              <el-table v-if="e.responseFields?.length" :data="e.responseFields" size="small" border>
-                <el-table-column label="字段" min-width="220">
-                  <template #default="{ row }">
-                    <span :style="{ paddingLeft: row.depth * 14 + 'px' }" class="fld-path">{{ row.path }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="type" label="类型" width="180" />
-                <el-table-column label="说明" min-width="200">
-                  <template #default="{ row }">
-                    <span v-if="row.comment">{{ row.comment }}</span>
-                    <span v-else class="muted">代码里没写注释</span>
-                  </template>
-                </el-table-column>
-                <el-table-column label="本次" width="90" align="center">
-                  <template #default="{ row }">
-                    <el-tag v-if="row.changeType" size="small" :type="row.changeType === 'ADDED' ? 'success' : 'warning'">
-                      {{ changeLabel(row.changeType) }}
-                    </el-tag>
-                    <span v-else class="muted">—</span>
-                  </template>
-                </el-table-column>
-              </el-table>
-              <el-tooltip placement="top">
-                <template #content>
-                  字段名是抓包能看到的名字：@JsonProperty 改过的按改后显示，@JsonIgnore 的不列。<br />
-                  嵌套对象最多展开三层，路径里的 [] 表示数组。
-                </template>
-                <span class="fields-note">字段是怎么来的？</span>
-              </el-tooltip>
-            </template>
-          </div>
-
-          <!-- 表与缓存：数据跟预期不符时，先看是不是缓存没刷 -->
-          <div v-if="e.tables?.length" class="dep-row">
-            <span class="dep-label">读写表</span>
-            <div class="dep-tags">
-              <el-tag
-                v-for="(t, j) in e.tables"
-                :key="'t' + j"
-                size="small"
-                :type="j < (e.relatedTableCount || 0) ? 'warning' : 'info'"
-                effect="plain"
-              >{{ t }}</el-tag>
-              <span v-if="e.relatedTableCount && e.tables.length > e.relatedTableCount" class="dep-hint">
-                橙色是本次变更涉及的，灰色是这个接口本来就在用的
-              </span>
-            </div>
-          </div>
-          <div v-if="e.redisKeys?.length" class="dep-row">
-            <span class="dep-label">缓存 key</span>
-            <div class="dep-tags">
-              <el-tag
-                v-for="(k, j) in e.redisKeys"
-                :key="'k' + j"
-                size="small"
-                :type="k.valueChanged ? 'danger' : (k.related ? 'warning' : 'info')"
-                effect="plain"
-                :title="k.constant + (k.valueChanged ? `（本次由 ${k.oldValue} 改成这个）` : '')"
-              >{{ k.value }}{{ k.valueChanged ? ' · key 变了' : '' }}</el-tag>
-              <span class="dep-hint">数据跟预期不符时先清这几个 key，能一步分清是逻辑还是缓存</span>
-            </div>
-          </div>
-
-          <div v-if="e.changedImpls?.length" class="impl-note">
-            实现有改动：{{ e.changedImpls.join('、') }} —— 签名没变不等于行为没变，建议回归
-          </div>
-          <div class="ep-file">{{ e.file }}</div>
-        </div>
-        <el-button v-if="report.endpoints.length > 1" link type="primary"
-                   @click="showAllEndpoints = !showAllEndpoints">
-          {{ showAllEndpoints ? '收起' : `展开其余 ${report.endpoints.length - 1} 条` }}
-        </el-button>
-
-        <template v-if="report.orphanDtos.length">
-          <div id="sec-dtos" class="section-head">
-            <span class="section-no">3</span>
-            <span class="section-name">这些返回体改了，但没能连回具体接口（{{ report.orphanDtos.length }}）</span>
-          </div>
-          <p class="section-sub">
-            公共 DTO 被多处引用，或者这个返回体我没能连回具体接口。它的字段变了，用到它的接口都会受影响。
-          </p>
-          <div v-for="(d, i) in report.orphanDtos" :key="'dto-' + i" class="ep-card">
-            <div class="ep-head">
-              <span class="ep-path">{{ d.type }}</span>
-              <span class="ep-spacer" />
-              <span class="ep-file">{{ d.file }}</span>
-            </div>
-            <ul class="field-list">
-              <li v-for="(f, j) in d.fields" :key="j" :class="fieldClass(f.changeType)">
-                {{ changeLabel(f.changeType) }} {{ fieldName(f) }}
-                <span class="ftype">{{ typeText(f) }}</span>
-              </li>
-            </ul>
-          </div>
-        </template>
-
-        <template v-if="report.otherChanges?.length">
-          <div id="sec-other" class="section-head">
-            <span class="section-no">4</span>
-            <span class="section-name">这些不是接口变更，但会影响你测（{{ report.otherChanges.length }}）</span>
-          </div>
-          <p class="section-sub">
-            不是接口变更，但会影响你测的东西：定时任务决定测试环境有什么数据，缓存 key 变了会出现
-            「改了没生效」。这些不列出来，人容易以为报告干净就等于不用测。
-          </p>
-          <el-table :data="report.otherChanges" size="small" border>
-            <el-table-column label="类型" width="110">
-              <template #default="{ row }">
-                <el-tag size="small" :type="kindTag(row.kind)" effect="plain">{{ kindLabel(row.kind) }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="file" label="文件" min-width="260" show-overflow-tooltip />
-            <el-table-column prop="hint" label="为什么要看" min-width="320" />
-          </el-table>
-        </template>
-
-        <template v-if="report.findings?.length">
-          <div id="sec-findings" class="section-head danger">
-            <span class="section-no">5</span>
-            <span class="section-name">安全与字段设计（{{ report.findings.length }}）</span>
-          </div>
-          <p class="section-sub">
-            从代码里能<b>确证</b>的问题，每条带依据。只报高置信度的——掺进猜测，
-            你核过两三条假的就不看了，真的那条也一起废掉。
-          </p>
-          <div
-            v-for="(f, i) in (showAllFindings ? report.findings : report.findings.slice(0, 3))"
-            :key="'fd' + i"
-            class="finding-card"
-            :class="{ risk: f.level === 'RISK' }"
-          >
-            <div class="finding-head">
-              <el-tag size="small" :type="f.kind === 'SECURITY' ? 'danger' : 'warning'" effect="plain">
-                {{ f.kind === 'SECURITY' ? '安全' : '设计' }}
-              </el-tag>
-              <span class="finding-target">{{ f.target }}</span>
-            </div>
-            <div class="finding-title">{{ f.title }}</div>
-            <div class="finding-basis">依据：{{ f.basis }}</div>
-          </div>
-          <el-button v-if="report.findings.length > 3" link type="primary"
-                     @click="showAllFindings = !showAllFindings">
-            {{ showAllFindings ? '收起' : `展开其余 ${report.findings.length - 3} 条` }}
-          </el-button>
-        </template>
-
-        <template v-if="report.concurrencyRisks?.length">
-          <div id="sec-concurrency" class="section-head danger">
-            <span class="section-no">5b</span>
-            <span class="section-name">并发风险（{{ report.concurrencyRisks.length }}）</span>
-          </div>
-          <p class="section-sub">依据是建表语句里的唯一索引、计数列，以及 Redis key。没录 DDL 的表扫不出来，不是没风险。</p>
-          <div
-            v-for="(c, i) in report.concurrencyRisks"
-            :key="'cc' + i"
-            class="finding-card"
-            :class="{ risk: c.level === 'RISK' }"
-          >
-            <div class="finding-head">
-              <el-tag size="small" :type="c.level === 'RISK' ? 'danger' : 'info'" effect="plain">
-                {{ c.level === 'RISK' ? '重点' : '了解' }}
-              </el-tag>
-              <span class="finding-target">{{ c.httpMethod }} {{ c.path }}</span>
-            </div>
-            <div class="finding-title">{{ c.title }}</div>
-            <div v-if="c.howToTest" class="finding-basis">怎么测：{{ c.howToTest }}</div>
-            <div v-if="c.basis" class="finding-basis">依据：{{ c.basis }}</div>
-          </div>
-        </template>
-
-        <template v-if="report.tables.length">
-          <div id="sec-tables" class="section-head">
-            <span class="section-no">6</span>
-            <span class="section-name">涉及的表 —— 造数据和边界看这里（{{ report.tables.length }}）</span>
-          </div>
-          <p class="section-sub">
-            录了建表语句的表会自动列出测试注意事项（唯一索引、可空字段、大整数精度这些，
-            建表语句里本来就写着）。没录过的点一下就能补。
-          </p>
-          <el-table :data="report.tables" size="small" border>
+          <section v-if="linked.unlinked.tables.length" class="ul-sec">
+            <div class="section-head"><span class="section-name">没有接口用到的表（{{ linked.unlinked.tables.length }}）</span></div>
+          <el-alert
+            v-if="report.schemaNote"
+            type="info"
+            :closable="false"
+            show-icon
+            :title="report.schemaNote"
+            style="margin-bottom: 8px"
+          />
+                    <el-table :data="linked.unlinked.tables" size="small" border>
             <el-table-column label="表名" width="240">
               <template #default="{ row }">
                 <a class="catalog-link" @click="openTableImpact(row.table)">{{ row.table }}</a>
+                <div v-if="row.ddlSource" class="ddl-source">{{ row.ddlSource }}</div>
               </template>
             </el-table-column>
             <el-table-column label="结构变更" width="100" align="center">
@@ -560,12 +332,92 @@
                   </div>
                   <div v-if="row.remark" class="hint-remark">补充：{{ row.remark }}</div>
                 </template>
-                <el-button v-else link type="primary" @click="openSchemaFor(row.table)">
-                  录入建表语句 → 自动列出测试注意事项
-                </el-button>
+                <template v-else>
+                  <span class="muted">关联的测试库里没读到这张表</span>
+                  <el-button link type="primary" @click="openSchemaFor(row.table)">手动补建表语句</el-button>
+                </template>
               </template>
             </el-table-column>
           </el-table>
+          </section>
+
+          <section v-if="linked.unlinked.others.length" class="ul-sec">
+            <div class="section-head"><span class="section-name">定时任务 / 配置等改动（{{ linked.unlinked.others.length }}）</span></div>
+          <div class="other-list">
+            <div v-for="g in otherGroups" :key="g.kind" class="other-group">
+              <div
+                class="other-row"
+                :class="{ clickable: g.items.length > 1 }"
+                @click="g.items.length > 1 && toggleOther(g.kind)"
+              >
+                <span class="other-kind">
+                  <el-tag size="small" :type="kindTag(g.kind)" effect="plain">{{ kindLabel(g.kind) }}</el-tag>
+                </span>
+                <span class="other-file">
+                  <template v-if="g.items.length > 1">
+                    <el-icon class="other-arrow" :class="{ open: openOther.has(g.kind) }"><ArrowRight /></el-icon>
+                    {{ g.items.length }} 个文件
+                  </template>
+                  <el-tooltip v-else :content="g.items[0].file" placement="top" :show-after="200">
+                    <span class="mono">{{ otherFileName(g.items[0]) }}</span>
+                  </el-tooltip>
+                </span>
+                <span class="other-hint">{{ g.hint }}</span>
+              </div>
+              <template v-if="g.items.length > 1 && openOther.has(g.kind)">
+                <div v-for="(o, j) in g.items" :key="j" class="other-row sub">
+                  <span class="other-kind" />
+                  <span class="other-file">
+                    <el-tooltip :content="o.file" placement="top" :show-after="200">
+                      <span class="mono">{{ otherFileName(o) }}</span>
+                    </el-tooltip>
+                  </span>
+                  <span class="other-hint">{{ g.sameHint ? '' : o.hint }}</span>
+                </div>
+              </template>
+            </div>
+          </div>
+          </section>
+
+          <section v-if="linked.unlinked.findings.length" class="ul-sec">
+            <div class="section-head danger"><span class="section-name">安全 / 设计问题（{{ linked.unlinked.findings.length }}）</span></div>
+            <div
+              v-for="(f, i) in linked.unlinked.findings"
+              :key="'fd' + i"
+              class="finding-card"
+              :class="{ risk: f.level === 'RISK' }"
+            >
+              <div class="finding-head">
+                <el-tag size="small" :type="f.kind === 'SECURITY' ? 'danger' : 'warning'" effect="plain">
+                  {{ f.kind === 'SECURITY' ? '安全' : '设计' }}
+                </el-tag>
+                <span class="finding-target">{{ f.target }}</span>
+              </div>
+              <div class="finding-title">{{ f.title }}</div>
+              <div class="finding-basis">依据：{{ f.basis }}</div>
+            </div>
+          </section>
+
+          <section v-if="skipItems.length" class="ul-sec ul-skip">
+            <button type="button" class="ul-skip-head" @click="skipOpen = !skipOpen">
+              <el-icon class="other-arrow" :class="{ open: skipOpen }"><ArrowRight /></el-icon>
+              不用测的改动（{{ skipItems.length }}）
+              <span class="muted">只挪了位置、只改了日志、已合进基线，或写了还没被用到——不计入上面的数</span>
+            </button>
+            <div v-if="skipOpen" class="other-list">
+              <div v-for="(s, i) in skipItems" :key="'sk' + i" class="other-row sub">
+                <span class="other-kind">
+                  <el-tag size="small" type="info" effect="plain">{{ s.label }}</el-tag>
+                </span>
+                <span class="other-file">
+                  <el-tooltip :content="s.file" placement="top" :show-after="200">
+                    <span class="mono">{{ s.name }}</span>
+                  </el-tooltip>
+                </span>
+                <span class="other-hint">{{ s.reason }}</span>
+              </div>
+            </div>
+          </section>
         </template>
       </template>
     </el-card>
@@ -693,7 +545,13 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { apiClient } from '@/api'
-import { WarningFilled } from '@element-plus/icons-vue'
+import { ArrowRight, WarningFilled } from '@element-plus/icons-vue'
+import ProjectCascadeSelect from '@/components/ProjectCascadeSelect.vue'
+import EndpointDiffView from '@/components/EndpointDiffView.vue'
+import JsonDiffView from '@/components/JsonDiffView.vue'
+import { dtoBlocks } from '@/utils/jsonDiffTree'
+import { CTX_FILTERS, linkReport } from '@/utils/endpointContext'
+import { useFieldMarks } from '@/composables/useFieldMarks'
 
 const router = useRouter()
 const route = useRoute()
@@ -706,9 +564,8 @@ const headDir = ref('')
 function onModeChange() {
   report.value = null
   errorMsg.value = ''
-  showAllBreaking.value = false
-  showAllEndpoints.value = false
   if (mode.value === 'dir') loadCodeDirs()
+  else if (project.value) onProjectChange()
 }
 
 async function analyzeDirs() {
@@ -716,8 +573,9 @@ async function analyzeDirs() {
   errorMsg.value = ''
   report.value = null
   try {
+    reportProject.value = project.value
     report.value = await apiClient.analyzeApiChangeDirs({
-      project: project.value || undefined,
+      project: project.value,
       baseDir: baseDir.value.trim(),
       headDir: headDir.value.trim()
     })
@@ -760,10 +618,6 @@ function goReviewCase(row: any) {
   })
 }
 
-function scrollToForm() {
-  document.querySelector('.filter-bar')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-}
-
 const reqKeys = computed(() => {
   const keys = report.value?.requirementLink?.requirements
   return Array.isArray(keys) ? keys : []
@@ -793,45 +647,58 @@ async function openTableImpact(table: string) {
   }
 }
 
-const statCards = computed(() => {
-  const r: any = report.value || {}
-  return [
-    { key: 'sec-must', label: '必测项', value: (r.mustTest?.items || []).length, danger: true },
-    { key: 'sec-breaking', label: '可能不兼容', value: breakingCount.value, danger: true },
-    { key: 'sec-endpoints', label: '接口变更', value: (r.endpoints || []).length, danger: false },
-    { key: 'sec-dtos', label: '返回体变更', value: (r.orphanDtos || []).length, danger: false },
-    { key: 'sec-other', label: '其它影响', value: (r.otherChanges || []).length, danger: false },
-    { key: 'sec-findings', label: '安全/设计', value: (r.findings || []).length, danger: true },
-    { key: 'sec-concurrency', label: '并发风险', value: (r.concurrencyRisks || []).length, danger: true },
-    { key: 'sec-tables', label: '涉及的表', value: (r.tables || []).length, danger: false }
-  ]
-})
+/** 报告按接口归拢：能挂到接口上的都挂上，挂不上的进「没关联到接口」 */
+const linked = computed(() => linkReport(report.value))
 
-function scrollTo(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+const STAT_KEYS: Array<{ key: string; label: string; danger: boolean }> = [
+  { key: 'ALL', label: '接口', danger: false },
+  { key: 'BREAKING', label: '可能不兼容', danger: true },
+  { key: 'CONC', label: '并发风险', danger: true },
+  { key: 'FINDING', label: '安全/设计', danger: true },
+  { key: 'NOCASE', label: '没有用例', danger: true }
+]
+
+const statCards = computed(() => [
+  ...STAT_KEYS.map((k) => {
+    const test = CTX_FILTERS.find((f) => f.key === k.key)!.test
+    return { ...k, value: linked.value.ctxs.filter(test).length }
+  }),
+  { key: 'other', label: '没关联到接口', value: linked.value.unlinkedCount, danger: false }
+])
+
+/** ep：按接口看（统计卡片是它的快捷筛选）；other：没关联到接口的 */
+const activeSec = ref<'ep' | 'other'>('ep')
+const epFilter = ref('ALL')
+
+function isStatActive(key: string) {
+  return key === 'other' ? activeSec.value === 'other' : activeSec.value === 'ep' && epFilter.value === key
 }
 
-/** 哪些接口展开了完整字段清单。按 path 记，避免折叠状态随排序错位 */
-const openFields = ref<Set<string>>(new Set())
-
-function toggleFields(path: string) {
-  const next = new Set(openFields.value)
-  if (next.has(path)) next.delete(path)
-  else next.add(path)
-  openFields.value = next
+function pickStat(key: string) {
+  if (key === 'other') {
+    activeSec.value = 'other'
+    return
+  }
+  activeSec.value = 'ep'
+  epFilter.value = key
 }
 
-// 折叠：一次列七八条太长，默认只展开第一条
-const showAllBreaking = ref(false)
-const showAllEndpoints = ref(false)
-const showAllFindings = ref(false)
-const visibleBreaking = computed(() =>
-  showAllBreaking.value ? breakingEndpoints.value : breakingEndpoints.value.slice(0, 1)
+function resetSections() {
+  activeSec.value = 'ep'
+  epFilter.value = 'ALL'
+}
+
+const otherMarks = computed(() =>
+  reportProjectCode.value || reportRefs.value ? useFieldMarks(reportProjectCode.value, reportRefs.value) : null
 )
-const visibleEndpoints = computed(() => {
-  const list = report.value?.endpoints || []
-  return showAllEndpoints.value ? list : list.slice(0, 1)
-})
+
+const dtoItems = computed(() =>
+  linked.value.unlinked.dtos.map((d: any) => ({
+    file: d.file,
+    blocks: dtoBlocks(d),
+    ref: { method: 'DTO', path: d.type }
+  }))
+)
 
 // ---- 本地代码目录 ----
 const codeDirs = ref<any[]>([])
@@ -940,8 +807,12 @@ async function saveSchema() {
   }
 }
 
-const projects = ref<any[]>([])
+const projectGroups = ref<any[]>([])
+const projects = computed<any[]>(() => projectGroups.value.flatMap((g: any) => g.projects || []))
 const branches = ref<string[]>([])
+const branchLoading = ref(false)
+const syncMsg = ref('')
+const syncBad = ref(false)
 const project = ref('')
 const baseRef = ref('')
 const headRef = ref('')
@@ -1028,9 +899,8 @@ async function openHistoryReport(id: number) {
   try {
     const row = await apiClient.getApiChangeReport(id)
     report.value = row.report
+    reportProject.value = row.project || ''
     errorMsg.value = ''
-    showAllBreaking.value = false
-    showAllEndpoints.value = false
     historyVisible.value = false
     ElMessage.success('已加载历史报告')
   } catch (e: any) {
@@ -1058,66 +928,65 @@ function formatHistoryTime(v?: string) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-/** 字段删了、类型变了——这两类会让前端静默出错，单独提到最上面 */
-function isBreaking(changeType: string) {
-  return changeType === 'REMOVED' || changeType === 'TYPE_CHANGED'
-}
-
-const breakingEndpoints = computed(() =>
-  (report.value?.endpoints || [])
-    .concat(report.value?.orphanDtos?.map((d: any) => ({
-      httpMethod: 'DTO',
-      path: d.type,
-      summary: '',
-      fields: d.fields
-    })) || [])
-    .filter((e: any) => (e.fields || []).some((f: any) => isBreaking(f.changeType)))
+/** 历史报告里还存着已下线的「返回体文件归集」说明 */
+const reportNotes = computed<string[]>(() =>
+  (report.value?.notes || []).filter((n: string) => !String(n).startsWith('字段按「返回体文件」归集'))
 )
 
-const breakingCount = computed(() =>
-  breakingEndpoints.value.reduce(
-    (n: number, e: any) => n + e.fields.filter((f: any) => isBreaking(f.changeType)).length,
-    0
-  )
+const reportProject = ref('')
+const reportProjectCode = computed(() => reportProject.value || project.value || '')
+const reportRefs = computed(() =>
+  report.value ? `${report.value.baseRef || ''}..${report.value.headRef || ''}` : ''
 )
 
-function breakingFields(e: any) {
-  return (e.fields || []).filter((f: any) => isBreaking(f.changeType))
+function otherFileName(o: any) {
+  if (o.fileName) return o.fileName
+  const f = String(o.file || '')
+  return f.slice(f.lastIndexOf('/') + 1) || f
 }
 
-function fieldName(f: any) {
-  return f.comment ? `${f.name}（${f.comment}）` : f.name
-}
+const otherGroups = computed(() => {
+  const map = new Map<string, any[]>()
+  for (const o of linked.value.unlinked.others) {
+    const k = o.kind || 'OTHER'
+    if (!map.has(k)) map.set(k, [])
+    map.get(k)!.push(o)
+  }
+  return [...map.entries()].map(([kind, items]) => {
+    const hints = new Set(items.map((o) => o.hint || ''))
+    const sameHint = hints.size === 1
+    return { kind, items, sameHint, hint: sameHint ? items[0].hint : '各文件原因不同，展开看' }
+  })
+})
 
-function typeText(f: any) {
-  if (f.changeType === 'TYPE_CHANGED') return `${f.oldType} → ${f.newType}`
-  return f.newType || f.oldType || ''
-}
+const skipItems = computed(() => [
+  ...linked.value.unlinked.trivial.map((o: any) => ({
+    label: kindLabel(o.kind || 'OTHER'),
+    name: otherFileName(o),
+    file: o.file,
+    reason: o.trivial
+  })),
+  ...linked.value.unlinked.unusedDtos.map((f: string) => ({
+    label: '返回体',
+    name: f.slice(f.lastIndexOf('/') + 1),
+    file: f,
+    reason: '整个代码里没有别处用到这个类，改了也影响不到接口'
+  }))
+])
 
-const CHANGE_LABELS: Record<string, string> = {
-  ADDED: '新增',
-  REMOVED: '删除',
-  TYPE_CHANGED: '类型变更',
-  REQUIRED_CHANGED: '必填变更',
-  MODIFIED: '改动'
-}
+const openOther = ref<Set<string>>(new Set())
+const skipOpen = ref(false)
+watch(report, () => {
+  openOther.value = new Set()
+  skipOpen.value = false
+  resetSections()
+})
 
-const RISK_LABELS: Record<string, string> = {
-  BREAKING: '不兼容',
-  NEW: '新接口',
-  IMPL: '实现改动',
-  COMPATIBLE: '兼容变更'
-}
-
-function riskLabel(r: string) {
-  return RISK_LABELS[r] || r || '改动'
-}
-
-function riskTag(r: string) {
-  if (r === 'BREAKING') return 'danger'
-  if (r === 'NEW') return 'success'
-  if (r === 'IMPL') return 'warning'
-  return 'info'
+function toggleOther(kind: string) {
+  const next = new Set(openOther.value)
+  if (next.has(kind)) next.delete(kind)
+  else next.add(kind)
+  openOther.value = next
 }
 
 const KIND_LABELS: Record<string, string> = {
@@ -1126,7 +995,8 @@ const KIND_LABELS: Record<string, string> = {
   CONFIG: '配置',
   MAPPER: '数据访问',
   SERVICE: '业务实现',
-  SERVICE_SCHEDULED: '实现+定时'
+  SERVICE_SCHEDULED: '实现+定时',
+  OTHER: '其它'
 }
 
 function kindLabel(k: string) {
@@ -1139,39 +1009,10 @@ function kindTag(k: string) {
   return 'info'
 }
 
-function paramTypeText(pm: any) {
-  if (pm.changeType === 'TYPE_CHANGED') return `${pm.oldType} → ${pm.newType}`
-  if (pm.changeType === 'REQUIRED_CHANGED') return pm.required ? '改为必填' : '改为可选'
-  return pm.newType || pm.oldType || ''
-}
-
-function changeLabel(t: string) {
-  return CHANGE_LABELS[t] || t
-}
-
-function changeTag(t: string) {
-  if (t === 'ADDED') return 'success'
-  if (t === 'REMOVED') return 'danger'
-  return 'warning'
-}
-
-function fieldClass(t: string) {
-  if (t === 'ADDED') return 'f-added'
-  if (t === 'REMOVED') return 'f-removed'
-  return 'f-changed'
-}
-
-function methodTag(m: string) {
-  if (m === 'GET') return 'success'
-  if (m === 'POST') return 'primary'
-  if (m === 'DELETE') return 'danger'
-  return 'info'
-}
-
 async function loadProjects() {
   try {
-    const rows = await apiClient.getApiChangeProjects()
-    projects.value = Array.isArray(rows) ? rows : []
+    const res = await apiClient.getApiChangeProjects()
+    projectGroups.value = Array.isArray(res?.groups) ? res.groups : []
     const first = projects.value.find((p) => p.ready)
     const want = String(route.query.project || '')
     const fromQuery = projects.value.find((p) => p.code === want)
@@ -1187,19 +1028,26 @@ async function loadProjects() {
   }
 }
 
+let branchSeq = 0
 async function onProjectChange() {
   branches.value = []
   headRef.value = ''
   report.value = null
   errorMsg.value = ''
+  syncMsg.value = ''
+  syncBad.value = false
   const p = projects.value.find((x) => x.code === project.value)
   baseRef.value = p?.baseBranch || ''
+  if (mode.value === 'dir') return
   if (!p?.ready) {
-    errorMsg.value = `项目「${p?.name || project.value}」还没配本地仓库路径，请到「接口项目」里补上`
+    errorMsg.value = `项目「${p?.name || project.value}」还没填 GitLab 地址，去「项目管理」里补上`
     return
   }
+  const my = ++branchSeq
+  branchLoading.value = true
   try {
-    const res = await apiClient.getApiChangeBranches(project.value)
+    const res = await apiClient.getApiChangeBranches(project.value, true)
+    if (my !== branchSeq) return
     branches.value = res.branches || []
     // 待测分支默认取仓库当前分支，多数情况就是人正在看的那个
     headRef.value = res.current || ''
@@ -1207,8 +1055,58 @@ async function onProjectChange() {
       // 基线没配就猜一个：这几个仓库有的用 master、有的用 testing
       baseRef.value = branches.value.find((b) => b === 'master' || b === 'main' || b === 'testing') || ''
     }
+    if (res.sync) {
+      syncBad.value = res.sync.ok === false
+      syncMsg.value = res.sync.ok === false
+        ? res.sync.message
+        : res.sync.action === 'CLONE' ? '已从 GitLab clone 到本地' : '已拉取最新代码'
+    }
   } catch (e: any) {
+    if (my !== branchSeq) return
     errorMsg.value = e?.message || '读取分支失败'
+  } finally {
+    if (my === branchSeq) branchLoading.value = false
+  }
+}
+
+const SYNC_FAIL_PREFIX = /^拉取最新代码失败[，,]?用的是本地已有代码[：:]\s*/
+
+const syncFailure = computed(() => {
+  const raw = syncBad.value
+    ? syncMsg.value
+    : report.value?.repoSync?.ok === false
+      ? report.value.repoSync.message
+      : ''
+  return raw ? String(raw).replace(SYNC_FAIL_PREFIX, '') : ''
+})
+
+const syncHelpVisible = ref(false)
+const syncHelpMore = ref(true)
+
+function switchToDirMode() {
+  syncHelpVisible.value = false
+  mode.value = 'dir'
+  onModeChange()
+}
+
+async function retrySync() {
+  if (!project.value) return
+  const my = ++branchSeq
+  branchLoading.value = true
+  try {
+    const res = await apiClient.getApiChangeBranches(project.value, true)
+    if (my !== branchSeq) return
+    branches.value = res.branches || []
+    if (!headRef.value) headRef.value = res.current || ''
+    syncBad.value = res.sync?.ok === false
+    syncMsg.value = res.sync?.ok === false ? res.sync.message : '已拉取最新代码'
+    if (!syncBad.value && report.value?.repoSync) report.value.repoSync = { ...report.value.repoSync, ok: true }
+    if (syncBad.value) ElMessage.warning('还是拉不到，看看网络或 GitLab 地址')
+    else ElMessage.success('已拉取最新代码')
+  } catch (e: any) {
+    if (my === branchSeq) ElMessage.error(e?.message || '拉取失败')
+  } finally {
+    if (my === branchSeq) branchLoading.value = false
   }
 }
 
@@ -1217,6 +1115,7 @@ async function analyze() {
   errorMsg.value = ''
   report.value = null
   try {
+    reportProject.value = project.value
     report.value = await apiClient.analyzeApiChanges({
       project: project.value,
       baseRef: baseRef.value || undefined,
@@ -1232,9 +1131,11 @@ async function analyze() {
   }
 }
 
-onMounted(() => {
-  loadProjects()
+onMounted(async () => {
   loadCodeDirs()
+  await loadProjects()
+  const rid = Number(route.query.reportId || 0)
+  if (rid > 0) await openHistoryReport(rid)
 })
 </script>
 
@@ -1261,7 +1162,7 @@ onMounted(() => {
 .req-link {
   margin: 8px 0 4px;
   font-size: 13px;
-  color: var(--el-text-color-regular);
+  color: var(--el-text-color-secondary);
 }
 
 .req-link b {
@@ -1281,7 +1182,7 @@ onMounted(() => {
 
 .card-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
@@ -1291,25 +1192,266 @@ onMounted(() => {
   font-weight: 600;
 }
 
-.card-sub {
-  margin: 4px 0 0;
+.mode-switch {
+  margin-bottom: 16px;
+}
+
+.cmp-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px 20px;
+}
+.cmp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.cmp-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.cmp-select {
+  width: 100%;
+}
+.cmp-select.mono :deep(.el-select__selected-item),
+.cmp-select.mono :deep(.el-input__inner) {
+  font-family: ui-monospace, Menlo, monospace;
+}
+.opt-sub {
+  float: right;
+  margin-left: 12px;
   font-size: 12px;
   color: var(--el-text-color-placeholder);
 }
-
-.filter-bar {
-  margin-bottom: 12px;
+.cmp-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
 }
 
-.mode-switch {
-  margin-bottom: 6px;
+.sync-fail {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+  background: #fffbeb;
+}
+.sync-fail-icon {
+  margin-top: 2px;
+  font-size: 16px;
+  color: #f59e0b;
+}
+.sync-fail-body {
+  flex: 1;
+  min-width: 0;
+}
+.sync-fail-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #b45309;
+}
+.sync-fail-tag {
+  padding: 0 6px;
+  border: 1px solid #fcd34d;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+  color: #b45309;
+  background: #fff;
+}
+.sync-fail-detail {
+  margin-top: 6px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  color: #b8915a;
+  word-break: break-all;
+}
+.sync-fail-link {
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 12px;
+  color: #b45309;
+  cursor: pointer;
+}
+.sync-fail-link:hover {
+  text-decoration: underline;
+}
+.sync-help {
+  padding: 4px 4px 2px;
+  font-size: 13px;
+  color: #4e5969;
+}
+.sync-help-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sync-help-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f59e0b;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+.sync-help-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2329;
+}
+.sync-help-lead {
+  margin: 10px 0 12px;
+  line-height: 1.6;
+}
+.sync-help-lead b {
+  font-weight: 600;
+  color: #1f2329;
+}
+.sync-help-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.sync-help-actions .el-button {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+.sync-help-actions .el-button .el-icon + span {
+  margin-left: 4px;
+}
+.sync-help-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 13px;
+  color: var(--el-color-primary);
+  cursor: pointer;
+}
+.sync-help-toggle .el-icon {
+  font-size: 11px;
+  transition: transform 0.15s;
+}
+.sync-help-toggle .el-icon.up {
+  transform: rotate(180deg);
+}
+.sync-help-list {
+  margin: 14px 0 0;
+  padding: 12px 0 0 4px;
+  border-top: 1px dashed #e5e6eb;
+  list-style: none;
+}
+.sync-help-list li {
+  position: relative;
+  padding-left: 14px;
+  line-height: 1.6;
+}
+.sync-help-list li + li {
+  margin-top: 8px;
+}
+.sync-help-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.7em;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #c9cdd4;
+}
+.sync-help-list b {
+  font-weight: 600;
+  color: #1f2329;
+}
+.sync-help-list code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #f2f3f5;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  color: #1f2329;
+}
+.sync-help-link {
+  font-weight: 600;
+  color: #1f2329;
+  cursor: pointer;
+}
+.sync-help-link:hover {
+  color: var(--el-color-primary);
+}
+
+.cmp-empty {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px;
+  border: 1px dashed var(--el-border-color);
+  border-radius: 10px;
+  background: #fafbfc;
+}
+.cmp-empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  font-size: 18px;
+}
+.cmp-empty-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.cmp-empty-sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
 }
 
 .mode-hint {
   font-size: 12px;
   color: var(--el-text-color-placeholder);
-  margin-bottom: 12px;
+  margin: -8px 0 14px;
   line-height: 1.6;
+}
+
+.main-card {
+  border-radius: 12px;
+}
+
+.sync-line {
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+}
+
+.ddl-source {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--el-text-color-placeholder);
 }
 
 .summary-head {
@@ -1359,12 +1501,18 @@ onMounted(() => {
 
 .stat-card.empty {
   opacity: 0.5;
-  cursor: default;
 }
 
-.stat-card.empty:hover {
-  border-color: var(--app-border);
-  transform: none;
+.stat-card.active {
+  border-color: var(--app-primary);
+  background: var(--el-color-primary-light-9);
+  box-shadow: inset 0 -3px 0 var(--app-primary);
+  opacity: 1;
+}
+
+.stat-card.active .stat-label {
+  color: var(--app-primary);
+  font-weight: 600;
 }
 
 .stat-num {
@@ -1384,27 +1532,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 26px 0 6px;
-  padding-top: 8px;
-  border-top: 1px solid var(--el-border-color-lighter);
-}
-
-.section-no {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--app-primary);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 700;
-  flex: none;
-}
-
-.section-head.danger .section-no {
-  background: var(--app-danger);
+  margin: 4px 0 6px;
 }
 
 .section-name {
@@ -1525,6 +1653,72 @@ onMounted(() => {
   color: var(--app-warning);
 }
 
+.f-muted {
+  color: var(--el-text-color-secondary);
+}
+
+.other-list {
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.other-group + .other-group {
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.other-row {
+  display: grid;
+  grid-template-columns: 110px minmax(200px, 1fr) 2fr;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 12px;
+}
+
+.other-row.clickable {
+  cursor: pointer;
+}
+
+.other-row.clickable:hover {
+  background: var(--el-fill-color-light);
+}
+
+.other-row.sub {
+  padding-top: 3px;
+  padding-bottom: 3px;
+  font-size: 12.5px;
+}
+
+.other-file {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--app-text-regular);
+}
+
+.other-file .mono {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.other-arrow {
+  font-size: 12px;
+  transition: transform 0.15s;
+}
+
+.other-arrow.open {
+  transform: rotate(90deg);
+}
+
+.other-hint {
+  color: var(--el-text-color-secondary);
+  line-height: 1.5;
+}
+
 .dep-row {
   margin-top: 8px;
   display: flex;
@@ -1555,6 +1749,47 @@ onMounted(() => {
   line-height: 24px;
 }
 
+.ul-sec {
+  margin-bottom: 18px;
+}
+.ul-skip-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-secondary);
+  cursor: pointer;
+}
+.ul-skip-head .muted {
+  font-weight: 400;
+  font-size: 12px;
+}
+.ul-skip .other-list {
+  background: var(--el-fill-color-lighter);
+}
+.ul-skip .other-row {
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+.ul-dto {
+  margin-bottom: 12px;
+}
+.ul-dto-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.ul-dto-head code {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 13px;
+  font-weight: 600;
+}
 .report-notes {
   display: flex;
   flex-direction: column;
@@ -1636,7 +1871,7 @@ onMounted(() => {
   background: var(--el-color-warning-light-9);
   border-radius: 4px;
   font-size: 12px;
-  color: var(--el-color-warning-dark-2);
+  color: #b8915a;
   line-height: 1.6;
 }
 
@@ -1666,12 +1901,12 @@ onMounted(() => {
 .hint-remark {
   margin-top: 6px;
   font-size: 12px;
-  color: var(--app-text-secondary);
+  color: var(--el-text-color-placeholder);
 }
 
 .table-file {
   font-size: 12px;
-  color: var(--app-text-secondary);
+  color: var(--el-text-color-placeholder);
   word-break: break-all;
 }
 
@@ -1736,16 +1971,30 @@ onMounted(() => {
   line-height: 1.5;
 }
 
-.must-test{margin:12px 0;padding:12px 14px;background:var(--el-color-danger-light-9);border:1px solid var(--el-color-danger-light-7);border-radius:8px}
-.must-test .cr-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.must-notes{margin:0;padding-left:18px;font-size:12.5px;line-height:1.55;color:var(--app-text-regular)}
-.must-notes li{margin:2px 0}
+.cr-hint{color:var(--el-text-color-placeholder);font-size:12.5px;margin:4px 0 2px}
+.must-points{display:flex;flex-wrap:wrap;gap:6px}
+.must-point{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border:1px solid var(--el-border-color);border-radius:10px;background:#fff;font-size:12px;color:var(--app-text-regular);cursor:pointer}
+.must-point b{font-weight:600}
+.must-point:hover{border-color:var(--el-color-primary)}
+.must-point.is-primary b{color:var(--el-color-primary)}
+.must-point.is-danger{border-color:var(--el-color-danger-light-5);color:var(--el-color-danger)}
+.must-point.is-warning b{color:var(--el-color-warning-dark-2)}
+.must-point.is-success b{color:var(--el-color-success)}
+.must-point.is-info b{color:var(--el-text-color-secondary)}
 .case-review{margin:12px 0;padding:12px 14px;background:var(--el-color-warning-light-9);border:1px solid #ffe0a3;border-radius:8px}
 .case-review.empty{background:var(--el-color-success-light-9);border-color:var(--el-color-success-light-7)}
 .case-review.empty .cr-head{color:var(--el-color-success-dark-2)}
 .case-review .cr-head{display:flex;align-items:center;gap:6px;color:#c67a13;font-size:14px}
-.case-review .cr-hint{color:#8a6d3b;font-size:12.5px;margin:4px 0 2px}
+.case-review .cr-hint{color:#b8915a;font-size:12.5px;margin:4px 0 2px}
 .case-review .cr-ep{font-family:monospace;font-size:12.5px;color:var(--app-text-regular)}
 .case-review .cr-reason{margin:2px 0;font-size:12.5px}
 .cr-table{cursor:pointer}
+</style>
+
+<style>
+.el-popover.sync-help-popper {
+  padding: 14px 16px;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
 </style>

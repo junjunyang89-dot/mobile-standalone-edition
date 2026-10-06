@@ -50,7 +50,7 @@ const props = defineProps<{
   label?: string
   path: string
   collapsed: Set<string>
-  query: string
+  query?: string
 }>()
 
 const emit = defineEmits<{ toggle: [path: string] }>()
@@ -102,7 +102,7 @@ const primText = computed(() => {
 })
 
 const selfMatch = computed(() => {
-  const q = props.query.trim().toLowerCase()
+  const q = (props.query || '').trim().toLowerCase()
   if (!q) return false
   if ((props.label || '').toLowerCase().includes(q)) return true
   if (!foldable.value && primText.value.toLowerCase().includes(q)) return true
@@ -130,7 +130,7 @@ function escapeRegExp(s: string) {
 
 function hl(text: string) {
   const escaped = escapeHtml(text)
-  const q = props.query.trim()
+  const q = (props.query || '').trim()
   if (!q) return escaped
   return escaped.replace(new RegExp(escapeRegExp(q), 'gi'), (m) => `<mark class="cap-hl">${m}</mark>`)
 }

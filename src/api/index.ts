@@ -1,6 +1,356 @@
 import type { SupportedDevicePlatform } from '@/utils/platform'
 
-/** 抓到的一条流水。字段对齐手机抓包工具的 General 页，方便两边对照 */
+/** 接口对比报告里的一个字段：业务标签 / 已确认 都按它记 */
+export interface FieldMarkItem {
+  method: string
+  path: string
+  side: 'REQUEST' | 'RESPONSE'
+  field: string
+  changeSig?: string
+}
+
+export interface DailyStatRow {
+  env: string
+  cases: number
+  passed: number
+  failed: number
+  skipped: number
+  [k: string]: unknown
+}
+
+export interface DailyDashboard {
+  date: string
+  week: Array<{
+    date: string
+    weekday: string
+    dateText: string
+    uiCases: number
+    apiCases: number
+    perfRuns: number
+    added: number
+    failed: number
+    future: boolean
+  }>
+  ui: {
+    batches: number
+    cases: number
+    passed: number
+    failed: number
+    skipped: number
+    passRate: number | null
+    /** track：REGRESSION / AUTOMATION / COMPATIBILITY 是批次，SINGLE 是流程编排里单独跑的 */
+    rows: Array<DailyStatRow & { track: string; batches: number }>
+    failures: Array<{
+      label: string
+      error?: string | null
+      app?: string | null
+      device?: string | null
+      endpoint?: string | null
+      env: string
+      track: string
+      runId?: string
+      taskId?: string
+    }>
+  }
+  api: {
+    runs: number
+    cases: number
+    passed: number
+    failed: number
+    skipped: number
+    blocked: number
+    passRate: number | null
+    rows: Array<DailyStatRow & { trig: 'SCHEDULE' | 'MANUAL'; runs: number; blocked: number }>
+    kinds: Array<{ kind: string; cases: number; passed: number; failed: number }>
+    recent: Array<{
+      id: string
+      createdAt: string
+      trig: string
+      env: string
+      collection?: string | null
+      total: number
+      passed: number
+      failed: number
+      blocked: number
+      durationMs?: number | null
+      createdBy?: string | null
+    }>
+  }
+  perf: {
+    runs: number
+    passed: number
+    failed: number
+    passRate: number | null
+    rows: Array<DailyStatRow & { type: string; runs: number; running: number }>
+  }
+  added: {
+    total: number
+    api: { total: number; byKind: Record<string, number>; bySource: Record<string, number>; byEnv: Record<string, number> }
+    ui: { total: number; byCatalog: Record<string, number> }
+    func: { total: number; bySource: Record<string, number> }
+  }
+}
+
+export interface InsightCode {
+  name: string
+  code: string | null
+  message: string | null
+  where: string
+}
+
+export interface InsightField {
+  path: string
+  name: string
+  type: string
+  javaType: string | null
+  comment: string | null
+  /** OK / NULL / MISSING / TYPE / EXTRA / SKIP；没有抓包样本时为空 */
+  status: string | null
+  sample: string | null
+}
+
+export interface InsightRisk {
+  level: 'HIGH' | 'MID' | 'LOW'
+  key: string
+  title: string
+  detail: string
+  where: string | null
+}
+
+/** 某种输入下代码会怎样：REJECT 报错 / SILENT 成功但数据为空 / SKIP 跳过一段照常返回 / DEFAULT 用默认值 / OPTIONAL 可选 / CRASH 没判空 / HTTP 框架直接回状态码 */
+export interface ParamOutcome {
+  kind: 'REJECT' | 'SILENT' | 'SKIP' | 'DEFAULT' | 'OPTIONAL' | 'CRASH' | 'HTTP'
+  code: string | null
+  codeName: string | null
+  message: string | null
+  /** SILENT 时：null / emptyList / emptyObject */
+  returns: string | null
+  detail: string
+  where: string | null
+  suspect: boolean
+}
+
+export interface InsightParam {
+  name: string
+  /** query / body */
+  in: string
+  javaType: string
+  type: string
+  required: boolean
+  comment: string | null
+  where: string | null
+  missing: ParamOutcome | null
+  badType: ParamOutcome | null
+  bounds: { value: string; rule: string; outcome: ParamOutcome }[]
+  values: string[]
+  unsupported: ParamOutcome | null
+  warns: string[]
+}
+
+export interface SourceCasePlanned {
+  name: string
+  param: string
+  intent: 'NORMAL' | 'NEGATIVE'
+  suspect: boolean
+  query: Record<string, string>
+  body: string
+  assertions: string
+  expect: string
+}
+
+/** 数据库断言连接；projects 为空＝通用（没单独绑库的项目都用它） */
+export interface DbConnection {
+  id: string
+  environment: string
+  name: string
+  dbHost: string
+  dbPort?: number | null
+  dbName: string
+  dbUser?: string | null
+  /** 列表里是掩码；不改就原样传回 */
+  dbPassword?: string | null
+  projects: string[]
+  remark?: string | null
+}
+
+export interface RedisConnection {
+  id: string
+  /** TEST | PROD；生产只读 */
+  environment: string
+  name: string
+  host: string
+  port?: number | null
+  username?: string | null
+  /** 列表里是掩码；不改就原样传回 */
+  password?: string | null
+  dbIndex?: number | null
+  remark?: string | null
+}
+
+export interface RedisProbe {
+  ok: boolean
+  message: string
+  elapsedMs?: number
+  version?: string
+  mode?: string
+  dbSize?: number
+  keyspace?: Record<string, string>
+}
+
+export interface RedisKeyRow {
+  key: string
+  type: string
+  /** -1 永不过期 */
+  ttlMs: number | null
+}
+
+export interface RedisScanResult {
+  keys: RedisKeyRow[]
+  /** 为空表示扫完了 */
+  cursor: string | null
+  exact: boolean
+  cluster: boolean
+  nodes?: number
+  rounds?: number
+}
+
+/** 值的展示：JSON 已在服务端格式化（长整型不丢精度） */
+export interface RedisValueView {
+  format: 'TEXT' | 'JSON' | 'JAVA_SERIALIZED' | 'BINARY'
+  text: string
+  bytes: number
+  truncated: boolean
+  gzip: boolean
+  editable: boolean
+}
+
+export interface RedisKeyDetail {
+  key: string
+  type: string
+  exists: boolean
+  ttlMs?: number
+  memoryBytes?: number | null
+  size?: number
+  value?: RedisValueView
+  items?: Array<{ field?: string; index?: number; score?: string; id?: string; value: RedisValueView }>
+  itemsTruncated?: boolean
+  unsupported?: string
+  readOnly: boolean
+}
+
+export interface KafkaConnection {
+  id: string
+  /** TEST | PROD；生产只能看 */
+  environment: string
+  name: string
+  bootstrapServers: string
+  securityProtocol?: string | null
+  saslMechanism?: string | null
+  username?: string | null
+  /** 列表里是掩码；不改就原样传回 */
+  password?: string | null
+  remark?: string | null
+}
+
+export interface KafkaProbe {
+  ok: boolean
+  message: string
+  elapsedMs?: number
+  clusterId?: string
+  brokers?: number
+  topicCount?: number
+}
+
+export interface KafkaTopicRow {
+  name: string
+  partitions: number | null
+  replicas: number | null
+  internal: boolean
+}
+
+export interface KafkaTopicDetail {
+  topic: string
+  messageCount: number
+  partitions: Array<{
+    partition: number
+    leader: number | null
+    replicas: number[]
+    isr: number[]
+    begin: number
+    end: number
+    count: number
+  }>
+  groups: Array<{
+    group: string
+    state: string | null
+    members: number
+    lag: number
+    partitions: Array<{ partition: number; committed: number | null; end: number | null; lag: number | null }>
+  }>
+}
+
+export interface KafkaMessage {
+  partition: number
+  offset: number
+  timestamp: number
+  key: string | null
+  value: RedisValueView | null
+  headers: Array<{ key: string; value: string | null }>
+}
+
+export interface KafkaMessagesResult {
+  messages: KafkaMessage[]
+  matched: number
+  scanned: number
+  keyword: string | null
+}
+
+export interface SourceCaseOutcome {
+  endpointId: string
+  method: string | null
+  path: string | null
+  created: number
+  enabled: number
+  fixed: number
+  existed: number
+  notes: string[]
+  reason: string | null
+}
+
+export interface EndpointInsightResult {
+  located: boolean
+  reason: string | null
+  project: string | null
+  repo: string | null
+  matchKind: string | null
+  candidates: string[] | null
+  lastChanged: string | null
+  callerStatus: string | null
+  report: {
+    file: string
+    line: number
+    handler: string
+    returnType: string | null
+    services: string[]
+    fields: InsightField[]
+    login: {
+      required: boolean | null
+      annotation: string | null
+      commented: boolean
+      lenient: boolean
+      where: string | null
+      failCode: InsightCode | null
+    }
+    success: InsightCode | null
+    successCodes: InsightCode[]
+    errors: InsightCode[]
+    globalErrors: InsightCode[]
+    httpAlways200: boolean | null
+    risks: InsightRisk[]
+    params?: InsightParam[]
+  } | null
+}
+
 export interface CapturedFlow {
   seq: number
   method: string
@@ -81,6 +431,14 @@ export interface ApiEndpointVo {
   changeFlag?: string
   changeNote?: string
   sourceBranch?: string
+  /** 源码 Controller 里写的路径；和 path 不同说明客户端调的带网关前缀 */
+  codePath?: string | null
+  /** 按基线分支全量扫描时代码里已经没有了 */
+  goneAt?: string | null
+  /** 如 origin/master@c3e3eae877 */
+  goneRef?: string | null
+  /** 在哪些分支的对比分析里有变更，最近分析的在前 */
+  branches?: ApiEndpointBranchChange[]
   lastSyncedAt?: string
   statusCode: string
   statusLabel: string
@@ -102,6 +460,65 @@ export interface ApiEndpointVo {
 }
 
 export type ApiWriteEffect = 'WRITES' | 'READ_ONLY' | 'UNKNOWN'
+
+export interface ApiEndpointBranchChange {
+  branch: string
+  changeFlag?: string | null
+  changeNote?: string | null
+  analyzedAt?: string | null
+}
+
+export interface ApiSourceScan {
+  project: string
+  /** 扫的分支；空＝扫的是本地目录 */
+  ref?: string | null
+  sha?: string | null
+  committedAt?: string | null
+  scannedAt: string
+  endpoints?: number
+  summary?: string
+}
+
+export interface ApiScanAllJob {
+  id: string
+  startedAt: string
+  finishedAt?: string | null
+  done: boolean
+  items: Array<{
+    project: string
+    name?: string
+    /** WAITING / RUNNING / DONE / FAILED / SKIPPED */
+    state: string
+    error?: string | null
+    result?: {
+      ref?: string
+      shortSha?: string
+      committedAt?: string
+      fetch?: string | null
+      endpoints: number
+      created: number
+      linked?: number
+      gone?: number
+      duplicates?: number
+      callerError?: string
+    } | null
+    /** 扫完后各级别的接口数 */
+    levels?: Record<'CORE' | 'IMPORTANT' | 'NORMAL' | 'UNUSED', number> | null
+  }>
+}
+
+export interface ApiEndpointDuplicatePair {
+  project: string
+  httpMethod: string
+  keepId: string
+  keepPath: string
+  keepCases: number
+  dropId: string
+  dropPath: string
+  dropCases: number
+  handler?: string | null
+  summary?: string | null
+}
 
 export type ApiEndpointLevel = 'CORE' | 'IMPORTANT' | 'NORMAL' | 'UNUSED'
 
@@ -152,7 +569,31 @@ export interface AiCaseJob {
   running: boolean
   cancelled: boolean
   message?: string
+  /** 读的哪份源码：origin/testing@abc123 / 工作区 / 没有源码 */
+  sourceRef?: string | null
   items: AiCaseJobItem[]
+}
+
+export interface AiCaseBatch {
+  id: string
+  startedAt: string
+  levels: ApiEndpointLevel[]
+  running: boolean
+  items: Array<{
+    project: string
+    name?: string
+    /** 没起任务的原因：没有要生成的接口、找不到源码… */
+    skipped?: string | null
+    jobId?: string
+    total?: number
+    done?: number
+    created?: number
+    enabledCases?: number
+    failed?: number
+    running?: boolean
+    message?: string | null
+    sourceRef?: string | null
+  }>
 }
 
 export interface ApiLoginCandidate {
@@ -678,6 +1119,11 @@ class ApiClient {
         updatedAt?: string
       }>
     }>('/workbench/stats')
+  }
+
+  /** 首页按天汇总：UI 自动化 / 接口自动化 / 性能测试执行量 + 当天新增用例，附所在周概况 */
+  async getDailyDashboard(date?: string) {
+    return this.request<DailyDashboard>(`/workbench/daily${date ? `?date=${encodeURIComponent(date)}` : ''}`)
   }
 
   /** 首页已连接设备统计：GET /devices/connected-summary，返回总数、各平台数量及设备列表 */
@@ -2139,6 +2585,10 @@ class ApiClient {
     tryRun?: boolean
     runWrites?: boolean
     dir?: string
+    /** 有抓包样本就按抓包生成（真实请求头/参数/响应），哪怕接口关联了源码 */
+    preferCapture?: boolean
+    /** 只生成这些级别；不传不按级别筛。给了 endpointIds 时不看它 */
+    levels?: ApiEndpointLevel[]
   }) {
     return this.request<AiCaseJob>('/api-endpoints/ai-cases', { method: 'POST', body: JSON.stringify(body) })
   }
@@ -2156,6 +2606,17 @@ class ApiClient {
     return this.request<{ ok: boolean }>(`/api-endpoints/ai-cases/${encodeURIComponent(jobId)}/cancel`, {
       method: 'POST'
     })
+  }
+
+  /** 全部后端项目按级别各起一批，只生成还没用例的接口 */
+  async startAiCasesAll(body: { levels: ApiEndpointLevel[]; tryRun?: boolean; runWrites?: boolean }) {
+    return this.request<AiCaseBatch>('/api-endpoints/ai-cases/all', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  /** 最近一次批量；没有返回 null */
+  async latestAiCasesAll(): Promise<AiCaseBatch | null> {
+    const b = await this.request<Partial<AiCaseBatch>>('/api-endpoints/ai-cases/all/latest')
+    return b && b.id ? (b as AiCaseBatch) : null
   }
 
   /** 标记 / 取消废弃。标了之后单条生成和 AI 批量生成都会跳过 */
@@ -2247,15 +2708,35 @@ class ApiClient {
     }>
   }
 
-  /** 按本地源码目录全量扫描 Controller，接口录进这个项目；dir 留空用项目管理里配的仓库路径 */
-  async scanApiEndpointSource(project: string, dir?: string, callerDirs?: string) {
+  /**
+   * 全量扫描 Controller，接口录进这个项目。
+   * 默认读基线分支（先 git fetch，不切分支、不动本地改动）；给了 dir 就扫那个目录。
+   */
+  async scanApiEndpointSource(
+    project: string,
+    opts: { dir?: string; callerDirs?: string; ref?: string; forceFetch?: boolean } = {}
+  ) {
     return this.request<{
       dir: string
+      /** 读的分支；本地目录模式下没有 */
+      ref?: string
+      sha?: string
+      shortSha?: string
+      committedAt?: string
+      /** fetch 结果；空＝十分钟内刚 fetch 过，这次没再 fetch */
+      fetch?: string | null
+      isBase?: boolean
       javaFiles: number
       controllers: number
       endpoints: number
       created: number
       updated: number
+      linked?: number
+      reprefixed?: number
+      gone?: number
+      revived?: number
+      prefix?: string
+      duplicates?: number
       callerDirs?: string[]
       callerUsed?: number
       callerDefOnly?: number
@@ -2265,7 +2746,102 @@ class ApiClient {
       tokenHeaders?: string[]
     }>(`/api-endpoints/projects/${encodeURIComponent(project)}/scan-source`, {
       method: 'POST',
-      body: JSON.stringify({ dir: dir || '', callerDirs: callerDirs || '' })
+      body: JSON.stringify({
+        dir: opts.dir || '',
+        callerDirs: opts.callerDirs || '',
+        ref: opts.ref || '',
+        forceFetch: opts.forceFetch ? 'true' : ''
+      })
+    })
+  }
+
+  /** 一键把所有后端项目的基线分支扫一遍（后台跑），返回任务进度 */
+  async startScanAllProjects() {
+    return this.request<ApiScanAllJob>('/api-endpoints/scan-all', { method: 'POST' })
+  }
+
+  /** 批量扫描进度；jobId 传 latest 取最近一个任务，没有任务时返回 null */
+  async getScanAllJob(jobId: string): Promise<ApiScanAllJob | null> {
+    const j = await this.request<Partial<ApiScanAllJob>>(`/api-endpoints/scan-all/${encodeURIComponent(jobId)}`)
+    return j && j.id ? (j as ApiScanAllJob) : null
+  }
+
+  /** 每个项目最近一次全量扫描 */
+  async fetchSourceScans(project?: string) {
+    const q = project ? `?project=${encodeURIComponent(project)}` : ''
+    return this.request<Record<string, ApiSourceScan>>(`/api-endpoints/source-scans${q}`)
+  }
+
+  /** 存量重复接口（抓包一条 + 源码一条），只读 */
+  async previewEndpointDuplicates(project?: string) {
+    return this.request<{
+      pairs: ApiEndpointDuplicatePair[]
+      ambiguous: Array<{ project: string; httpMethod: string; codePath: string; paths: string[] }>
+    }>('/api-endpoints/duplicates/preview', {
+      method: 'POST',
+      body: JSON.stringify({ project: project || null })
+    })
+  }
+
+  /** 合并：保留抓包那条，dropIds 是源码那条 */
+  async mergeEndpointDuplicates(project: string | undefined, dropIds: string[]) {
+    return this.request<{ merged: number }>('/api-endpoints/duplicates/merge', {
+      method: 'POST',
+      body: JSON.stringify({ project: project || null, dropIds })
+    })
+  }
+
+  /** 抓包收进来的接口没有 Controller：去本地仓库找声明它的方法补上 */
+  async backfillControllers(project: string, ids?: string[]) {
+    type Row = { id: string; method: string; path: string; controller?: string; file?: string; candidates?: string[] }
+    return this.request<{
+      project: string
+      repo: string
+      repoGuessed: boolean
+      scannedEndpoints: number
+      total: number
+      matched: Row[]
+      ambiguous: Row[]
+      notFound: Row[]
+    }>(`/api-endpoints/projects/${encodeURIComponent(project)}/backfill-controllers`, {
+      method: 'POST',
+      body: JSON.stringify({ ids: ids || [] })
+    })
+  }
+
+  /** 接口体检：读源码讲字段含义、业务码、登录要求和可疑写法 */
+  async endpointInsight(body: {
+    endpointId?: string
+    project?: string
+    method?: string
+    path?: string
+    respSample?: string
+  }) {
+    return this.request<EndpointInsightResult>('/api-endpoints/insight', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  /** 按源码生成参数用例的预览：会生成哪些（不落库） */
+  async previewSourceCases(endpointId: string) {
+    return this.request<{
+      located: boolean
+      reason: string | null
+      params?: InsightParam[]
+      cases?: SourceCasePlanned[]
+      hasCapture?: boolean
+    }>('/api-endpoints/source-cases/preview', {
+      method: 'POST',
+      body: JSON.stringify({ endpointId })
+    })
+  }
+
+  /** 按源码生成参数用例：抓包请求当底子，每条只改一个参数；GET 试跑一次，和源码推断一致的启用 */
+  async generateSourceCases(ids: string[], tryRun = true) {
+    return this.request<SourceCaseOutcome[]>('/api-endpoints/source-cases', {
+      method: 'POST',
+      body: JSON.stringify({ ids, tryRun })
     })
   }
 
@@ -2343,12 +2919,30 @@ class ApiClient {
           name: string
           description?: string
           kind?: string
+          scanEndpoints?: boolean
           enabled?: boolean
           sortOrder?: number
           successCodePath?: string
           successCodeValue?: string
+          gitUrl?: string
+          repoPath?: string
+          baseBranch?: string
           category?: string
           missing?: boolean
+        }>
+        kinds?: Array<{
+          key: string
+          label: string
+          count: number
+          projects: Array<{
+            code: string
+            name: string
+            description?: string
+            kind?: string
+            scanEndpoints?: boolean
+            enabled?: boolean
+            category?: string
+          }>
         }>
       }>
     }>(qs ? `/api-projects/tree?${qs}` : '/api-projects/tree')
@@ -2378,57 +2972,31 @@ class ApiClient {
         children: Array<{
           key: string
           label: string
-          type: 'PROJECT'
-          /** BACKEND | CLIENT | H5，渲染图标用；它是属性不是层级 */
-          kind: string
-          total: number
-          counts: Record<string, number>
-          children: Array<{
-            /** 稳定标识，前端自己映射到路由 */
-            key: 'API_CASES' | 'API_ENDPOINTS' | 'API_COLLECTIONS' | 'UI_FLOWS' | 'UI_ELEMENTS' | 'BUGS'
+          type: 'KIND' | 'PROJECT'
+          kind?: string
+          total?: number
+          projectCount?: number
+          counts?: Record<string, number>
+          children?: Array<{
+            key: string
             label: string
-            type: 'MODULE'
-            count: number
-            projectCode: string
+            type: 'PROJECT' | 'MODULE'
+            kind?: string
+            total?: number
+            counts?: Record<string, number>
+            count?: number
+            projectCode?: string
+            children?: Array<{
+              key: 'API_CASES' | 'API_ENDPOINTS' | 'API_COLLECTIONS' | 'UI_FLOWS' | 'UI_ELEMENTS' | 'BUGS'
+              label: string
+              type: 'MODULE'
+              count: number
+              projectCode: string
+            }>
           }>
         }>
       }>
     }>(`/tree${qs}`)
-  }
-
-  /**
-   * 接口覆盖差集：白盒（代码变更分析）与黑盒（前端抓包）两边结论的对照。
-   *
-   * changedNotCaptured 是最该看的那个数——接口改了但抓包一次都没捕获到，
-   * 要么这条路没测到，要么前端本来就不调它。
-   */
-  async getCoverageGapSummary(includeArchived = false) {
-    const qs = includeArchived ? '?includeArchived=true' : ''
-    return this.request<Array<{
-      requirementNo: string
-      total: number
-      changedNotCaptured: number
-      covered: number
-      capturedNotChanged: number
-      manual: number
-    }>>(`/coverage-gap${qs}`)
-  }
-
-  async getCoverageGap(requirementNo: string, includeArchived = false) {
-    const qs = includeArchived ? '?includeArchived=true' : ''
-    return this.request<{
-      requirementNo: string
-      total: number
-      coveredCount: number
-      changedNotCapturedCount: number
-      capturedNotChangedCount: number
-      manualCount: number
-      /** 一句人话，直接说下一步做什么 */
-      hint: string
-      covered: Array<Record<string, unknown>>
-      changedNotCaptured: Array<Record<string, unknown>>
-      capturedNotChanged: Array<Record<string, unknown>>
-    }>(`/coverage-gap/${encodeURIComponent(requirementNo)}${qs}`)
   }
 
   /** 客户端 App ↔ 项目 关联，UI 自动化资产靠它归属到项目 */
@@ -2603,10 +3171,176 @@ class ApiClient {
   }
 
   /** 试一下数据库断言的库连不连得上——配完不试就只能靠跑用例来发现连不上 */
-  async checkApiTestEnvDb(environment: string) {
+  async listDbConnections(environment?: string) {
+    return this.request<DbConnection[]>(
+      environment ? `/api-test/envs/${encodeURIComponent(environment)}/db-connections` : '/api-test/db-connections'
+    )
+  }
+
+  async saveDbConnection(environment: string, body: Partial<DbConnection>) {
+    return this.request<DbConnection>(`/api-test/envs/${encodeURIComponent(environment)}/db-connections`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async deleteDbConnection(environment: string, id: string) {
+    return this.request<{ ok: boolean }>(
+      `/api-test/envs/${encodeURIComponent(environment)}/db-connections/${encodeURIComponent(id)}`,
+      { method: 'DELETE' }
+    )
+  }
+
+  async checkDbConnection(environment: string, id: string) {
     return this.request<{ ok: boolean; message: string }>(
-      `/api-test/envs/${encodeURIComponent(environment)}/db-check`,
+      `/api-test/envs/${encodeURIComponent(environment)}/db-connections/${encodeURIComponent(id)}/check`,
       { method: 'POST' }
+    )
+  }
+
+  async probeDbConnection(environment: string, body: Partial<DbConnection>) {
+    return this.request<{
+      ok: boolean
+      elapsedMs?: number
+      version?: string | null
+      readOnly?: boolean | null
+      message: string
+    }>(`/api-test/envs/${encodeURIComponent(environment)}/db-connections/probe`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  // ---------- 测试工具 · Redis 查询 ----------
+
+  async listRedisConnections() {
+    return this.request<RedisConnection[]>('/redis-tool/connections')
+  }
+
+  async saveRedisConnection(body: Partial<RedisConnection>) {
+    return this.request<RedisConnection>('/redis-tool/connections', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async deleteRedisConnection(id: string) {
+    return this.request<{ ok: boolean }>(`/redis-tool/connections/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  async probeRedisConnection(body: Partial<RedisConnection>) {
+    return this.request<RedisProbe>('/redis-tool/connections/probe', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async pingRedisConnection(id: string) {
+    return this.request<RedisProbe>(`/redis-tool/connections/${encodeURIComponent(id)}/ping`, { method: 'POST' })
+  }
+
+  private redisOp<T>(id: string, op: string, body: unknown) {
+    return this.request<T>(`/redis-tool/connections/${encodeURIComponent(id)}/${op}`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async scanRedisKeys(id: string, pattern: string, cursor?: string | null, limit = 100) {
+    return this.redisOp<RedisScanResult>(id, 'scan', { pattern, cursor: cursor || null, limit })
+  }
+
+  async inspectRedisKey(id: string, key: string) {
+    return this.redisOp<RedisKeyDetail>(id, 'inspect', { key })
+  }
+
+  async setRedisString(id: string, key: string, value: string, ttlSeconds?: number | null) {
+    return this.redisOp<{ ok: boolean }>(id, 'set', { key, value, ttlSeconds: ttlSeconds ?? null })
+  }
+
+  async setRedisHashField(id: string, key: string, field: string, value: string) {
+    return this.redisOp<{ ok: boolean }>(id, 'hset', { key, field, value })
+  }
+
+  async deleteRedisHashField(id: string, key: string, field: string) {
+    return this.redisOp<{ ok: boolean; deleted: number }>(id, 'hdel', { key, field })
+  }
+
+  /** ttlSeconds ≤ 0 表示改成永不过期 */
+  async expireRedisKey(id: string, key: string, ttlSeconds: number) {
+    return this.redisOp<{ ok: boolean }>(id, 'expire', { key, ttlSeconds })
+  }
+
+  async deleteRedisKeys(id: string, keys: string[]) {
+    return this.redisOp<{ ok: boolean; deleted: number }>(id, 'del', { keys })
+  }
+
+  // ---------- 测试工具 · Kafka 查询 ----------
+
+  async listKafkaConnections() {
+    return this.request<KafkaConnection[]>('/kafka-tool/connections')
+  }
+
+  async saveKafkaConnection(body: Partial<KafkaConnection>) {
+    return this.request<KafkaConnection>('/kafka-tool/connections', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async deleteKafkaConnection(id: string) {
+    return this.request<{ ok: boolean }>(`/kafka-tool/connections/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  async probeKafkaConnection(body: Partial<KafkaConnection>) {
+    return this.request<KafkaProbe>('/kafka-tool/connections/probe', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async pingKafkaConnection(id: string) {
+    return this.request<KafkaProbe>(`/kafka-tool/connections/${encodeURIComponent(id)}/ping`, { method: 'POST' })
+  }
+
+  private kafkaOp<T>(id: string, op: string, body: unknown) {
+    return this.request<T>(`/kafka-tool/connections/${encodeURIComponent(id)}/${op}`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  async listKafkaTopics(id: string, keyword?: string, includeInternal = false) {
+    return this.kafkaOp<{ topics: KafkaTopicRow[]; total: number; truncated: boolean }>(id, 'topics', {
+      keyword: keyword || null,
+      includeInternal
+    })
+  }
+
+  async getKafkaTopic(id: string, topic: string) {
+    return this.kafkaOp<KafkaTopicDetail>(id, 'topic', { topic })
+  }
+
+  async readKafkaMessages(
+    id: string,
+    q: {
+      topic: string
+      partition?: number | null
+      mode: 'LATEST' | 'OFFSET' | 'TIME'
+      offset?: number | null
+      timeMs?: number | null
+      limit?: number
+      keyword?: string | null
+    }
+  ) {
+    return this.kafkaOp<KafkaMessagesResult>(id, 'messages', q)
+  }
+
+  async produceKafkaMessage(
+    id: string,
+    body: {
+      topic: string
+      key?: string | null
+      value: string
+      partition?: number | null
+      headers?: Array<{ key: string; value: string }>
+    }
+  ) {
+    return this.kafkaOp<{ ok: boolean; partition: number; offset: number; timestamp: number }>(id, 'produce', body)
+  }
+
+  async bindProjectDbConnections(project: string, environment: string, connectionIds: string[]) {
+    return this.request<DbConnection[]>(
+      `/api-test/envs/${encodeURIComponent(environment)}/projects/${encodeURIComponent(project)}/db-connections`,
+      { method: 'PUT', body: JSON.stringify({ connectionIds }) }
     )
   }
 
@@ -2723,7 +3457,14 @@ class ApiClient {
       caseTotal: number
       page: number
       size: number
-      items: Array<{ method: string; path: string; title: string; level?: string | null; cases: any[] }>
+      items: Array<{
+        method: string
+        path: string
+        title: string
+        level?: string | null
+        cases: any[]
+        branchChanges?: Array<{ branch: string; changeFlag?: string | null; changeNote?: string | null; analyzedAt?: string }>
+      }>
     }>(`/api-test/projects/${encodeURIComponent(project)}/live-interfaces?${q.toString()}`)
   }
 
@@ -2743,6 +3484,24 @@ class ApiClient {
     return this.request<{ requirementNo: string; collectionsArchived: number; endpointsArchived: number }>(
       `/api-test/requirements/${encodeURIComponent(requirementNo)}/release`,
       { method: 'POST' }
+    )
+  }
+
+  async releaseApiTestBranch(project: string, branch: string) {
+    return this.request<{
+      project: string
+      branch: string
+      endpointsUpdated: number
+      endpointsAdded: number
+      endpointsDeprecated: number
+      casesMoved: number
+      collectionsArchived: number
+    }>('/api-test/branches/release', { method: 'POST', body: JSON.stringify({ project, branch }) })
+  }
+
+  async getBranchMergeStatus(project: string, branch: string) {
+    return this.request<{ status: 'MERGED' | 'OPEN' | 'GONE' | 'UNKNOWN'; base: string; message: string }>(
+      `/api-changes/branch-merge-status?project=${encodeURIComponent(project)}&branch=${encodeURIComponent(branch)}`
     )
   }
 
@@ -3097,6 +3856,95 @@ class ApiClient {
     })
   }
 
+  /** 并发打同一条用例（只许测试环境），不记执行历史 */
+  async burstApiCase(caseId: string, body: { count: number; varyParam?: string; values?: string[] }) {
+    return this.request<{
+      url: string
+      environment: string
+      varyParam: string | null
+      distinctBodies: number
+      verdict: string
+      shots: Array<{
+        index: number
+        value: string | null
+        status: string
+        httpStatus?: number
+        durationMs?: number
+        body?: string
+        error?: string
+      }>
+    }>(`/api-test/cases/${encodeURIComponent(caseId)}/burst`, {
+      method: 'POST',
+      body: JSON.stringify({ ...body, environment: 'TEST' })
+    })
+  }
+
+  /** 变更分析里点开一个接口：清单里那一行 + 挂着的用例（带「是不是只验了状态码」） */
+  async lookupChangedEndpoint(project: string, method: string, path: string) {
+    const q = new URLSearchParams({ project, method, path })
+    return this.request<{
+      found: boolean
+      message?: string
+      bizCode?: boolean
+      endpoint?: { id: string; project: string; httpMethod: string; path: string; summary?: string }
+      cases?: Array<{
+        id: string
+        name: string
+        enabled?: boolean
+        environment?: string
+        intent?: string
+        createdBy?: string
+        assertCount: number
+        assertTypes: string[]
+        onlyStatus: boolean
+      }>
+    }>(`/api-endpoints/lookup?${q.toString()}`)
+  }
+
+  async getFieldMarks(project: string, refs: string) {
+    const q = new URLSearchParams({ project, refs })
+    return this.request<{
+      tags: Array<{ method: string; path: string; side: string; field: string; tag: string; updatedBy?: string }>
+      confirms: Array<{ method: string; path: string; side: string; field: string; changeSig: string; updatedBy?: string }>
+      tagNames: string[]
+    }>(`/api-changes/field-marks?${q.toString()}`)
+  }
+
+  async setFieldTag(project: string, tag: string, items: FieldMarkItem[]) {
+    return this.request<{ updated: number }>('/api-changes/field-marks/tags', {
+      method: 'PUT',
+      body: JSON.stringify({ project, tag, items })
+    })
+  }
+
+  async setFieldConfirmed(project: string, confirmed: boolean, items: FieldMarkItem[]) {
+    return this.request<{ updated: number }>('/api-changes/field-marks/confirms', {
+      method: 'PUT',
+      body: JSON.stringify({ project, confirmed, items })
+    })
+  }
+
+  async previewFieldAsserts(
+    caseId: string,
+    fields: Array<{ name: string; treePath?: string; changeType: string; oldType?: string; newType?: string }>
+  ) {
+    return this.request<{
+      caseId: string
+      caseName: string
+      prefix: string
+      prefixFrom: string
+      guessed: boolean
+      items: Array<{ field: string; path: string; check: string; jsonType?: string; note: string; duplicate: boolean }>
+    }>('/api-changes/field-asserts/preview', { method: 'POST', body: JSON.stringify({ caseId, fields }) })
+  }
+
+  async applyFieldAsserts(caseId: string, items: Array<{ path: string; check: string; jsonType?: string }>) {
+    return this.request<{ caseId: string; caseName: string; added: number; skipped: number }>(
+      '/api-changes/field-asserts',
+      { method: 'POST', body: JSON.stringify({ caseId, items }) }
+    )
+  }
+
   async getAppPortal() {
     return this.request<{ groups: Array<{ key: string; label: string; links: any[] }> }>('/app-portal')
   }
@@ -3222,6 +4070,9 @@ class ApiClient {
     sessionId?: string
     cwd?: string
     mode?: 'ask' | 'k8s'
+    /** 除 cwd 外还能读的代码目录 */
+    dirs?: string[]
+    images?: Array<{ data: string; mimeType: string }>
   }) {
     return this.request<{
       ok?: boolean
@@ -3352,16 +4203,28 @@ class ApiClient {
   }
 
   // —— 接口变更分析（分支 vs 基线）——
-  async getApiChangeProjects() {
-    return this.request<Array<{
-      code: string; name: string; repoPath?: string; baseBranch?: string; ready: boolean
-    }>>('/api-changes/projects')
+  /** 和项目管理同一棵树：分类 → 要扫接口的后端项目；all = true 时前端 / 客户端也给 */
+  async getApiChangeProjects(all = false) {
+    return this.request<{
+      groups: Array<{
+        key: string
+        label: string
+        projects: Array<{
+          code: string; name: string; repoPath?: string; gitUrl?: string; baseBranch?: string; ready: boolean
+          kind?: string
+        }>
+      }>
+    }>('/api-changes/projects' + (all ? '?all=true' : ''))
   }
 
-  async getApiChangeBranches(project: string) {
-    return this.request<{ repoPath: string; branches: string[]; current: string }>(
-      `/api-changes/branches?project=${encodeURIComponent(project)}`
-    )
+  /** fetch=true：先按项目管理里的 GitLab 地址拉最新（没本地仓库就 clone），分支名去掉 origin/ */
+  async getApiChangeBranches(project: string, fetch = false) {
+    return this.request<{
+      repoPath: string
+      branches: string[]
+      current: string
+      sync?: { ok: boolean; action: string; message: string }
+    }>(`/api-changes/branches?project=${encodeURIComponent(project)}${fetch ? '&fetch=true' : ''}`)
   }
 
   // —— 接口变更分析：表结构 / 代码目录 ——
@@ -3403,7 +4266,7 @@ class ApiClient {
   }
 
   /** 目录对目录：拿不到内网、只能把两个分支各拷一份到本地时用 */
-  async analyzeApiChangeDirs(body: { project?: string; baseDir: string; headDir: string }) {
+  async analyzeApiChangeDirs(body: { project: string; baseDir: string; headDir: string }) {
     return this.request<any>('/api-changes/analyze-dirs', {
       method: 'POST',
       body: JSON.stringify(body)
@@ -3461,6 +4324,89 @@ class ApiClient {
 
   async deleteApiChangeReport(id: number) {
     return this.request<{ ok: boolean }>(`/api-changes/reports/${id}`, { method: 'DELETE' })
+  }
+
+  // ---------- 接口对比分析2：按版本批量 ----------
+  async listApiChangeBatches(limit = 30) {
+    return this.request<any[]>(`/api-change-batches?limit=${limit}`)
+  }
+  /** issues 有内容 = 按 JIRA 单拉；否则 text 为空 = 从 Wiki 拉、有内容 = 按粘贴的文本建 */
+  async createApiChangeBatch(body: { version?: string; text?: string; issues?: string }) {
+    return this.request<any>('/api-change-batches', { method: 'POST', body: JSON.stringify(body) })
+  }
+  /** 离线：本地两份目录直接比，不碰 Wiki / JIRA / 远程仓库 */
+  async createApiChangeLocalBatch(body: {
+    version?: string
+    issueKey?: string
+    summary?: string
+    targets: Array<{ projectCode: string; baseDir: string; headDir: string; branch?: string }>
+  }) {
+    return this.request<any>('/api-change-batches/local', { method: 'POST', body: JSON.stringify(body) })
+  }
+  async getApiChangeBatch(id: number) {
+    return this.request<any>(`/api-change-batches/${id}`)
+  }
+  async deleteApiChangeBatch(id: number) {
+    return this.request<any>(`/api-change-batches/${id}`, { method: 'DELETE' })
+  }
+  async createApiChangeBatchCollections(id: number) {
+    return this.request<{ created: string[]; skipped: string[]; batch: any }>(
+      `/api-change-batches/${id}/collections`,
+      { method: 'POST' }
+    )
+  }
+  async refreshApiChangeBatchTicket(id: number, key: string) {
+    return this.request<any>(`/api-change-batches/${id}/tickets/${encodeURIComponent(key)}/refresh`, {
+      method: 'POST'
+    })
+  }
+  async saveApiChangeBatchTargets(id: number, key: string, targets: any[]) {
+    return this.request<any>(`/api-change-batches/${id}/tickets/${encodeURIComponent(key)}/targets`, {
+      method: 'PUT',
+      body: JSON.stringify(targets)
+    })
+  }
+  /** AI 把一个方法的逻辑改动翻译成业务规则（旧规则 / 新规则 / 测试重点），存进这一单后返回整个批次 */
+  async explainApiChangeLogic(id: number, key: string, body: { project: string; className: string; member: string }) {
+    return this.request<any>(`/api-change-batches/${id}/tickets/${encodeURIComponent(key)}/logic-explain`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+  async analyzeApiChangeBatchTicket(id: number, key: string, body: { baseRef?: string; force?: boolean }) {
+    return this.request<any>(`/api-change-batches/${id}/tickets/${encodeURIComponent(key)}/analyze`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+  /** AI 读这次待测的代码，给改动接口生成用例，放进这一单 + 分支的分支用例集合；进度用 getAiCaseJob 轮询 */
+  async startApiChangeAiCases(
+    id: number,
+    key: string,
+    body: { projectCode: string; endpoints?: string[]; tryRun?: boolean; runWrites?: boolean }
+  ) {
+    return this.request<AiCaseJob>(`/api-change-batches/${id}/tickets/${encodeURIComponent(key)}/ai-cases`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+  async saveApiChangeBatchManual(id: number, key: string, manual: Record<string, string>) {
+    return this.request<any>(`/api-change-batches/${id}/tickets/${encodeURIComponent(key)}/manual`, {
+      method: 'PUT',
+      body: JSON.stringify(manual)
+    })
+  }
+
+  /** 测试指引升级后，用已存的对比结果重算这一单的指引（不读代码，很快） */
+  async rebuildApiChangeBatchTicket(id: number, key: string) {
+    return this.request<any>(`/api-change-batches/${id}/tickets/${encodeURIComponent(key)}/rebuild`, { method: 'POST' })
+  }
+
+  /** 这一单每个项目待测代码的目录，给 AI 测试教练一起读 */
+  async getApiChangeBatchCodeDirs(id: number, key: string) {
+    return this.request<Array<{ projectCode: string; project: string; kind?: string; branch?: string; dir?: string; missing?: string }>>(
+      `/api-change-batches/${id}/tickets/${encodeURIComponent(key)}/code-dirs`
+    )
   }
 
   /** 表格解析预览：只解析不落库，让人先看一眼再决定 */
@@ -3634,6 +4580,36 @@ class ApiClient {
     })
   }
 
+  /** 重新打开一场已结束的抓包，返回形状同 stopCapture */
+  async captureSessionResult(sessionId: string) {
+    return this.request<{
+      sessionId: string
+      total: number
+      distinct: number
+      hosts: string
+      seenHosts: Record<string, number>
+      failedHosts: Record<string, number>
+      flows: CapturedFlow[]
+      /** 导入的包会带 PROD；手机现场抓的是 TEST */
+      env?: 'TEST' | 'PROD'
+      imported?: boolean
+    }>(`/packet-capture/sessions/${encodeURIComponent(sessionId)}/result`)
+  }
+
+  /** 导入别的工具抓的包（HAR / Request…Response 文本），落成一场已结束的抓包 */
+  async importCaptureFile(file: File, env: 'TEST' | 'PROD') {
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('env', env)
+    const res = await authFetch(`${this.baseURL}/packet-capture/import`, {
+      method: 'POST',
+      body: fd
+    })
+    const data = await res.json().catch(() => ({ message: '导入失败' }))
+    if (!res.ok) throw new Error(data.message || '导入失败')
+    return data as { sessionId: string; flows: number; hosts: number; env: 'TEST' | 'PROD' }
+  }
+
   /** 页面刷新后用它恢复「还在抓」的状态，否则会留下一个撤不掉的代理 */
   /**
    * 某一条的详情：请求头、Cookies、请求/响应体。
@@ -3672,11 +4648,58 @@ class ApiClient {
    * 把这次抓包用的 token 存到测试环境。
    * 用例里不写死 token——它会过期，写死的话过期那天所有用例集体变红。
    */
-  /** 抓到的接口收进接口清单；project 只给路径认不出归属的接口兜底 */
+  /** 抓到的接口收进接口清单；行上的 project 是人选的，外层 project 只给没选的兜底 */
+  /** 清单里早期收录带进来的 OPTIONS 预检 */
+  async getPreflightEndpoints() {
+    return this.request<{ items: Array<{ id: string; project: string; path: string; caseCount: number }> }>(
+      '/packet-capture/preflight-endpoints'
+    )
+  }
+
+  /** 删 OPTIONS 预检；includeCases=false 只删没挂用例的。要管理员 */
+  async purgePreflightEndpoints(includeCases: boolean) {
+    return this.request<{
+      deleted: number
+      casesDeleted: number
+      kept: Array<{ id: string; project: string; path: string; caseCount: number }>
+    }>('/packet-capture/preflight-endpoints/purge', { method: 'POST', body: JSON.stringify({ includeCases }) })
+  }
+
+  /** 收录前比对：只返回已经在接口清单（或待归类）里的 方法+路径 */
+  async previewCaptureEndpoints(flows: Array<{ method: string; path: string; url?: string }>) {
+    return this.request<{
+      known: Array<{
+        method: string
+        path: string
+        owners: Array<{ project: string; id: string; caseCount: number }>
+        inbox: boolean
+      }>
+      /** 按域名、网关路由、路径第一段猜的归属项目，猜不出的不在里面 */
+      guesses?: Array<{ method: string; path: string; project: string; reason: string }>
+    }>('/packet-capture/save-endpoints/preview', { method: 'POST', body: JSON.stringify({ flows }) })
+  }
+
+  /** 按路径前缀看明显放错项目的接口 */
+  async getMisplacedEndpoints() {
+    return this.request<{
+      items: Array<{
+        id: string
+        project: string
+        method: string
+        path: string
+        caseCount: number
+        suggest: string
+        reason: string
+      }>
+    }>('/api-endpoints/misplaced')
+  }
+
   async saveCaptureEndpoints(body: {
     sessionId?: string
     project?: string
-    flows: Array<{ seq?: number; method: string; path: string; query?: string }>
+    flows: Array<{ seq?: number; method: string; path: string; query?: string; project?: string; url?: string }>
+    /** 人定的地址回填；带了（哪怕空数组）后端就不再按抓包域名自动回填 */
+    urls?: Array<{ project: string; environment: 'TEST' | 'PROD'; baseUrl: string }>
   }) {
     return this.request<{
       saved: number
@@ -3689,6 +4712,15 @@ class ApiClient {
         endpointId?: string
         level?: ApiEndpointLevel | null
         caseCount?: number
+        message?: string
+      }>
+      /** 项目地址回填的结果 */
+      urls?: Array<{
+        project: string
+        environment?: 'TEST' | 'PROD'
+        baseUrl: string
+        action: 'CREATED' | 'UPDATED' | 'KEPT' | 'FAILED'
+        previous?: string
         message?: string
       }>
     }>('/packet-capture/save-endpoints', { method: 'POST', body: JSON.stringify(body) })
@@ -5341,6 +6373,26 @@ export interface AppPackOptions {
     androidHome?: string | null
     javaHome?: string | null
     signingReady?: boolean
+    versionName?: string | null
+    versionCode?: string | null
+    hint?: string
+  }
+  ios?: {
+    ready: boolean
+    label?: string
+    projectDir: string
+    projectExists: boolean
+    gitDir?: string | null
+    branch?: string | null
+    branches?: string[]
+    product?: string
+    outputType?: string
+    scheme?: string
+    workspace?: string | null
+    xcodebuild?: string | null
+    pod?: string | null
+    signingReady?: boolean
+    teamId?: string
     versionName?: string | null
     versionCode?: string | null
     hint?: string

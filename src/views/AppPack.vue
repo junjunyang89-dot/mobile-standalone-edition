@@ -3,7 +3,7 @@
     <div class="pack-head">
       <div class="pack-head-main">
         <h2 class="pack-title">APP 打包</h2>
-        <p class="pack-sub">鸿蒙按所选分支打包（默认 dev）+ Testing；完美电竞安卓固定 testing 分支 Debug。iOS 随后接。</p>
+        <p class="pack-sub">鸿蒙、完美电竞 iOS 按所选分支打包；完美电竞安卓固定 testing 分支 Debug。</p>
       </div>
       <div v-if="currentVersion" class="ver-card">
         <span class="ver-cap">当前版本</span>
@@ -217,16 +217,100 @@
           </div>
         </el-tab-pane>
 
-        <el-tab-pane name="IOS">
-          <template #label>
-            <span class="tab-ios">iOS <em>随后接</em></span>
-          </template>
-          <el-empty description="iOS 打包还没接" />
+        <el-tab-pane label="完美电竞 iOS" name="IOS">
+          <el-alert
+            v-if="options?.ios && !options.ios.ready && options.ios.hint"
+            type="warning"
+            :closable="false"
+            show-icon
+            :title="options.ios.hint"
+            class="pack-alert"
+          />
+
+          <div class="pack-form">
+            <div class="form-row">
+              <span class="form-label">分支</span>
+              <div class="form-body">
+                <el-select
+                  v-model="iosBranch"
+                  filterable
+                  allow-create
+                  default-first-option
+                  placeholder="选择或输入分支"
+                  class="branch-select"
+                >
+                  <el-option v-for="b in iosBranches" :key="b" :label="b" :value="b" />
+                </el-select>
+                <div class="field-hint">
+                  每次打包按所选分支 <code>fetch</code>，并对齐 <code>origin</code>（本地同名分支分叉会被覆盖）
+                </div>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <span class="form-label">包类型</span>
+              <div class="form-body">
+                <div class="opt-group">
+                  <div class="opt-card on static">
+                    <span class="opt-radio" />
+                    <span class="opt-text">
+                      <span class="opt-name">Debug</span>
+                      <span class="opt-desc">IPA · development · scheme esport-app</span>
+                    </span>
+                  </div>
+                </div>
+                <div class="field-hint">对应仓库 Fastlane gym 的 Debug / development，签完可装到已注册的开发设备</div>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <span class="form-label">安装到设备</span>
+              <div class="form-body">
+                <div class="device-row">
+                  <div class="device-select-wrap">
+                    <el-select
+                      v-model="iosDeviceId"
+                      filterable
+                      clearable
+                      placeholder="可选：打完自动"
+                      class="device-select"
+                    >
+                      <el-option v-for="d in iosDevices" :key="d.id" :label="deviceLabel(d)" :value="d.id" />
+                    </el-select>
+                    <span v-if="!iosDeviceId" class="device-cmd">ideviceinstaller</span>
+                  </div>
+                  <el-button @click="loadIosDevices">
+                    <el-icon><Refresh /></el-icon>
+                    刷新
+                  </el-button>
+                </div>
+                <div class="field-hint">选中后打包成功会自动装到该机；也可稍后在记录里点「安装」</div>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <span class="form-label" />
+              <div class="form-body">
+                <el-button
+                  v-perm:write
+                  type="primary"
+                  class="start-btn"
+                  :loading="starting"
+                  :disabled="!canStart"
+                  @click="startPack"
+                >
+                  <el-icon v-if="!starting"><CaretRight /></el-icon>
+                  {{ iosDeviceId ? '开始打包并安装' : '开始打包' }}
+                </el-button>
+                <span v-if="options?.busy" class="busy-hint">已有任务在跑，同时打会抢同一份工程</span>
+              </div>
+            </div>
+          </div>
         </el-tab-pane>
       </el-tabs>
     </div>
 
-    <div v-if="platform === 'HARMONYOS' || platform === 'ANDROID'" class="panel jobs-panel">
+    <div v-if="platform === 'HARMONYOS' || platform === 'ANDROID' || platform === 'IOS'" class="panel jobs-panel">
       <div class="jobs-head">
         <span class="jobs-title">打包记录</span>
         <el-button link type="primary" size="small" @click="loadJobs">
@@ -353,6 +437,7 @@ const platform = ref('HARMONYOS')
 const product = ref('devTest')
 const outputType = ref('HAP')
 const harmonyBranch = ref('dev')
+const iosBranch = ref('testing')
 const options = ref<AppPackOptions | null>(null)
 const jobs = ref<AppPackJob[]>([])
 const jobsLoading = ref(false)
@@ -364,6 +449,8 @@ const androidDeviceId = ref('')
 const androidDevices = ref<any[]>([])
 const harmonyDeviceId = ref('')
 const harmonyDevices = ref<any[]>([])
+const iosDeviceId = ref('')
+const iosDevices = ref<any[]>([])
 const logVisible = ref(false)
 const logJobId = ref('')
 const logText = ref('')
@@ -373,6 +460,14 @@ const products = computed(() => options.value?.harmony?.products ?? [])
 const harmonyBranches = computed(() => {
   const list = options.value?.harmony?.branches ?? []
   const preferred = options.value?.harmony?.branch || harmonyBranch.value || 'dev'
+  if (preferred && !list.includes(preferred)) {
+    return [preferred, ...list]
+  }
+  return list.length ? list : [preferred]
+})
+const iosBranches = computed(() => {
+  const list = options.value?.ios?.branches ?? []
+  const preferred = options.value?.ios?.branch || iosBranch.value || 'testing'
   if (preferred && !list.includes(preferred)) {
     return [preferred, ...list]
   }
@@ -393,6 +488,9 @@ const canStart = computed(() => {
   if (platform.value === 'ANDROID') {
     return !!options.value?.android?.ready
   }
+  if (platform.value === 'IOS') {
+    return !!options.value?.ios?.ready && !!iosBranch.value?.trim()
+  }
   return false
 })
 const logTitle = computed(() => {
@@ -401,7 +499,12 @@ const logTitle = computed(() => {
 })
 
 const currentVersion = computed(() => {
-  const src = platform.value === 'ANDROID' ? options.value?.android : platform.value === 'HARMONYOS' ? options.value?.harmony : null
+  const src =
+    platform.value === 'ANDROID'
+      ? options.value?.android
+      : platform.value === 'IOS'
+        ? options.value?.ios
+        : options.value?.harmony
   if (!src?.versionName) return null
   return { name: src.versionName, code: src.versionCode || '' }
 })
@@ -431,6 +534,7 @@ function productLabel(id: string) {
 
 function jobTypeLabel(row: AppPackJob) {
   if (row.platform === 'ANDROID') return 'Debug'
+  if (row.platform === 'IOS') return row.gitBranch ? `Debug · ${row.gitBranch}` : 'Debug'
   return productLabel(row.product)
 }
 
@@ -471,6 +575,10 @@ async function loadOptions() {
     // 首次/仍是旧默认时跟随后端；人手改过的分支保留
     if (!harmonyBranch.value || harmonyBranch.value === 'dev222') {
       harmonyBranch.value = preferredBranch
+    }
+    const iosPreferred = options.value.ios?.branch || 'testing'
+    if (!iosBranch.value || iosBranch.value === 'testing') {
+      iosBranch.value = iosPreferred
     }
     const list = options.value.harmony?.products || []
     if (list.length && !list.some((p) => p.id === product.value && p.signingReady !== false)) {
@@ -544,16 +652,33 @@ async function loadHarmonyDevices() {
   }
 }
 
+async function loadIosDevices() {
+  try {
+    await apiClient.scanDevices().catch(() => null)
+    const list = await apiClient.getDevicesByPlatform('IOS')
+    iosDevices.value = (Array.isArray(list) ? list : []).filter(
+      (d: any) => d?.status === 'CONNECTED' || d?.status === 'BUSY' || d?.status === 'RESERVED'
+    )
+    if (iosDeviceId.value && !iosDevices.value.some((d: any) => d.id === iosDeviceId.value)) {
+      iosDeviceId.value = ''
+    }
+  } catch (e: any) {
+    iosDevices.value = []
+    ElMessage.warning(e?.message || '读取 iOS 设备失败')
+  }
+}
+
 function canInstallRow(row: AppPackJob) {
   if (row.status !== 'SUCCESS' || !row.artifactName) return false
-  if (row.platform === 'ANDROID') return true
+  if (row.platform === 'ANDROID' || row.platform === 'IOS') return true
   return row.platform === 'HARMONYOS' && row.outputType === 'HAP'
 }
 
 function onPlatformChange() {
-  if (platform.value === 'HARMONYOS' || platform.value === 'ANDROID') loadJobs()
+  if (platform.value === 'HARMONYOS' || platform.value === 'ANDROID' || platform.value === 'IOS') loadJobs()
   if (platform.value === 'ANDROID') loadAndroidDevices()
   if (platform.value === 'HARMONYOS') loadHarmonyDevices()
+  if (platform.value === 'IOS') loadIosDevices()
 }
 
 async function startPack() {
@@ -568,6 +693,17 @@ async function startPack() {
       })
       ElMessage.success(
         androidDeviceId.value ? '已开始打包，成功后会自动安装到所选设备' : '已开始打包，完成后可在下方下载或安装'
+      )
+    } else if (platform.value === 'IOS') {
+      await apiClient.startAppPack({
+        platform: 'IOS',
+        product: 'debug',
+        outputType: 'IPA',
+        branch: iosBranch.value.trim(),
+        deviceId: iosDeviceId.value || undefined
+      })
+      ElMessage.success(
+        iosDeviceId.value ? '已开始打包，成功后会自动安装到所选设备' : '已开始打包，完成后可在下方下载或安装'
       )
     } else {
       const installNow = outputType.value === 'HAP' && !!harmonyDeviceId.value
@@ -596,6 +732,13 @@ async function retry(row: AppPackJob) {
   try {
     if (row.platform === 'ANDROID') {
       await apiClient.startAppPack({ platform: 'ANDROID', product: 'debug', outputType: 'APK' })
+    } else if (row.platform === 'IOS') {
+      await apiClient.startAppPack({
+        platform: 'IOS',
+        product: 'debug',
+        outputType: 'IPA',
+        branch: row.gitBranch || iosBranch.value.trim()
+      })
     } else {
       await apiClient.startAppPack({
         platform: 'HARMONYOS',
@@ -614,12 +757,19 @@ async function retry(row: AppPackJob) {
 }
 
 async function installToDevice(row: AppPackJob) {
-  const deviceId = row.platform === 'HARMONYOS' ? harmonyDeviceId.value : androidDeviceId.value
+  const deviceId =
+    row.platform === 'HARMONYOS'
+      ? harmonyDeviceId.value
+      : row.platform === 'IOS'
+        ? iosDeviceId.value
+        : androidDeviceId.value
   if (!deviceId) {
     ElMessage.warning(
       row.platform === 'HARMONYOS'
         ? '请先在上方选择要安装的鸿蒙设备'
-        : '请先在上方选择要安装的安卓设备'
+        : row.platform === 'IOS'
+          ? '请先在上方选择要安装的 iOS 设备'
+          : '请先在上方选择要安装的安卓设备'
     )
     return
   }
@@ -715,6 +865,7 @@ onMounted(async () => {
   await loadJobs()
   if (platform.value === 'ANDROID') await loadAndroidDevices()
   if (platform.value === 'HARMONYOS') await loadHarmonyDevices()
+  if (platform.value === 'IOS') await loadIosDevices()
   timer = setInterval(tick, 2500)
 })
 

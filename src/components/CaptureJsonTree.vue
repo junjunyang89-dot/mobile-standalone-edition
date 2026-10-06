@@ -9,7 +9,7 @@
         :value="value"
         :path="''"
         :collapsed="collapsed"
-        :query="query"
+        :query="query || ''"
         @toggle="toggle"
       />
     </div>

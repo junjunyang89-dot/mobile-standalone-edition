@@ -450,6 +450,19 @@ function categoryTreeLabel(cat: { key?: string; label?: string }) {
 const route = useRoute()
 const allRuns = ref<RunRow[]>([])
 const collectionCategories = ref<any[]>([])
+/** 项目 → 所属分类；分支用例树里没有的项目靠全量用例树认分类，不然只能丢进兜底分类 */
+const projectCategoryIndex = ref(new Map<string, { key: string; label: string }>())
+
+function buildProjectCategoryIndex(categories: any[]) {
+  const m = new Map<string, { key: string; label: string }>()
+  for (const cat of categories || []) {
+    for (const proj of cat.projects || []) {
+      const k = canonicalProjectKey(proj.code || '')
+      if (k && !m.has(k)) m.set(k, { key: cat.key, label: categoryTreeLabel(cat) })
+    }
+  }
+  return m
+}
 const days = ref(Number(localStorage.getItem('apiReports.days')) || 7)
 const loading = ref(false)
 const scope = ref<'TEST' | 'LIVE'>('TEST')
@@ -723,8 +736,93 @@ function buildCollectionTree(categories: any[]): TreeNode[] {
     }))
   }
 
+  attachUntracked(root)
   for (const n of root) bubbleUpMeta(n)
   return root
+}
+
+function findProjectNode(nodes: TreeNode[], project: string): TreeNode | null {
+  for (const n of nodes) {
+    if (n.kind === 'project' && projectsMatch(n.project || '', project)) return n
+    if (n.kind === 'category' && n.children?.length) {
+      const hit = findProjectNode(n.children, project)
+      if (hit) return hit
+    }
+  }
+  return null
+}
+
+/**
+ * 集合树只收挂了需求单 / 分支的接口（生产只收 Controller 预览里的），
+ * 在接口管理、普通集合里直接跑的用例不在树上——KPI 算了它们，树上却找不到，看着像报告丢了。
+ * 这些接口按项目收进「其他执行」。
+ */
+function attachUntracked(root: TreeNode[]) {
+  const known = new Set<string>()
+  const walk = (nodes: TreeNode[]) => {
+    for (const n of nodes) {
+      if (!n.isFolder && n.path) known.add(`${canonicalProjectKey(n.project || '')}:${ifaceKey(n.method || 'GET', n.path)}`)
+      if (n.children?.length) walk(n.children)
+    }
+  }
+  walk(root)
+
+  const byProject = new Map<string, TreeNode[]>()
+  for (const run of windowRuns.value) {
+    for (const it of run.interfaces || []) {
+      const k = `${canonicalProjectKey(it.project)}:${ifaceKey(it.method, it.path)}`
+      if (known.has(k)) continue
+      known.add(k)
+      const leaf = leafNode(`other:${it.project}`, it.project, it.method, it.path, 'interface')
+      if (!leaf) continue
+      const list = byProject.get(it.project)
+      if (list) list.push(leaf)
+      else byProject.set(it.project, [leaf])
+    }
+  }
+  if (!byProject.size) return
+
+  const label = scope.value === 'LIVE' ? '其他执行（不在 Controller 列表里）' : '全量用例 / 直接执行'
+  const orphans: TreeNode[] = []
+  for (const [project, leaves] of byProject) {
+    const group: TreeNode = {
+      nodeKey: `other-grp:${project}`,
+      label,
+      kind: 'req-group',
+      isFolder: true,
+      project,
+      meta: 0,
+      children: leaves
+    }
+    const host = findProjectNode(root, project)
+    if (host) {
+      host.children = [...(host.children || []), group]
+      continue
+    }
+    const projNode: TreeNode = {
+      nodeKey: `other-proj:${project}`,
+      label: project,
+      kind: 'project',
+      isFolder: true,
+      project,
+      meta: 0,
+      children: [group]
+    }
+    const cat = projectCategoryIndex.value.get(canonicalProjectKey(project))
+    if (!cat) {
+      orphans.push(projNode)
+      continue
+    }
+    let catNode = root.find((n) => n.kind === 'category' && n.nodeKey === `cat:${cat.key}`)
+    if (!catNode) {
+      catNode = { nodeKey: `cat:${cat.key}`, label: cat.label, kind: 'category', isFolder: true, meta: 0, children: [] }
+      root.push(catNode)
+    }
+    catNode.children = [...(catNode.children || []), projNode]
+  }
+  if (orphans.length) {
+    root.push({ nodeKey: 'cat:__other', label: '未归类项目', kind: 'category', isFolder: true, meta: 0, children: orphans })
+  }
 }
 
 function findInterfaceNodeKey(nodes: TreeNode[], project: string, method: string, path: string): string | null {
@@ -963,8 +1061,12 @@ watch(scope, async () => {
 
 async function loadCollectionTree() {
   try {
-    const res = await apiClient.getApiTestCollectionTree({ scope: scope.value })
+    const [res, live] = await Promise.all([
+      apiClient.getApiTestCollectionTree({ scope: scope.value }),
+      scope.value === 'LIVE' ? Promise.resolve(null) : apiClient.getApiTestCollectionTree({ scope: 'LIVE' }).catch(() => null)
+    ])
     collectionCategories.value = res.categories || []
+    projectCategoryIndex.value = buildProjectCategoryIndex([...(res.categories || []), ...(live?.categories || [])])
   } catch {
     collectionCategories.value = []
   }

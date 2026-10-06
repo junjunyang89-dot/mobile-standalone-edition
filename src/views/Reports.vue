@@ -5,7 +5,6 @@
         <div class="card-header">
           <div>
             <span class="page-title">APP UI测试报告</span>
-            <p class="page-sub">覆盖完美世界电竞 / PogPog（Android、iOS），鸿蒙预留；与 App 性能报告分开</p>
           </div>
           <el-button type="primary" :loading="loading" @click="loadReports">
             <el-icon><Refresh /></el-icon>
@@ -375,13 +374,6 @@ onMounted(() => {
   font-size: 16px;
   font-weight: 600;
   color: var(--app-text);
-}
-
-.page-sub {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: var(--el-text-color-placeholder);
-  line-height: 1.4;
 }
 
 .filter-bar {

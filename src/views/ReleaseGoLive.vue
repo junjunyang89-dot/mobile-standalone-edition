@@ -5,9 +5,6 @@
         <div class="card-header">
           <div>
             <span class="card-title">上线看板</span>
-            <p class="card-sub">
-              从发版 Wiki 按项目汇总（前端仓置顶）。把你已合并的分支粘贴到下方，自动对比标出未合项；上线后勾「已上线」。
-            </p>
           </div>
         </div>
       </template>

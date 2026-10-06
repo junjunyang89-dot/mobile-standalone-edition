@@ -73,72 +73,18 @@
         </div>
       </div>
     </div>
-
-    <MustTestBoard @select="onMustTest" />
-
-    <div class="at-grid">
-      <div class="at-panel">
-        <div class="panel-bar">
-          <span class="panel-title">最近执行</span>
-          <button type="button" class="panel-link" @click="goCases()">查看全部 ›</button>
-        </div>
-        <div v-if="!stats.recentRuns.length" class="at-empty">
-          暂无执行记录。在接口列表跑用例后，这里会展示最近结果。
-        </div>
-        <ul v-else class="run-list">
-          <li v-for="r in stats.recentRuns" :key="r.id" class="run-row">
-            <span
-              class="run-dot"
-              :class="r.status === 'PASSED' ? 'ok' : r.status === 'BLOCKED' ? 'blocked' : 'fail'"
-              :title="r.status === 'BLOCKED' ? '没跑成：连不上 / 超时 / 登录失败' : undefined"
-            />
-            <span class="method-tag" :class="methodClass(r.method)">{{ methodLabel(r.method) }}</span>
-            <span class="run-path" :title="r.path || r.name">{{ r.path || r.name || '—' }}</span>
-            <span class="run-latency">{{ formatLatency(r.durationMs) }}</span>
-            <span class="run-ago">{{ relativeTime(r.createdAt) }}</span>
-          </li>
-        </ul>
-      </div>
-
-      <div class="at-panel">
-        <div class="panel-bar">
-          <!-- 显示的是按「项目」聚合的数据，不是 api_test_collections 那个集合。
-               现在真的有「用例集合」这个东西了，这里再叫集合就是同名两义 -->
-          <span class="panel-title">项目</span>
-          <button type="button" class="panel-link" @click="goCases()">管理</button>
-        </div>
-        <div v-if="!stats.collections.length" class="at-empty">暂无项目用例。</div>
-        <ul v-else class="coll-list">
-          <li
-            v-for="c in stats.collections"
-            :key="c.project"
-            class="coll-row"
-            @click="goCases(c.project)"
-          >
-            <div>
-              <div class="coll-name">{{ c.name }}</div>
-              <div class="coll-meta">{{ c.caseCount }} 个用例</div>
-            </div>
-          </li>
-        </ul>
-      </div>
-    </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheck, CircleClose, Document, Timer, VideoPlay } from '@element-plus/icons-vue'
 import { apiClient } from '@/api'
-import MustTestBoard, { type MustTestItem } from './MustTestBoard.vue'
-
 defineProps<{
   variant?: 'embed' | 'page'
 }>()
 
-const router = useRouter()
 const loading = ref(false)
 const running = ref(false)
 const lastFetchedAt = ref<number | null>(null)
@@ -153,22 +99,6 @@ const stats = reactive({
   failedDelta: null as number | null,
   avgLatencyMs: null as number | null,
   avgLatencyDeltaMs: null as number | null,
-  recentRuns: [] as Array<{
-    id: string
-    caseId?: string
-    name?: string
-    method?: string
-    path?: string
-    status?: string
-    durationMs?: number | null
-    createdAt?: string
-  }>,
-  collections: [] as Array<{
-    project: string
-    name: string
-    caseCount: number
-    passRate: number | null
-  }>,
   updatedAt: null as string | null
 })
 
@@ -193,8 +123,6 @@ async function refresh(silent = false) {
     stats.failedDelta = data.failedDelta ?? null
     stats.avgLatencyMs = data.avgLatencyMs ?? null
     stats.avgLatencyDeltaMs = data.avgLatencyDeltaMs ?? null
-    stats.recentRuns = data.recentRuns ?? []
-    stats.collections = data.collections ?? []
     stats.updatedAt = data.updatedAt ?? null
     lastFetchedAt.value = Date.now()
   } catch (e: any) {
@@ -242,24 +170,6 @@ async function runAll() {
   }
 }
 
-function onMustTest(item: MustTestItem) {
-  router.push({
-    path: '/api-collections',
-    query: {
-      path: item.path || undefined,
-      method: item.httpMethod || undefined
-    }
-  })
-}
-
-function goCases(project?: string) {
-  if (project && project !== '(未分组)') {
-    router.push({ path: '/api-collections', query: { project } })
-  } else {
-    router.push('/api-collections')
-  }
-}
-
 function formatSigned(v: number, suffix = '') {
   const sign = v > 0 ? '+' : ''
   return `${sign}${v}${suffix}`
@@ -275,34 +185,6 @@ function formatSignedLatency(ms: number) {
   const sign = ms > 0 ? '+' : ''
   if (Math.abs(ms) >= 1000) return `${sign}${(ms / 1000).toFixed(1)}s`
   return `${sign}${Math.round(ms)}ms`
-}
-
-function methodLabel(m?: string) {
-  const u = (m || '').toUpperCase()
-  if (u === 'DELETE') return 'DEL'
-  if (u === 'GRAPHQL' || u === 'GQL') return 'GQL'
-  return u || '—'
-}
-
-function methodClass(m?: string) {
-  const u = (m || '').toUpperCase()
-  if (u === 'POST') return 'm-post'
-  if (u === 'GET') return 'm-get'
-  if (u === 'PUT' || u === 'PATCH') return 'm-put'
-  if (u === 'DELETE') return 'm-del'
-  if (u === 'GRAPHQL' || u === 'GQL') return 'm-gql'
-  return 'm-other'
-}
-
-function relativeTime(iso?: string) {
-  if (!iso) return ''
-  const t = new Date(iso).getTime()
-  if (Number.isNaN(t)) return ''
-  const sec = Math.max(0, Math.round((Date.now() - t) / 1000))
-  if (sec < 60) return `${sec} 秒前`
-  if (sec < 3600) return `${Math.round(sec / 60)} 分钟前`
-  if (sec < 86400) return `${Math.round(sec / 3600)} 小时前`
-  return `${Math.round(sec / 86400)} 天前`
 }
 
 onMounted(() => {
@@ -371,7 +253,6 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
-  margin-bottom: 12px;
 }
 
 .kpi-card {
@@ -464,195 +345,9 @@ onUnmounted(() => {
   color: var(--app-warning);
 }
 
-.at-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr);
-  gap: 10px;
-}
-
-.at-panel {
-  background: var(--app-card-bg);
-  border: 1px solid var(--app-border);
-  border-radius: 8px;
-  padding: 12px 14px 8px;
-  min-height: 180px;
-}
-
-.panel-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 6px;
-}
-
-.panel-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--app-text);
-}
-
-.panel-link {
-  border: none;
-  background: none;
-  color: var(--app-primary);
-  font-size: 12px;
-  cursor: pointer;
-  padding: 0;
-}
-
-.panel-link:hover {
-  text-decoration: underline;
-}
-
-.at-empty {
-  padding: 24px 8px;
-  text-align: center;
-  color: var(--el-text-color-placeholder);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.run-list,
-.coll-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.run-row {
-  display: grid;
-  grid-template-columns: 10px 48px minmax(0, 1fr) 64px 72px;
-  gap: 8px;
-  align-items: center;
-  padding: 9px 2px;
-  border-top: 1px solid var(--el-border-color-extra-light);
-  font-size: 12px;
-}
-
-.run-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  justify-self: center;
-}
-
-.run-dot.ok {
-  background: var(--app-success);
-}
-
-.run-dot.fail {
-  background: var(--app-danger);
-}
-
-.run-dot.blocked {
-  background: var(--app-warning, var(--el-color-warning-dark-2));
-}
-
-.method-tag {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 20px;
-  padding: 0 6px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-.m-post {
-  background: var(--el-color-primary-light-9);
-  color: var(--app-primary);
-}
-
-.m-get {
-  background: var(--el-color-success-light-9);
-  color: var(--app-success);
-}
-
-.m-put {
-  background: var(--el-color-warning-light-9);
-  color: var(--el-color-warning-dark-2);
-}
-
-.m-del {
-  background: var(--el-color-danger-light-9);
-  color: var(--app-danger);
-}
-
-.m-gql {
-  background: #f3e8ff;
-  color: #7c3aed;
-}
-
-.m-other {
-  background: var(--app-surface);
-  color: var(--app-text-secondary);
-}
-
-.run-path {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--app-text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-}
-
-.run-latency,
-.run-ago {
-  text-align: right;
-  color: var(--app-text-secondary);
-  font-size: 12px;
-}
-
-.coll-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  margin-bottom: 8px;
-  border: 1px solid var(--app-border);
-  border-radius: 8px;
-  background: var(--app-surface);
-  cursor: pointer;
-  transition: border-color 0.15s;
-}
-
-.coll-row:hover {
-  border-color: var(--el-color-primary-light-5);
-}
-
-.coll-name {
-  font-weight: 600;
-  color: var(--app-text);
-  font-size: 13px;
-}
-
-.coll-meta {
-  margin-top: 2px;
-  font-size: 12px;
-  color: var(--app-text-secondary);
-}
-
-.coll-rate {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--app-success);
-}
-
-.coll-rate.muted {
-  color: var(--el-text-color-placeholder);
-  font-weight: 500;
-}
-
 @media (max-width: 1100px) {
   .kpi-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .at-grid {
-    grid-template-columns: 1fr;
   }
 }
 </style>

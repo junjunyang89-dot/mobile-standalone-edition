@@ -9,6 +9,7 @@
           <el-icon><Refresh /></el-icon>
           刷新
         </el-button>
+        <el-button @click="dbCatalogOpen = true">数据库</el-button>
         <el-button type="primary" @click="openCreate">
           <el-icon><Plus /></el-icon>
           新建项目
@@ -79,25 +80,36 @@
           <el-button link type="primary" size="small" @click="openAddCategory">+ 添加分类</el-button>
         </div>
         <div class="cat-list">
-          <button
-            v-for="(cat, i) in categories"
-            :key="cat.key"
-            type="button"
-            class="cat-item"
-            :class="{ active: selectedCategoryKey === cat.key }"
-            @click="selectCategory(cat.key)"
-          >
-            <i class="cat-dot" :style="{ background: catColor(cat.key, i) }" />
-            <span class="cat-label">{{ cat.label }}</span>
-            <span class="cat-edit" title="重命名" @click.stop="openRenameCategory(cat)">✎</span>
-            <span
-              v-if="cat.custom && (cat.count ?? 0) === 0"
-              class="cat-del"
-              title="删除空分类"
-              @click.stop="removeCategory(cat)"
-            >×</span>
-            <span class="cat-num">{{ realCount(cat) }}</span>
-          </button>
+          <div v-for="(cat, i) in categories" :key="cat.key" class="cat-group">
+            <button
+              type="button"
+              class="cat-item"
+              :class="{ active: selectedCategoryKey === cat.key && !selectedKind }"
+              @click="selectCategory(cat.key)"
+            >
+              <i class="cat-dot" :style="{ background: catColor(cat.key, i) }" />
+              <span class="cat-label">{{ cat.label }}</span>
+              <span class="cat-edit" title="重命名" @click.stop="openRenameCategory(cat)">✎</span>
+              <span
+                v-if="cat.custom && (cat.count ?? 0) === 0"
+                class="cat-del"
+                title="删除空分类"
+                @click.stop="removeCategory(cat)"
+              >×</span>
+              <span class="cat-num">{{ realCount(cat) }}</span>
+            </button>
+            <button
+              v-for="k in cat.kinds || []"
+              :key="k.key"
+              type="button"
+              class="kind-item"
+              :class="{ active: selectedCategoryKey === cat.key && selectedKind === k.key }"
+              @click="selectKind(cat.key, k.key)"
+            >
+              <span class="kind-label">{{ k.label }}</span>
+              <span class="cat-num">{{ k.count }}</span>
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -113,10 +125,12 @@
               <div class="proj-name" :class="{ missing: row.missing }">
                 {{ row.missing ? row.code : row.name || row.code }}
                 <span v-if="row.missing" class="missing-tag">未建</span>
+                <span v-if="row.kind && row.kind !== 'BACKEND'" class="kind-tag">{{ kindLabel(row.kind) }}</span>
+                <span v-else-if="row.scanEndpoints === false" class="kind-tag">不扫接口</span>
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="配置完整度" width="210">
+          <el-table-column label="配置完整度" width="270">
             <template #default="{ row }">
               <div v-if="!row.missing" class="fill-chips">
                 <button
@@ -140,6 +154,55 @@
                   title="去用例集合，只看这个项目"
                   @click="goAsset(row, '/api-collections')"
                 >用例 {{ assetCount(row.code, 'apiCases') }}</button>
+                <el-popover
+                  placement="top"
+                  :width="380"
+                  trigger="hover"
+                  :show-after="150"
+                  :disabled="!dbCount(row.code)"
+                  :popper-style="{ padding: 0, borderRadius: '12px', overflow: 'hidden' }"
+                >
+                  <template #reference>
+                    <button
+                      type="button"
+                      class="fill-chip"
+                      :class="{ has: dbCount(row.code) > 0 }"
+                      @click="openDbBind(row)"
+                    >库 {{ dbCount(row.code) }}</button>
+                  </template>
+                  <div class="db-pop">
+                    <div v-for="g in dbGroups(row.code)" :key="g.env" class="db-pop-group">
+                      <div class="db-pop-head">
+                        <span class="db-pop-dot" :class="g.env === 'PROD' ? 'is-prod' : 'is-test'" />
+                        <span class="db-pop-title">{{ g.label }}关联的库</span>
+                        <span class="db-pop-count" :class="g.env === 'PROD' ? 'is-prod' : 'is-test'">{{ g.names.length }}</span>
+                      </div>
+                      <div class="db-pop-names">
+                        <span
+                          v-for="n in visibleDbNames(row.code, g)"
+                          :key="n"
+                          class="db-pop-name"
+                          :class="{ 'is-own': isOwnDb(row.code, n) }"
+                          :title="isOwnDb(row.code, n) ? '和项目同名的库' : n"
+                        >{{ n }}</span>
+                      </div>
+                      <div v-if="g.names.length > DB_POP_LIMIT" class="db-pop-more">
+                        <template v-if="!isDbPopExpanded(row.code, g.env)">
+                          <span>还有 <b>{{ g.names.length - DB_POP_LIMIT }}</b> 个未显示</span>
+                          <button type="button" class="db-pop-link" @click.stop="toggleDbPop(row.code, g.env)">全部展开</button>
+                        </template>
+                        <template v-else>
+                          <span />
+                          <button type="button" class="db-pop-link" @click.stop="toggleDbPop(row.code, g.env)">收起</button>
+                        </template>
+                      </div>
+                    </div>
+                    <div class="db-pop-foot">
+                      <button type="button" class="db-pop-ghost" @click.stop="dbCatalogOpen = true">去数据库看</button>
+                      <button type="button" class="db-pop-link" @click.stop="openDbBind(row)">修改关联 ›</button>
+                    </div>
+                  </div>
+                </el-popover>
               </div>
               <span v-else class="muted">—</span>
             </template>
@@ -182,12 +245,12 @@
               <span v-else class="muted">—</span>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="170" align="right">
+          <el-table-column label="操作" width="150" align="right">
             <template #default="{ row }">
               <template v-if="row.missing">
                 <el-button size="small" link type="primary" @click="openCreateWithCode(row.code)">创建</el-button>
               </template>
-              <template v-else>
+              <div v-else class="op-grid">
                 <el-button
                   size="small"
                   link
@@ -196,9 +259,10 @@
                   :loading="syncingCode === row.code"
                   @click="syncRepo(row)"
                 >同步代码</el-button>
+                <el-button size="small" link type="primary" @click="openDbBind(row)">关联库</el-button>
                 <el-button size="small" link type="primary" @click="openEdit(row)">编辑</el-button>
                 <el-button v-perm:delete size="small" link type="danger" @click="remove(row)">删除</el-button>
-              </template>
+              </div>
             </template>
           </el-table-column>
         </el-table>
@@ -252,6 +316,14 @@
             <el-option v-for="opt in categoryOptions" :key="opt.key" :label="opt.label" :value="opt.key" />
           </el-select>
           <div class="tip">可直接输入新分类名，回车确认</div>
+        </el-form-item>
+        <el-form-item label="类型" required>
+          <el-radio-group v-model="form.kind">
+            <el-radio-button value="BACKEND">后端</el-radio-button>
+            <el-radio-button value="FRONTEND">前端</el-radio-button>
+            <el-radio-button value="CLIENT">客户端</el-radio-button>
+          </el-radio-group>
+          <div class="tip">只有后端业务仓库才扫接口；网关请选后端，系统不会扫它</div>
         </el-form-item>
         <el-form-item label="编码" required>
           <el-input v-if="creating" v-model="form.code" class="pj-mono" placeholder="如 app-seckill" />
@@ -385,6 +457,14 @@
     </el-dialog>
 
     <ProjectUrlsDialog v-model="urlsDialog" :project="urlsProject" @changed="loadUrlCounts" />
+    <ProjectDbCatalogDrawer v-model="dbCatalogOpen" @changed="onDbCatalogChanged" />
+    <ProjectDbBindDialog
+      v-model="dbBindOpen"
+      :project="dbBindProject"
+      :catalog-rev="dbCatalogRev"
+      @saved="loadDbConns"
+      @open-catalog="dbCatalogOpen = true"
+    />
   </div>
 </template>
 
@@ -393,8 +473,10 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowRight, Plus, Refresh, Search } from '@element-plus/icons-vue'
-import { apiClient } from '../api'
+import { apiClient, type DbConnection } from '../api'
 import ProjectUrlsDialog from '../components/ProjectUrlsDialog.vue'
+import ProjectDbCatalogDrawer from '../components/ProjectDbCatalogDrawer.vue'
+import ProjectDbBindDialog from '../components/ProjectDbBindDialog.vue'
 
 type ProjectRow = {
   code: string
@@ -409,6 +491,15 @@ type ProjectRow = {
   baseBranch?: string
   missing?: boolean
   category?: string
+  kind?: string
+  scanEndpoints?: boolean
+}
+
+type KindVo = {
+  key: string
+  label: string
+  count: number
+  projects: ProjectRow[]
 }
 
 type CategoryVo = {
@@ -416,6 +507,7 @@ type CategoryVo = {
   label: string
   count: number
   projects: ProjectRow[]
+  kinds?: KindVo[]
   builtin?: boolean
   custom?: boolean
   sortOrder?: number
@@ -448,6 +540,7 @@ const drawer = ref(false)
 const creating = ref(true)
 const categories = ref<CategoryVo[]>([])
 const selectedCategoryKey = ref('APP')
+const selectedKind = ref('')
 const keyword = ref('')
 const statusFilter = ref<StatusFilter>('ALL')
 const currentPage = ref(1)
@@ -501,6 +594,7 @@ const form = reactive({
   nameZh: '',
   description: '',
   category: 'APP',
+  kind: 'BACKEND',
   successCodePath: '',
   successCodeValue: '',
   gitUrl: '',
@@ -554,7 +648,14 @@ function matchesKeyword(p: ProjectRow) {
   return [p.code, p.name, p.description].some((v) => String(v || '').toLowerCase().includes(k))
 }
 
-const categoryRows = computed(() => (selectedCategory.value?.projects ?? []).filter(matchesKeyword))
+const categoryRows = computed(() => {
+  const cat = selectedCategory.value
+  if (!cat) return []
+  const list = selectedKind.value
+    ? (cat.kinds || []).find((k) => k.key === selectedKind.value)?.projects ?? []
+    : cat.projects
+  return list.filter(matchesKeyword)
+})
 
 const statusOptions = computed<{ value: StatusFilter; label: string; count: number }[]>(() => {
   const counts = { FULL: 0, PARTIAL: 0, EMPTY: 0 }
@@ -579,7 +680,7 @@ const pagedRows = computed(() => {
   return filteredRows.value.slice(start, start + pageSize.value)
 })
 
-watch([selectedCategoryKey, keyword, statusFilter, pageSize], () => {
+watch([selectedCategoryKey, selectedKind, keyword, statusFilter, pageSize], () => {
   currentPage.value = 1
 })
 
@@ -596,6 +697,11 @@ const assetCounts = ref<Record<string, Record<string, number>>>({})
 const urlCounts = ref<Record<string, number>>({})
 const urlsDialog = ref(false)
 const urlsProject = ref<{ code: string; name?: string } | null>(null)
+const dbCatalogOpen = ref(false)
+const dbCatalogRev = ref(0)
+const dbBindOpen = ref(false)
+const dbBindProject = ref<{ code: string; name?: string } | null>(null)
+const dbConns = ref<DbConnection[]>([])
 
 function assetCount(code: string, field: 'endpoints' | 'apiCases') {
   return assetCounts.value[code]?.[field] ?? 0
@@ -605,13 +711,93 @@ function urlCount(code: string) {
   return urlCounts.value[code] ?? 0
 }
 
+async function loadDbConns() {
+  try {
+    dbConns.value = await apiClient.listDbConnections()
+  } catch {
+    dbConns.value = []
+  }
+}
+
+function onDbCatalogChanged() {
+  dbCatalogRev.value++
+  void loadDbConns()
+}
+
+const dbByProject = computed(() => {
+  const m = new Map<string, { TEST: string[]; PROD: string[] }>()
+  for (const c of dbConns.value) {
+    const env = c.environment === 'PROD' ? 'PROD' : 'TEST'
+    for (const p of c.projects || []) {
+      const key = p.toLowerCase()
+      if (!m.has(key)) m.set(key, { TEST: [], PROD: [] })
+      m.get(key)![env].push(c.name)
+    }
+  }
+  return m
+})
+
+function dbCount(code: string) {
+  const g = dbByProject.value.get(code.toLowerCase())
+  return g ? g.TEST.length + g.PROD.length : 0
+}
+
+function dbGroups(code: string) {
+  const g = dbByProject.value.get(code.toLowerCase())
+  if (!g) return []
+  return [
+    { env: 'TEST', label: '测试环境', names: g.TEST },
+    { env: 'PROD', label: '线上环境', names: g.PROD }
+  ].filter((x) => x.names.length)
+}
+
+const DB_POP_LIMIT = 10
+const dbPopExpanded = ref<Set<string>>(new Set())
+
+function isDbPopExpanded(code: string, env: string) {
+  return dbPopExpanded.value.has(`${code}:${env}`)
+}
+
+function toggleDbPop(code: string, env: string) {
+  const key = `${code}:${env}`
+  const next = new Set(dbPopExpanded.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  dbPopExpanded.value = next
+}
+
+function normDbName(s: string) {
+  return s.toLowerCase().replace(/[-_\s]/g, '')
+}
+
+function isOwnDb(code: string, name: string) {
+  return normDbName(code) === normDbName(name)
+}
+
+function visibleDbNames(code: string, g: { env: string; names: string[] }) {
+  const sorted = [...g.names].sort((a, b) => a.localeCompare(b))
+  if (isDbPopExpanded(code, g.env) || sorted.length <= DB_POP_LIMIT) return sorted
+  const head = sorted.slice(0, DB_POP_LIMIT)
+  const own = sorted.slice(DB_POP_LIMIT).find((n) => isOwnDb(code, n))
+  if (own) head.splice(DB_POP_LIMIT - 1, 1, own)
+  return head.sort((a, b) => a.localeCompare(b))
+}
+
+function openDbBind(row: ProjectRow) {
+  dbBindProject.value = { code: row.code, name: row.name }
+  dbBindOpen.value = true
+}
+
 async function loadAssetCounts() {
   try {
     const tree = await apiClient.getUnifiedTree(true)
     const map: Record<string, Record<string, number>> = {}
     for (const cat of tree.nodes || []) {
-      for (const p of (cat as any).children || []) {
-        map[p.key] = p.counts || {}
+      for (const node of (cat as any).children || []) {
+        const projects = node.type === 'KIND' ? node.children || [] : [node]
+        for (const p of projects) {
+          map[p.key] = p.counts || {}
+        }
       }
     }
     assetCounts.value = map
@@ -648,9 +834,16 @@ async function load() {
     const data = await apiClient.getApiProjectsTree()
     categories.value = (data.categories ?? [])
       .filter((c: CategoryVo) => !RETIRED_CATEGORY_KEYS.has(String(c.key).toUpperCase()))
-      .map((c: CategoryVo) => (c.key === 'APP' && OLD_APP_LABELS.has(c.label) ? { ...c, label: '电竞APP' } : c))
+      .map((c: CategoryVo) => (c.key === 'APP' && OLD_APP_LABELS.has(c.label) ? { ...c, label: '电竞' } : c))
     if (!categories.value.some((c) => c.key === selectedCategoryKey.value)) {
       selectedCategoryKey.value = categories.value[0]?.key ?? 'APP'
+      selectedKind.value = ''
+    } else if (
+      selectedKind.value &&
+      !(categories.value.find((c) => c.key === selectedCategoryKey.value)?.kinds || [])
+        .some((k) => k.key === selectedKind.value)
+    ) {
+      selectedKind.value = ''
     }
   } catch (e: any) {
     ElMessage.error(e?.message || '加载失败')
@@ -659,10 +852,23 @@ async function load() {
   }
   void loadAssetCounts()
   void loadUrlCounts()
+  void loadDbConns()
+}
+
+function kindLabel(k?: string) {
+  if (k === 'CLIENT') return '客户端'
+  if (k === 'FRONTEND' || k === 'H5') return '前端'
+  return '后端'
 }
 
 function selectCategory(key: string) {
   selectedCategoryKey.value = key
+  selectedKind.value = ''
+}
+
+function selectKind(catKey: string, kind: string) {
+  selectedCategoryKey.value = catKey
+  selectedKind.value = kind
 }
 
 function openAddCategory() {
@@ -738,6 +944,7 @@ function openCreate() {
   form.nameZh = ''
   form.description = ''
   form.category = selectedCategoryKey.value || 'APP'
+  form.kind = selectedKind.value || 'BACKEND'
   form.successCodePath = ''
   form.successCodeValue = ''
   form.gitUrl = ''
@@ -755,6 +962,7 @@ function openCreateWithCode(code: string) {
   form.nameZh = ''
   form.description = ''
   form.category = 'APP'
+  form.kind = 'BACKEND'
   form.successCodePath = ''
   form.successCodeValue = ''
   form.gitUrl = ''
@@ -771,6 +979,7 @@ function openEdit(row: ProjectRow) {
   Object.assign(form, splitName(row.name))
   form.description = row.description || ''
   form.category = row.category || selectedCategoryKey.value || 'APP'
+  form.kind = row.kind || 'BACKEND'
   form.successCodePath = row.successCodePath || ''
   form.successCodeValue = row.successCodeValue || ''
   form.gitUrl = row.gitUrl || ''
@@ -792,6 +1001,7 @@ async function toggleEnabled(row: ProjectRow, enabled: boolean) {
       name: row.name,
       description: row.description || '',
       category: row.category || selectedCategoryKey.value,
+      kind: row.kind || 'BACKEND',
       successCodePath: row.successCodePath || '',
       successCodeValue: row.successCodeValue || '',
       enabled,
@@ -822,6 +1032,7 @@ async function save() {
       name: joinName(form.name, form.nameZh),
       description: form.description,
       category: String(form.category).trim(),
+      kind: form.kind,
       successCodePath: form.successCodePath.trim(),
       successCodeValue: form.successCodeValue.trim(),
       gitUrl: (form.gitUrl || '').trim(),
@@ -1048,10 +1259,154 @@ onMounted(load)
   font-weight: 600;
   color: var(--el-text-color-primary);
 }
-.cat-list {
+.cat-group {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
+}
+.kind-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 10px 4px 22px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  color: var(--el-text-color-regular);
+  cursor: pointer;
+}
+.kind-item:hover {
+  background: var(--el-fill-color-lighter);
+}
+.kind-item.active {
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+  font-weight: 600;
+}
+.kind-label {
+  flex: 1;
+}
+.kind-tag {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+  font-weight: 400;
+}
+.op-grid {
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  justify-items: start;
+  column-gap: 12px;
+  row-gap: 2px;
+}
+.op-grid :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+.db-pop {
+  font-size: 13px;
+}
+.db-pop-group {
+  padding: 14px 16px 12px;
+}
+.db-pop-group + .db-pop-group {
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+.db-pop-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.db-pop-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.db-pop-dot.is-test { background: #22c55e; }
+.db-pop-dot.is-prod { background: #f59e0b; }
+.db-pop-title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.db-pop-count {
+  min-width: 26px;
+  padding: 0 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 20px;
+  font-weight: 600;
+  text-align: center;
+}
+.db-pop-count.is-test { color: #2563eb; background: #e8f0fe; }
+.db-pop-count.is-prod { color: #b45309; background: #fef3c7; }
+.db-pop-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.db-pop-name {
+  padding: 3px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: #f3f4f6;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--el-text-color-primary);
+}
+.db-pop-name.is-own {
+  border-color: #fcd34d;
+  background: #fffbeb;
+  color: #b45309;
+}
+.db-pop-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.db-pop-more b {
+  color: var(--el-text-color-primary);
+}
+.db-pop-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 20px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--el-border-color-lighter);
+  background: #fafafa;
+}
+.db-pop-link,
+.db-pop-ghost {
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 13px;
+  cursor: pointer;
+}
+.db-pop-link {
+  font-weight: 600;
+  color: var(--el-color-primary);
+}
+.db-pop-ghost {
+  color: var(--el-text-color-secondary);
+}
+.db-pop-link:hover,
+.db-pop-ghost:hover {
+  opacity: 0.8;
 }
 .cat-item {
   display: flex;
