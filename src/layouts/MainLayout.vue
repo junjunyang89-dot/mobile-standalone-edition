@@ -30,19 +30,21 @@
           <el-menu-item index="/home">工作台</el-menu-item>
           <!-- APP 门户暂隐藏，恢复时去掉 v-if="false" -->
           <el-menu-item v-if="false" index="/app-portal">APP 门户</el-menu-item>
-          <el-menu-item index="/codewords-agent">AI助手</el-menu-item>
-          <el-menu-item index="/env-setup">环境搭建</el-menu-item>
+          <el-menu-item v-if="canVisit('/codewords-agent')" index="/codewords-agent">AI助手</el-menu-item>
+          <el-menu-item v-if="canVisit('/analysis-tasks')" index="/analysis-tasks">分析任务</el-menu-item>
+          <el-menu-item v-if="canVisit('/env-setup')" index="/env-setup">环境搭建</el-menu-item>
         </el-sub-menu>
 
-        <el-sub-menu index="test-cases">
+        <el-sub-menu v-if="showTestCasesMenu" index="test-cases">
           <template #title>
             <el-icon><Document /></el-icon>
             <span>测试用例</span>
           </template>
-          <el-menu-item index="/bug-management">Bug 管理</el-menu-item>
-          <el-menu-item index="/issue-tracking">线上问题跟踪</el-menu-item>
+          <el-menu-item v-if="canVisit('/bug-management')" index="/bug-management">Bug 管理</el-menu-item>
+          <el-menu-item v-if="canVisit('/issue-tracking')" index="/issue-tracking">线上问题跟踪</el-menu-item>
           <el-menu-item
             v-for="suite in TEST_CASE_SUITES"
+            v-show="canVisit('/test-cases')"
             :key="suite.key"
             :index="`/test-cases/${suite.key}`"
             :title="suite.fullTitle || suite.title"
@@ -51,32 +53,32 @@
           </el-menu-item>
         </el-sub-menu>
 
-        <el-sub-menu index="assets">
+        <el-sub-menu v-if="showAssetsMenu" index="assets">
           <template #title>
             <el-icon><DocumentCopy /></el-icon>
             <span>资产管理</span>
           </template>
-          <el-menu-item index="/api-projects">项目管理</el-menu-item>
+          <el-menu-item v-if="canVisit('/api-projects')" index="/api-projects">项目管理</el-menu-item>
           <el-menu-item v-if="canVisit('/devices')" index="/devices">设备池</el-menu-item>
           <el-menu-item v-if="canVisit('/ui-apps')" index="/ui-apps">应用管理</el-menu-item>
           <el-menu-item v-if="canVisit('/app-packs')" index="/app-packs">APP 打包</el-menu-item>
         </el-sub-menu>
 
-        <el-sub-menu index="api-test">
+        <el-sub-menu v-if="showApiTestMenu" index="api-test">
           <template #title>
             <el-icon><Link /></el-icon>
             <span>接口测试</span>
           </template>
-          <el-menu-item index="/api-collections">用例集合</el-menu-item>
+          <el-menu-item v-if="canVisit('/api-collections')" index="/api-collections">用例集合</el-menu-item>
           <!--
             原来叫「接口清单」「接口列表」，中文里几乎同义，谁也分不出哪个是哪个。
             一个是「有哪些接口」（事实）；用例在「用例集合」里按接口管理，不再单独开「接口用例」页
           -->
-          <el-menu-item index="/api-endpoints">接口管理</el-menu-item>
+          <el-menu-item v-if="canVisit('/api-endpoints')" index="/api-endpoints">接口管理</el-menu-item>
           <el-menu-item v-if="canVisit('/api-environments')" index="/api-environments">环境变量</el-menu-item>
-          <el-menu-item index="/api-reports">执行报告</el-menu-item>
-          <el-menu-item index="/api-changes">接口对比分析</el-menu-item>
-          <el-menu-item index="/api-changes-v2">接口对比分析2</el-menu-item>
+          <el-menu-item v-if="canVisit('/api-reports')" index="/api-reports">执行报告</el-menu-item>
+          <el-menu-item v-if="canVisit('/api-changes')" index="/api-changes">接口对比分析</el-menu-item>
+          <el-menu-item v-if="canVisit('/api-changes-v2')" index="/api-changes-v2">接口对比分析2</el-menu-item>
         </el-sub-menu>
 
         <el-sub-menu v-if="canVisit('/api-schedules')" index="schedules">
@@ -96,7 +98,8 @@
                执行入口也调同一个接口，而且是功能更弱的那份（不能选包、不能传执行参数）。
                筛选器流程编排页本来就有（还多了用途和名称），「最近结果」列已搬过去，
                批量执行归「APP回归」。 -->
-          <el-menu-item index="/tasks">APP测试任务</el-menu-item>
+          <el-menu-item v-if="canVisit('/tasks')" index="/tasks">APP测试任务</el-menu-item>
+          <el-menu-item v-if="canVisit('/smart-app')" index="/smart-app">智能 APP 自动化</el-menu-item>
           <el-menu-item v-if="canVisit('/ui-flows')" index="/ui-flows">流程编排</el-menu-item>
           <el-menu-item v-if="canVisit('/ui-elements')" index="/ui-elements">元素管理</el-menu-item>
           <el-menu-item v-if="canVisit('/ui-inspector-import')" index="/ui-inspector-import">Inspector XML 导入</el-menu-item>
@@ -105,20 +108,20 @@
           <el-menu-item v-if="canVisit('/reports')" index="/reports">APP UI测试报告</el-menu-item>
         </el-sub-menu>
 
-        <el-sub-menu index="tools">
+        <el-sub-menu v-if="showToolsMenu" index="tools">
           <template #title>
             <el-icon><Connection /></el-icon>
             <span>测试工具</span>
           </template>
-          <el-menu-item index="/packet-capture">抓包</el-menu-item>
-          <el-menu-item index="/status-monitor">状态监控</el-menu-item>
+          <el-menu-item v-if="canVisit('/packet-capture')" index="/packet-capture">抓包</el-menu-item>
+          <el-menu-item v-if="canVisit('/status-monitor')" index="/status-monitor">状态监控</el-menu-item>
           <el-menu-item v-if="canVisit('/redis-tool')" index="/redis-tool">Redis 查询</el-menu-item>
           <el-menu-item v-if="canVisit('/kafka-tool')" index="/kafka-tool">Kafka 查询</el-menu-item>
           <el-menu-item v-if="canVisit('/incident-playbooks')" index="/incident-playbooks">事故沉淀</el-menu-item>
-          <el-menu-item index="/tracking-check">埋点校验</el-menu-item>
+          <el-menu-item v-if="canVisit('/tracking-check')" index="/tracking-check">埋点校验</el-menu-item>
         </el-sub-menu>
 
-        <el-sub-menu index="perf-test">
+        <el-sub-menu v-if="showPerfMenu" index="perf-test">
           <template #title>
             <el-icon><DataAnalysis /></el-icon>
             <span>性能测试</span>
@@ -127,14 +130,14 @@
             <template #title>
               <span>完美世界电竞</span>
             </template>
-            <el-menu-item index="/performance-baseline">安卓性能测试</el-menu-item>
-            <el-menu-item index="/reports/esports/performance">性能报告</el-menu-item>
-            <el-menu-item index="/special-report">版本质量卡</el-menu-item>
-            <el-menu-item index="/performance">性能监控</el-menu-item>
+            <el-menu-item v-if="canVisit('/performance-baseline')" index="/performance-baseline">安卓性能测试</el-menu-item>
+            <el-menu-item v-if="canVisit('/reports/esports/performance')" index="/reports/esports/performance">性能报告</el-menu-item>
+            <el-menu-item v-if="canVisit('/special-report')" index="/special-report">版本质量卡</el-menu-item>
+            <el-menu-item v-if="canVisit('/performance')" index="/performance">性能监控</el-menu-item>
           </el-sub-menu>
         </el-sub-menu>
 
-        <el-sub-menu v-if="showHandbookMenu" index="knowledge-handbook">
+        <el-sub-menu v-if="showHandbookMenu && canVisit('/knowledge-handbook')" index="knowledge-handbook">
           <template #title>
             <el-icon><Notebook /></el-icon>
             <span>知识手册</span>
@@ -153,24 +156,25 @@
           </el-sub-menu>
         </el-sub-menu>
 
-        <el-sub-menu index="app-release">
+        <el-sub-menu v-if="showReleaseMenu" index="app-release">
           <template #title>
             <el-icon><DocumentCopy /></el-icon>
             <span>APP发版</span>
           </template>
-          <el-menu-item index="/release-doc">发版文档</el-menu-item>
+          <el-menu-item v-if="canVisit('/release-doc')" index="/release-doc">发版文档</el-menu-item>
           <el-menu-item v-if="canVisit('/release-merge')" index="/release-merge">合并到 master</el-menu-item>
-          <el-menu-item index="/release-go-live">上线看板</el-menu-item>
-          <el-menu-item index="/version-archives">版本需求归档</el-menu-item>
+          <el-menu-item v-if="canVisit('/testing-merge')" index="/testing-merge">合并到 testing</el-menu-item>
+          <el-menu-item v-if="canVisit('/release-go-live')" index="/release-go-live">上线看板</el-menu-item>
+          <el-menu-item v-if="canVisit('/version-archives')" index="/version-archives">版本需求归档</el-menu-item>
         </el-sub-menu>
 
-        <el-sub-menu index="other">
+        <el-sub-menu v-if="canManageUsers || canVisit('/settings')" index="other">
           <template #title>
             <el-icon><Setting /></el-icon>
             <span>权限与设置</span>
           </template>
           <el-menu-item v-if="canManageUsers" index="/platform-users">账号与权限</el-menu-item>
-          <el-menu-item index="/settings">设置</el-menu-item>
+          <el-menu-item v-if="canVisit('/settings')" index="/settings">设置</el-menu-item>
         </el-sub-menu>
       </el-menu>
     </el-aside>
@@ -305,15 +309,59 @@ const roleTagType = computed(() => {
 /** 知识手册暂时不在侧栏露出；路由还在，别处跳过去的链接照常能打开 */
 const showHandbookMenu = false
 
+const showTestCasesMenu = computed(
+  () => canVisit('/bug-management') || canVisit('/issue-tracking') || canVisit('/test-cases')
+)
+const showAssetsMenu = computed(
+  () =>
+    canVisit('/api-projects') ||
+    canVisit('/devices') ||
+    canVisit('/ui-apps') ||
+    canVisit('/app-packs')
+)
+const showApiTestMenu = computed(
+  () =>
+    canVisit('/api-collections') ||
+    canVisit('/api-endpoints') ||
+    canVisit('/api-environments') ||
+    canVisit('/api-reports') ||
+    canVisit('/api-changes') ||
+    canVisit('/api-changes-v2')
+)
 const showAppAutoMenu = computed(
   () =>
     canVisit('/tasks') ||
     canVisit('/ui-flows') ||
+    canVisit('/smart-app') ||
     canVisit('/ui-elements') ||
     canVisit('/ui-inspector-import') ||
     canVisit('/ui-keywords') ||
     canVisit('/app-online-regression') ||
     canVisit('/reports')
+)
+const showToolsMenu = computed(
+  () =>
+    canVisit('/packet-capture') ||
+    canVisit('/status-monitor') ||
+    canVisit('/redis-tool') ||
+    canVisit('/kafka-tool') ||
+    canVisit('/incident-playbooks') ||
+    canVisit('/tracking-check')
+)
+const showPerfMenu = computed(
+  () =>
+    canVisit('/performance-baseline') ||
+    canVisit('/reports/esports/performance') ||
+    canVisit('/special-report') ||
+    canVisit('/performance')
+)
+const showReleaseMenu = computed(
+  () =>
+    canVisit('/release-doc') ||
+    canVisit('/release-merge') ||
+    canVisit('/testing-merge') ||
+    canVisit('/release-go-live') ||
+    canVisit('/version-archives')
 )
 
 const pwdVisible = ref(false)
@@ -395,6 +443,7 @@ const defaultOpeneds = computed(() => {
   if (
     p.startsWith('/tasks') ||
     p.startsWith('/ui-flows') ||
+    p.startsWith('/smart-app') ||
     p.startsWith('/ui-record') ||
     p.startsWith('/ui-keywords') ||
     p.startsWith('/ui-elements') ||
@@ -434,6 +483,7 @@ const defaultOpeneds = computed(() => {
     p.startsWith('/release-doc') ||
     p.startsWith('/release-go-live') ||
     p.startsWith('/release-merge') ||
+    p.startsWith('/testing-merge') ||
     p.startsWith('/version-archives') ||
     p.startsWith('/change-review')
   ) {
@@ -513,6 +563,8 @@ function restorePages() {
     if (!isLayoutChild(item.fullPath)) continue
     const resolved = router.resolve(item.fullPath)
     if (resolved.matched.some((m) => m.redirect)) continue
+    // 本地缓存里可能是上次全权限账号留下的页签，没权限的不要再露出来
+    if (!canVisit(resolved.path)) continue
     const key = pageTabKey(resolved.path, resolved.query)
     if (key !== item.key || openPages.value.some((t) => t.key === key)) continue
     const isCurrent = key === currentKey

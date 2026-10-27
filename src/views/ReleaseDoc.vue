@@ -82,9 +82,17 @@
                   <el-input v-model="row.qaAssignee" />
                 </template>
               </el-table-column>
-              <el-table-column label="备注" min-width="160">
+              <el-table-column label="备注" min-width="180">
                 <template #default="{ row }">
-                  <el-input v-model="row.remarks" type="textarea" :autosize="{ minRows: 2, maxRows: 6 }" />
+                  <div v-if="row.remarks && String(row.remarks).includes('【需确认】')" class="remark-warn">
+                    需和开发确认（缺库名等）
+                  </div>
+                  <el-input
+                    v-model="row.remarks"
+                    type="textarea"
+                    :autosize="{ minRows: 2, maxRows: 6 }"
+                    :class="{ 'remark-warn-input': row.remarks && String(row.remarks).includes('【需确认】') }"
+                  />
                 </template>
               </el-table-column>
             </el-table>
@@ -101,7 +109,7 @@
             type="info"
             :closable="false"
             show-icon
-            title="建议先在「发版文档」生成 Wiki，再点「生成邮件草稿」。正文按发版通知模版组装，可编辑后发送。"
+            title="建议先在「发版文档」生成 Wiki。生成草稿与发送前都会重新拉取 Wiki 最新表格，Wiki 改过后再发也不会用旧内容。"
             style="margin-bottom: 16px" />
 
           <el-form :model="mailForm" label-width="120px" style="max-width: 900px">
@@ -147,9 +155,47 @@
               :autosize="{ minRows: 8, maxRows: 20 }"
               class="mail-html-editor" />
           </template>
-          <el-empty v-else description="填写标题与 Wiki 地址后点「生成邮件草稿」（有表格缓存会直接用，否则从 Wiki 拉取）" />
+          <el-empty v-else description="填写标题与 Wiki 地址后点「生成邮件草稿」（每次都会从 Wiki 拉最新表格）" />
         </el-tab-pane>
       </el-tabs>
+
+      <el-dialog
+        v-model="deferredDialogVisible"
+        title="疑似不跟本版本 — 请确认"
+        width="780px"
+        :close-on-click-modal="false"
+        destroy-on-close
+      >
+        <p class="deferred-hint">
+          以下单在标题或备注里写了「不跟版本 / 对外时间待定」等。默认<strong>不跟</strong>本版本。
+          勾选后点确认，会记入校对表格并随本版本生成 Wiki。
+        </p>
+        <el-table
+          ref="deferredTableRef"
+          :data="deferredCandidates"
+          stripe
+          border
+          max-height="420"
+          @selection-change="onDeferredSelectionChange"
+        >
+          <el-table-column type="selection" width="48" />
+          <el-table-column label="任务" min-width="240">
+            <template #default="{ row }">
+              <a v-if="row.issueUrl" :href="row.issueUrl" target="_blank" rel="noopener">{{ row.summary }}</a>
+              <span v-else>{{ row.summary }}</span>
+              <div v-if="row.issueKey" class="deferred-key">{{ row.issueKey }}</div>
+            </template>
+          </el-table-column>
+          <el-table-column label="命中话术" min-width="200" prop="deferredReason" />
+          <el-table-column label="QA" width="100" prop="qaAssignee" />
+        </el-table>
+        <template #footer>
+          <el-button @click="skipAllDeferred">都不跟本版本</el-button>
+          <el-button type="primary" @click="confirmDeferredSelection">
+            确认（勾选 {{ deferredSelected.length }} 单跟本版本）
+          </el-button>
+        </template>
+      </el-dialog>
     </el-card>
   </div>
 </template>
@@ -169,6 +215,10 @@ const previewing = ref(false)
 const generating = ref(false)
 const result = ref<any>(null)
 const rows = ref<any[]>([])
+const deferredDialogVisible = ref(false)
+const deferredCandidates = ref<any[]>([])
+const deferredSelected = ref<any[]>([])
+const deferredTableRef = ref<any>(null)
 
 const mailForm = reactive({
   title: '',
@@ -207,12 +257,62 @@ async function doPreview() {
     })
     rows.value = (result.value?.rows || []).map((r: any) => ({ ...r }))
     mailForm.title = form.title.trim()
-    ElMessage.success(`预览完成，共 ${rows.value.length} 条，请校对后再生成`)
+    const deferred = (result.value?.deferredCandidates || []).map((r: any) => ({ ...r }))
+    deferredCandidates.value = deferred
+    deferredSelected.value = []
+    if (deferred.length > 0) {
+      deferredDialogVisible.value = true
+      ElMessage.success(
+        `预览完成 ${rows.value.length} 条；另有 ${deferred.length} 单疑似不跟版本，请在弹窗中确认`
+      )
+    } else {
+      ElMessage.success(`预览完成，共 ${rows.value.length} 条，请校对后再生成`)
+    }
   } catch (e: any) {
     ElMessage.error(e?.message || '预览失败')
   } finally {
     previewing.value = false
   }
+}
+
+function onDeferredSelectionChange(sel: any[]) {
+  deferredSelected.value = sel || []
+}
+
+function markFollowVersion(row: any) {
+  const reason = row.deferredReason ? `（原：${row.deferredReason}）` : ''
+  const note = `【人工确认】跟本版本上线${reason}`
+  const remarks = (row.remarks || '').trim()
+  return {
+    ...row,
+    deferredCandidate: false,
+    deferredReason: undefined,
+    remarks: !remarks || remarks === '无' ? note : `${note}\n${remarks}`
+  }
+}
+
+function confirmDeferredSelection() {
+  const picked = deferredSelected.value.map(markFollowVersion)
+  if (picked.length) {
+    const keys = new Set(rows.value.map((r: any) => r.issueKey).filter(Boolean))
+    for (const r of picked) {
+      if (r.issueKey && keys.has(r.issueKey)) continue
+      rows.value.push(r)
+    }
+    ElMessage.success(`已纳入 ${picked.length} 单跟本版本，请继续校对表格`)
+  } else {
+    ElMessage.info('未勾选任何单，均不跟本版本')
+  }
+  deferredDialogVisible.value = false
+  deferredCandidates.value = []
+  deferredSelected.value = []
+}
+
+function skipAllDeferred() {
+  deferredDialogVisible.value = false
+  deferredCandidates.value = []
+  deferredSelected.value = []
+  ElMessage.info('已跳过疑似不跟版本的单')
 }
 
 async function doGenerate() {
@@ -266,8 +366,7 @@ async function doMailDraft() {
   try {
     const draft = await apiClient.previewReleaseMail({
       title: mailForm.title.trim(),
-      wikiPageUrl: mailForm.wikiPageUrl.trim(),
-      rows: rows.value.length ? rows.value : undefined
+      wikiPageUrl: mailForm.wikiPageUrl.trim()
     })
     mailForm.subject = draft?.subject || `【发版通知】${mailForm.title.trim()}`
     mailForm.htmlBody = draft?.htmlBody || ''
@@ -296,7 +395,7 @@ async function doMailSend() {
     return
   }
   await ElMessageBox.confirm(
-    `确认发送发版邮件到 ${mailForm.to.trim()}？`,
+    `发送前会再从 Wiki 拉取最新表格，然后发到 ${mailForm.to.trim()}。确认？`,
     '发送邮件',
     { type: 'warning' }
   )
@@ -306,8 +405,13 @@ async function doMailSend() {
       to: mailForm.to.trim(),
       cc: mailForm.cc.trim() || undefined,
       subject: mailForm.subject.trim(),
-      htmlBody: mailForm.htmlBody
+      htmlBody: mailForm.htmlBody,
+      title: mailForm.title.trim(),
+      wikiPageUrl: mailForm.wikiPageUrl.trim()
     })
+    if (res?.htmlBody) {
+      mailForm.htmlBody = res.htmlBody
+    }
     ElMessage.success(res?.message || '已发送')
   } catch (e: any) {
     ElMessage.error(e?.message || '发送失败')
@@ -360,5 +464,26 @@ async function doMailSend() {
   margin-left: 12px;
   font-size: 12px;
   color: var(--app-warning);
+}
+.remark-warn {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #d93025;
+}
+.remark-warn-input :deep(textarea) {
+  color: #d93025;
+  font-weight: 600;
+}
+.deferred-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--app-text-secondary);
+}
+.deferred-key {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--app-text-secondary);
 }
 </style>

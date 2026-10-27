@@ -18,7 +18,7 @@ import {
 const welcome: ChatMsg = {
   role: 'assistant',
   content:
-    '你好！我是 AI 助手（千问）。\n\n我可以帮你：\n• 按问题检索「知识手册」短记并展示命中卡片\n• 记住并检索测试流程（知识库）\n• 拖入需求/截图后点「生成测试用例」\n• 监控 H5/App 页面元素变化\n\n直接说需求即可。例如：接口测试要覆盖哪些点？'
+    '你好！我是 AI 助手。\n\n我可以帮你：\n• 按问题检索「知识手册」短记并展示命中卡片\n• 记住并检索测试流程（知识库）\n• 拖入需求/截图后点「生成测试用例」\n• 监控 H5/App 页面元素变化\n\n直接说需求即可。例如：接口测试要覆盖哪些点？'
 }
 
 const TIPS_SEEN_KEY = 'codewords-agent-tips-seen'
@@ -289,7 +289,7 @@ export function useAgent() {
   async function generateTestCasesFromAgent() {
     if (loading.value || uploading.value) return
     if (!status.value?.configured) {
-      ElMessage.warning('千问未配置：请在 application.yml 填写 diagnosis.ai.api-key')
+      ElMessage.warning('AI 未配置：千问填 diagnosis.ai.api-key，ChatGPT 填 ai.openai.api-key（application.yml）')
       return
     }
 
@@ -376,7 +376,7 @@ export function useAgent() {
       }
       messages.value.push({
         role: 'assistant',
-        content: `❌ 生成失败：${e?.message || '请检查网络与千问配置'}`
+        content: `❌ 生成失败：${e?.message || '请检查网络与 AI 模型配置'}`
       })
       pushLog('测试用例生成', false)
       await persistConversation()

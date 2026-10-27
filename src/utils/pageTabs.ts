@@ -19,6 +19,7 @@ type TitleSource = {
 
 const titleMap: Record<string, string> = {
   '/home': '工作台',
+  '/analysis-tasks': '分析任务',
   '/app-portal': 'APP 门户',
   '/tasks': 'APP测试任务',
   '/codewords-agent': 'AI助手',
@@ -26,6 +27,7 @@ const titleMap: Record<string, string> = {
   '/ui-elements': '元素管理',
   '/ui-record': '从模拟器录制',
   '/ui-flows': '流程编排',
+  '/smart-app': '智能 APP 自动化',
   '/ui-keywords': '关键字库',
   '/ui-inspector-import': 'Inspector XML 导入',
   '/requirements': '需求登记',
@@ -46,6 +48,7 @@ const titleMap: Record<string, string> = {
   '/release-doc': '发版文档与邮件管理',
   '/release-go-live': '上线看板',
   '/release-merge': '合并到 master',
+  '/testing-merge': '合并到 testing',
   '/version-archives': '版本需求归档',
   '/change-review': '本周改动 / 漏测看板',
   '/bug-management': 'Bug 管理',

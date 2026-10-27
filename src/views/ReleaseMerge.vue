@@ -17,6 +17,8 @@
         <el-link type="primary" @click="openSettings">去填</el-link>
       </div>
 
+      <el-tabs v-model="mainTab" class="main-tabs">
+        <el-tab-pane label="版本迭代" name="version">
       <div class="order">
         <span class="order-label">发版顺序</span>
         <span class="step"><b>1</b>执行 SQL</span>
@@ -29,16 +31,163 @@
         <span class="order-tip">顺序反了线上会挂</span>
       </div>
 
+      <div class="wiki-row">
+        <el-input
+          v-model="wikiUrl"
+          clearable
+          class="wiki-input"
+          placeholder="发版 Wiki 地址，如 https://wiki.shdev.net/pages/viewpage.action?pageId=119730957"
+          @keyup.enter="loadFromWiki"
+        />
+        <el-button type="success" :loading="wikiLoading" :disabled="!wikiUrl.trim()" @click="loadFromWiki">
+          从 Wiki 归纳
+        </el-button>
+      </div>
+
+      <div v-if="board" class="board-progress">
+        <span>
+          已合并 {{ board.mergedCount ?? 0 }} / {{ board.branchCount ?? 0 }} · 已上线
+          {{ board.releasedCount ?? 0 }} / {{ board.branchCount ?? 0 }}
+        </span>
+        <span class="muted">
+          {{ board.projectCount }} 个项目 · {{ board.issueCount }} 条需求 · pageId {{ board.wikiPageId }}
+        </span>
+      </div>
+
+      <el-table
+        v-if="board"
+        :data="branchRows"
+        border
+        stripe
+        size="small"
+        row-key="_key"
+        class="board-table"
+        :span-method="projectSpanMethod"
+        empty-text="未解析到项目分支"
+      >
+        <el-table-column label="项目" min-width="140" fixed>
+          <template #default="{ row }">
+            <div class="project-cell">
+              <b>{{ row.project }}</b>
+              <el-tag size="small" :type="row.layer === 'frontend' ? 'warning' : 'info'" effect="plain">
+                {{ row.layer === 'frontend' ? '前端' : '后端' }}
+              </el-tag>
+              <div class="muted">{{ row.projectBranchCount }} 分支</div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="分支" min-width="260" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span class="mono branch-name">{{ row.branch }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="关联需求" min-width="280">
+          <template #default="{ row }">
+            <template v-if="row.matchedIssues.length">
+              <div v-for="(iss, i) in row.matchedIssues" :key="i" class="issue-block">
+                <a
+                  v-if="iss.issueUrl"
+                  class="issue-key"
+                  :href="iss.issueUrl"
+                  target="_blank"
+                  rel="noopener"
+                  >{{ iss.issueKey || '需求' }}</a
+                >
+                <span v-else class="issue-key">{{ iss.issueKey || '需求' }}</span>
+                <div v-if="iss.summary" class="issue-summary">{{ iss.summary }}</div>
+                <div v-if="iss.qaAssignee" class="muted">测试：{{ iss.qaAssignee }}</div>
+              </div>
+            </template>
+            <span v-else class="muted">—</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="合并" width="110" align="center">
+          <template #default="{ row }">
+            <el-button
+              size="small"
+              :type="row.item.mergedMaster ? 'success' : 'warning'"
+              :plain="!row.item.mergedMaster"
+              :loading="savingKey === saveKey(row.project, row.branch, 'm')"
+              @click="toggleMerged(row.projectRow, row.item)"
+            >
+              {{ row.item.mergedMaster ? '已合并' : '待合并' }}
+            </el-button>
+          </template>
+        </el-table-column>
+        <el-table-column label="master 核对" min-width="200">
+          <template #default="{ row }">
+            <div v-if="row.item.masterCheck?.status" class="check-cell">
+              <el-tag
+                size="small"
+                :type="masterCheckTagType(row.item.masterCheck.status)"
+                effect="light"
+              >
+                {{ masterCheckLabel(row.item.masterCheck.status) }}
+              </el-tag>
+              <div class="check-msg" :class="'ck-' + row.item.masterCheck.status">
+                {{ row.item.masterCheck.message }}
+              </div>
+              <el-button
+                v-if="row.item.mergedMaster"
+                size="small"
+                text
+                type="primary"
+                :loading="savingKey === saveKey(row.project, row.branch, 'v')"
+                @click="reverifyMaster(row.projectRow, row.item)"
+              >
+                重新核对
+              </el-button>
+            </div>
+            <span v-else class="muted">点「待合并」后自动核对</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="Jenkins" min-width="220">
+          <template #default="{ row }">
+            <div v-if="row.jenkins?.configured" class="jenkins-cell">
+              <el-tag size="small" :type="jenkinsTagType(row.jenkins)" effect="light">
+                {{ row.jenkins.summary || row.jenkins.error || 'Jenkins' }}
+              </el-tag>
+              <div v-if="row.jenkins.lastSuccessNumber != null" class="jenkins-num">
+                成功包 <b>#{{ row.jenkins.lastSuccessNumber }}</b>
+                <span v-if="row.jenkins.lastSuccessTime" class="muted">
+                  · {{ row.jenkins.lastSuccessTime }}
+                </span>
+              </div>
+              <div v-else-if="row.jenkins.error" class="muted">{{ row.jenkins.error }}</div>
+              <div v-else class="muted">平台账号已自动拉取，无需登录 Jenkins</div>
+            </div>
+            <span v-else class="muted">未配置 job</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="上线" width="110" align="center">
+          <template #default="{ row }">
+            <el-button
+              size="small"
+              :type="row.item.released ? 'success' : 'info'"
+              :plain="!row.item.released"
+              :loading="savingKey === saveKey(row.project, row.branch, 'r')"
+              @click="toggleReleased(row.projectRow, row.item)"
+            >
+              {{ row.item.released ? '已上线' : '待上线' }}
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <el-divider content-position="left">代码核对 / 合并</el-divider>
       <el-input
         v-model="text"
         type="textarea"
-        :rows="4"
+        :rows="3"
         class="mono"
-        :placeholder="'每行一个「项目：分支」，多个项目同一个分支用顿号隔开，例如\napp-comment-service：feature/comment-score\napp-community、data-center：dyl/2026-10-06/APP-9103'"
+        :placeholder="'每行一个「项目：分支」，例如\napp-admin：agent/2026-09-24/rating_switch'"
       />
       <div class="actions">
+        <el-button v-if="board" :disabled="!boardLines" @click="fillFromBoard">用上方表格填入</el-button>
         <el-button type="primary" :loading="checking" :disabled="!text.trim()" @click="check">核对</el-button>
-        <span class="muted">核对只读代码，不会合并；在上线目录 <code>{{ settings?.reposDir || '…' }}</code> 里比对</span>
+        <span class="muted">
+          核对只读代码，不会合并；在上线目录 <code>{{ settings?.reposDir || '…' }}</code> 里比对
+        </span>
       </div>
 
       <div v-if="rows.length" class="summary">
@@ -113,6 +262,92 @@
           </div>
         </div>
       </div>
+        </el-tab-pane>
+
+        <el-tab-pane label="每日发版" name="daily">
+          <div class="daily-head">
+            <div class="daily-date">
+              发版日期
+              <b>{{ dailyDateLabel }}</b>
+              <el-tag size="small" type="warning" effect="plain">当日发版</el-tag>
+            </div>
+            <span class="muted">已合并超过 5 分钟仍未上线会弹窗提醒</span>
+          </div>
+
+          <el-input
+            v-model="dailyText"
+            type="textarea"
+            :rows="5"
+            class="mono"
+            :placeholder="'每行一个「项目：分支」，例如\napp-admin：agent/2026-09-24/rating_switch\napp-swift：rjy/APP-9066/9-17/noviceStrategy'"
+          />
+          <div class="actions">
+            <el-button v-if="board" :disabled="!boardLines" @click="fillDailyFromBoard">从版本迭代填入</el-button>
+            <el-button type="primary" :loading="dailyLoading" :disabled="!dailyText.trim()" @click="loadDaily">
+              生成校对表
+            </el-button>
+          </div>
+
+          <el-table
+            v-if="dailyRows.length"
+            :data="dailyRows"
+            border
+            stripe
+            size="small"
+            class="board-table daily-table"
+            empty-text="先粘贴项目：分支并生成校对表"
+          >
+            <el-table-column label="项目" min-width="120" prop="project" />
+            <el-table-column label="分支" min-width="240" show-overflow-tooltip>
+              <template #default="{ row }">
+                <span class="mono branch-name">{{ row.branch }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="合并" width="110" align="center">
+              <template #default="{ row }">
+                <el-button
+                  size="small"
+                  :type="row.mergedMaster ? 'success' : 'warning'"
+                  :plain="!row.mergedMaster"
+                  :loading="savingKey === saveKey(row.project, row.branch, 'dm')"
+                  @click="toggleDailyMerged(row)"
+                >
+                  {{ row.mergedMaster ? '已合并' : '待合并' }}
+                </el-button>
+              </template>
+            </el-table-column>
+            <el-table-column label="Jenkins构建编号" min-width="180">
+              <template #default="{ row }">
+                <template v-if="row.jenkins?.lastSuccessNumber != null">
+                  <el-tag size="small" :type="jenkinsTagType(row.jenkins)" effect="light">
+                    {{ row.jenkins.summary || '打包成功' }}
+                  </el-tag>
+                  <div class="jenkins-num">
+                    <b>#{{ row.jenkins.lastSuccessNumber }}</b>
+                    <span v-if="row.jenkins.lastSuccessTime" class="muted">
+                      · {{ row.jenkins.lastSuccessTime }}
+                    </span>
+                  </div>
+                </template>
+                <span v-else class="muted">{{ row.jenkins?.summary || row.jenkins?.error || '未配置 / 拉取中' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="上线" width="110" align="center">
+              <template #default="{ row }">
+                <el-button
+                  size="small"
+                  :type="row.released ? 'success' : 'info'"
+                  :plain="!row.released"
+                  :loading="savingKey === saveKey(row.project, row.branch, 'dr')"
+                  @click="toggleDailyReleased(row)"
+                >
+                  {{ row.released ? '已上线' : '待上线' }}
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+      </el-tabs>
     </el-card>
 
     <el-dialog v-model="mergeVisible" width="620px" append-to-body title="合并到 master">
@@ -191,19 +426,381 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { Setting, Tickets } from '@element-plus/icons-vue'
 import { apiClient } from '../api'
 
 const KIND: Record<string, string> = { BACKEND: '后端', FRONTEND: '前端', CLIENT: '客户端' }
 const LOG_STATUS: Record<string, string> = { MERGED: '已合并', MERGED_UNVERIFIED: '已合并', FAILED: '失败' }
+const WIKI_KEY = 'release-go-live-wiki-url'
+const DAILY_TEXT_KEY = 'release-daily-text:'
+const REMIND_MS = 5 * 60 * 1000
 
 const text = ref('')
+const wikiUrl = ref(localStorage.getItem(WIKI_KEY) || '')
+const wikiLoading = ref(false)
+const board = ref<any>(null)
+const savingKey = ref('')
 const rows = ref<any[]>([])
 const checking = ref(false)
 const settings = ref<any>(null)
 const projects = ref<any[]>([])
+
+const dailyDate = ref(todayStr())
+const dailyText = ref('')
+const dailyRows = ref<any[]>([])
+const dailyPageId = ref('')
+const dailyLoading = ref(false)
+const mainTab = ref<'version' | 'daily'>('version')
+const remindedKeys = new Set<string>()
+let remindTimer: number | undefined
+
+const dailyDateLabel = computed(() => {
+  const d = dailyDate.value
+  const parts = d.split('-')
+  if (parts.length !== 3) return d
+  return `${parts[0]}年${Number(parts[1])}月${Number(parts[2])}日`
+})
+
+function todayStr() {
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function isPlaceholderBranch(b: string) {
+  return !b || b.includes('见需求备注') || b === '-' || b === '无'
+}
+
+function saveKey(project: string, branch: string, kind: 'm' | 'r' | 'v' | 'dm' | 'dr') {
+  return `${project}|${branch}|${kind}`
+}
+
+function masterCheckLabel(status: string) {
+  return (
+    {
+      IN_MASTER: '已在 master',
+      NOT_IN_MASTER: '未进 master',
+      ERROR: '核对失败'
+    } as Record<string, string>
+  )[status] || status
+}
+
+function masterCheckTagType(status: string) {
+  if (status === 'IN_MASTER') return 'success'
+  if (status === 'NOT_IN_MASTER') return 'danger'
+  return 'warning'
+}
+
+function ensureBranchItems(p: any) {
+  if (p.branchItems?.length) return
+  p.branchItems = (p.branches || []).map((b: string) => ({
+    branch: b,
+    mergedMaster: !!p.mergedMaster,
+    released: !!p.released
+  }))
+}
+
+function recomputeBoardCounts() {
+  if (!board.value) return
+  let branchTotal = 0
+  let merged = 0
+  let released = 0
+  for (const p of board.value.projects || []) {
+    ensureBranchItems(p)
+    for (const bi of p.branchItems) {
+      if (isPlaceholderBranch(bi.branch)) continue
+      branchTotal++
+      if (bi.mergedMaster) merged++
+      if (bi.released) released++
+    }
+  }
+  board.value.branchCount = branchTotal
+  board.value.mergedCount = merged
+  board.value.releasedCount = released
+}
+
+/** 每个分支一行，项目列用 span 合并 */
+const branchRows = computed(() => {
+  const out: any[] = []
+  if (!board.value) return out
+  for (const p of board.value.projects || []) {
+    ensureBranchItems(p)
+    const real = (p.branchItems || []).filter((bi: any) => !isPlaceholderBranch(bi.branch))
+    real.forEach((bi: any, idx: number) => {
+      out.push({
+        _key: `${p.project}::${bi.branch}`,
+        project: p.project,
+        layer: p.layer,
+        projectBranchCount: real.length,
+        projectRow: p,
+        jenkins: p.jenkins || null,
+        item: bi,
+        branch: bi.branch,
+        span: idx === 0 ? real.length : 0,
+        matchedIssues: matchIssuesForBranch(bi, p.issues || [])
+      })
+    })
+  }
+  return out
+})
+
+function jenkinsTagType(j: any) {
+  if (!j) return 'info'
+  if (j.building) return 'warning'
+  if (j.lastResult === 'SUCCESS' || (j.ok && j.lastSuccessNumber != null && !j.building)) return 'success'
+  if (j.lastResult === 'FAILURE' || j.lastResult === 'UNSTABLE' || j.lastResult === 'ABORTED') return 'danger'
+  if (j.error) return 'warning'
+  return 'info'
+}
+
+const boardLines = computed(() =>
+  branchRows.value.map((r) => `${r.project}: ${r.branch}`).join('\n')
+)
+
+/** 后端 Wiki 行绑定优先；否则用分支名里的 APP-xxx 对项目需求兜底 */
+function matchIssuesForBranch(bi: any, projectIssues: any[]) {
+  if (Array.isArray(bi.issues) && bi.issues.length) return bi.issues
+  const branch = String(bi.branch || '')
+  const keys = new Set([...(branch.match(/APP-\d+/gi) || [])].map((k) => k.toUpperCase()))
+  if (!keys.size || !projectIssues?.length) return []
+  return projectIssues.filter((iss) => keys.has(String(iss.issueKey || '').toUpperCase()))
+}
+
+/** 项目列、Jenkins 列按项目合并单元格 */
+function projectSpanMethod({ column, row }: { column: any; row: any }) {
+  const label = column?.label || ''
+  if (label !== '项目' && label !== 'Jenkins') return { rowspan: 1, colspan: 1 }
+  if (row.span > 0) return { rowspan: row.span, colspan: 1 }
+  return { rowspan: 0, colspan: 0 }
+}
+
+/** 从发版 Wiki 拉表 → 按项目展示分支，每条可点待合并 / 待上线 */
+async function loadFromWiki() {
+  const url = wikiUrl.value.trim()
+  if (!url) {
+    ElMessage.warning('请先粘贴发版 Wiki 地址')
+    return
+  }
+  wikiLoading.value = true
+  try {
+    const data = await apiClient.getReleaseGoLiveBoard(url)
+    localStorage.setItem(WIKI_KEY, url)
+    for (const p of data.projects || []) ensureBranchItems(p)
+    board.value = data
+    recomputeBoardCounts()
+    if (!(data.branchCount > 0 || boardLines.value)) {
+      ElMessage.warning('Wiki 里没解析到「项目：分支」，请确认上线分支列格式')
+      return
+    }
+    ElMessage.success(
+      `已归纳 ${data.projectCount} 个项目 · ${data.branchCount ?? 0} 条分支`
+    )
+  } catch (e: any) {
+    ElMessage.error(e?.message || '从 Wiki 归纳失败')
+  } finally {
+    wikiLoading.value = false
+  }
+}
+
+function fillFromBoard() {
+  if (!boardLines.value) return
+  text.value = boardLines.value
+}
+
+function fillDailyFromBoard() {
+  if (!boardLines.value) return
+  dailyText.value = boardLines.value
+}
+
+async function loadDaily() {
+  const body = dailyText.value.trim()
+  if (!body) {
+    ElMessage.warning('请先粘贴项目：分支')
+    return
+  }
+  dailyDate.value = todayStr()
+  dailyLoading.value = true
+  try {
+    const data = await apiClient.releaseGoLiveDaily({ date: dailyDate.value, text: body })
+    dailyPageId.value = data.wikiPageId
+    dailyRows.value = (data.rows || []).map((r: any) => ({ ...r, _reminded: false }))
+    localStorage.setItem(DAILY_TEXT_KEY + dailyDate.value, body)
+    remindedKeys.clear()
+    ElMessage.success(`已生成 ${dailyDateLabel.value} 校对表 · ${data.rowCount} 条`)
+    checkOverdueReminders()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '生成校对表失败')
+  } finally {
+    dailyLoading.value = false
+  }
+}
+
+async function toggleDailyMerged(row: any) {
+  if (!dailyPageId.value) return
+  const next = !row.mergedMaster
+  const prev = row.mergedMaster
+  const prevAt = row.mergedAt
+  row.mergedMaster = next
+  if (!next) row.mergedAt = null
+  savingKey.value = saveKey(row.project, row.branch, 'dm')
+  try {
+    const res = await apiClient.saveReleaseGoLiveState({
+      wikiPageId: dailyPageId.value,
+      project: row.project,
+      branch: row.branch,
+      mergedMaster: next
+    })
+    row.mergedAt = res?.mergedAt || (next ? new Date().toISOString().slice(0, 19).replace('T', ' ') : null)
+    if (res?.masterCheck) row.masterCheck = res.masterCheck
+    if (next && res?.masterCheck?.status === 'NOT_IN_MASTER') {
+      ElMessage.warning(res.masterCheck.message || '还没进 master')
+    } else if (next && res?.masterCheck?.status === 'IN_MASTER') {
+      ElMessage.success('已确认在 master')
+    }
+    checkOverdueReminders()
+  } catch (e: any) {
+    row.mergedMaster = prev
+    row.mergedAt = prevAt
+    ElMessage.error(e?.message || '保存失败')
+  } finally {
+    savingKey.value = ''
+  }
+}
+
+async function toggleDailyReleased(row: any) {
+  if (!dailyPageId.value) return
+  const next = !row.released
+  const prev = row.released
+  row.released = next
+  savingKey.value = saveKey(row.project, row.branch, 'dr')
+  try {
+    await apiClient.saveReleaseGoLiveState({
+      wikiPageId: dailyPageId.value,
+      project: row.project,
+      branch: row.branch,
+      released: next
+    })
+    if (next) remindedKeys.delete(`${row.project}|${row.branch}`)
+  } catch (e: any) {
+    row.released = prev
+    ElMessage.error(e?.message || '保存失败')
+  } finally {
+    savingKey.value = ''
+  }
+}
+
+function parseMergedAt(s: string) {
+  if (!s) return null
+  const t = Date.parse(String(s).replace(' ', 'T') + '+08:00')
+  return Number.isNaN(t) ? Date.parse(String(s).replace(' ', 'T')) : t
+}
+
+function checkOverdueReminders() {
+  if (dailyDate.value !== todayStr()) return
+  const now = Date.now()
+  for (const row of dailyRows.value) {
+    if (!row.mergedMaster || row.released || !row.mergedAt) continue
+    const t = parseMergedAt(row.mergedAt)
+    if (!t || now - t < REMIND_MS) continue
+    const key = `${row.project}|${row.branch}`
+    if (remindedKeys.has(key)) continue
+    remindedKeys.add(key)
+    ElNotification({
+      type: 'warning',
+      title: `发版提醒 · ${dailyDateLabel.value}`,
+      message: `${row.project} / ${row.branch} 已合并超过 5 分钟仍未上线，请尽快上线`,
+      duration: 0,
+      position: 'top-right'
+    })
+  }
+}
+
+async function toggleMerged(row: any, item: any) {
+  if (!board.value?.wikiPageId || isPlaceholderBranch(item.branch)) return
+  const next = !item.mergedMaster
+  const prev = item.mergedMaster
+  const prevCheck = item.masterCheck
+  item.mergedMaster = next
+  if (!next) item.masterCheck = null
+  recomputeBoardCounts()
+  savingKey.value = saveKey(row.project, item.branch, 'm')
+  try {
+    const res = await apiClient.saveReleaseGoLiveState({
+      wikiPageId: board.value.wikiPageId,
+      project: row.project,
+      branch: item.branch,
+      mergedMaster: next
+    })
+    if (res?.masterCheck) {
+      item.masterCheck = res.masterCheck
+      if (next && res.masterCheck.status === 'IN_MASTER') {
+        ElMessage.success(res.masterCheck.message || '已确认在 master')
+      } else if (next && res.masterCheck.status === 'NOT_IN_MASTER') {
+        ElMessage.warning(res.masterCheck.message || '还没进 master')
+      } else if (next && res.masterCheck.status === 'ERROR') {
+        ElMessage.error(res.masterCheck.message || '核对失败')
+      }
+    }
+  } catch (e: any) {
+    item.mergedMaster = prev
+    item.masterCheck = prevCheck
+    recomputeBoardCounts()
+    ElMessage.error(e?.message || '保存失败')
+  } finally {
+    savingKey.value = ''
+  }
+}
+
+async function reverifyMaster(row: any, item: any) {
+  if (!board.value?.wikiPageId || isPlaceholderBranch(item.branch)) return
+  savingKey.value = saveKey(row.project, item.branch, 'v')
+  try {
+    const res = await apiClient.verifyReleaseGoLiveMaster({
+      wikiPageId: board.value.wikiPageId,
+      project: row.project,
+      branch: item.branch
+    })
+    item.masterCheck = res?.masterCheck || null
+    if (res?.masterCheck?.status === 'IN_MASTER') {
+      ElMessage.success(res.masterCheck.message || '已在 master')
+    } else if (res?.masterCheck?.status === 'NOT_IN_MASTER') {
+      ElMessage.warning(res.masterCheck.message || '未进 master')
+    } else {
+      ElMessage.error(res?.masterCheck?.message || '核对失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '核对失败')
+  } finally {
+    savingKey.value = ''
+  }
+}
+
+async function toggleReleased(row: any, item: any) {
+  if (!board.value?.wikiPageId || isPlaceholderBranch(item.branch)) return
+  const next = !item.released
+  const prev = item.released
+  item.released = next
+  recomputeBoardCounts()
+  savingKey.value = saveKey(row.project, item.branch, 'r')
+  try {
+    await apiClient.saveReleaseGoLiveState({
+      wikiPageId: board.value.wikiPageId,
+      project: row.project,
+      branch: item.branch,
+      released: next
+    })
+  } catch (e: any) {
+    item.released = prev
+    recomputeBoardCounts()
+    ElMessage.error(e?.message || '保存失败')
+  } finally {
+    savingKey.value = ''
+  }
+}
 
 function state(r: any) {
   return r._merged ? 'MERGED' : r.status || 'BLOCK'
@@ -381,12 +978,27 @@ async function openLogs() {
   }
 }
 
-onMounted(loadSettings)
+onMounted(() => {
+  loadSettings()
+  dailyDate.value = todayStr()
+  const saved = localStorage.getItem(DAILY_TEXT_KEY + dailyDate.value)
+  if (saved) dailyText.value = saved
+  remindTimer = window.setInterval(checkOverdueReminders, 30000)
+})
+
+onUnmounted(() => {
+  if (remindTimer) window.clearInterval(remindTimer)
+})
 </script>
 
 <style scoped>
 .rm {
-  max-width: 1280px;
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+.rm :deep(.el-card) {
+  width: 100%;
 }
 .rm-head {
   display: flex;
@@ -396,6 +1008,124 @@ onMounted(loadSettings)
 .rm-title {
   font-size: 16px;
   font-weight: 600;
+}
+.main-tabs :deep(.el-tabs__header) {
+  margin-bottom: 14px;
+}
+.main-tabs :deep(.el-tabs__item) {
+  font-size: 15px;
+  font-weight: 600;
+}
+.daily-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.daily-date {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+}
+.daily-date b {
+  font-size: 18px;
+  color: var(--el-color-warning-dark-2);
+}
+.daily-table {
+  margin-top: 10px;
+}
+.wiki-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.wiki-input {
+  flex: 1;
+  min-width: 320px;
+}
+.board-progress {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.board-table {
+  width: 100%;
+  margin-bottom: 8px;
+}
+.project-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.jenkins-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.jenkins-link {
+  text-decoration: none;
+}
+.jenkins-num {
+  font-size: 13px;
+}
+.jenkins-num b {
+  font-size: 15px;
+  color: var(--el-color-success-dark-2);
+}
+.branch-name {
+  font-size: 12px;
+  word-break: break-all;
+}
+.issue-block {
+  margin: 2px 0 6px;
+  line-height: 1.4;
+  word-break: break-all;
+}
+.issue-block:last-child {
+  margin-bottom: 2px;
+}
+.issue-key {
+  font-weight: 600;
+  color: var(--el-color-primary);
+  text-decoration: none;
+}
+.issue-key:hover {
+  text-decoration: underline;
+}
+.issue-summary {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--el-text-color-regular);
+}
+.check-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.check-msg {
+  font-size: 12px;
+  line-height: 1.4;
+  word-break: break-all;
+}
+.check-msg.ck-IN_MASTER {
+  color: var(--el-color-success);
+}
+.check-msg.ck-NOT_IN_MASTER {
+  color: var(--el-color-danger);
+}
+.check-msg.ck-ERROR {
+  color: var(--el-color-warning-dark-2);
 }
 .grow {
   flex: 1;

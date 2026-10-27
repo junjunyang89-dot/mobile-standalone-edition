@@ -50,6 +50,13 @@
             <span class="pill" :class="'pill-' + roleTone(row.role)">{{ row.roleLabel }}</span>
           </template>
         </el-table-column>
+        <el-table-column label="功能模块" min-width="140">
+          <template #default="{ row }">
+            <span v-if="row.role === 'ADMIN' || row.allModules !== false" class="mod-cell">全部</span>
+            <span v-else-if="!(row.modules && row.modules.length)" class="mod-cell is-none">仅工作台</span>
+            <span v-else class="mod-cell" :title="moduleTitles(row.modules)">已开放 {{ row.modules.length }} 项</span>
+          </template>
+        </el-table-column>
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
             <span class="pill" :class="row.enabled ? 'pill-success' : 'pill-muted'">
@@ -97,7 +104,7 @@
     <el-dialog
       v-model="editVisible"
       :title="editing ? '编辑账号' : '新建账号'"
-      width="680px"
+      width="760px"
       class="pu-dialog"
       :close-on-click-modal="false"
     >
@@ -137,6 +144,42 @@
             <div v-if="roleDesc" class="role-desc">{{ roleDesc }}</div>
           </div>
         </el-form-item>
+        <el-form-item class="mod-item">
+          <template #label>
+            <span class="lbl">功能模块</span>
+          </template>
+          <div class="mod-field">
+            <div v-if="form.role === 'ADMIN'" class="mod-admin">
+              管理员始终能看全部入口，这里不用勾。
+            </div>
+            <template v-else>
+              <el-radio-group v-model="form.allModules" class="mod-scope">
+                <el-radio :value="true">全部模块</el-radio>
+                <el-radio :value="false">只开放勾选的模块</el-radio>
+              </el-radio-group>
+              <div v-if="!form.allModules" class="mod-groups">
+                <div v-for="g in moduleGroups" :key="g.label" class="mod-group">
+                  <div class="mod-group-head">
+                    <span class="mod-group-label">{{ g.label }}</span>
+                    <button type="button" class="mod-group-all" @click="toggleGroup(g)">
+                      {{ groupAllChecked(g) ? '取消本组' : '全选本组' }}
+                    </button>
+                  </div>
+                  <el-checkbox-group v-model="form.modules" class="mod-checks">
+                    <el-checkbox
+                      v-for="m in g.modules"
+                      :key="m.route"
+                      :value="m.route"
+                    >
+                      {{ m.label }}
+                    </el-checkbox>
+                  </el-checkbox-group>
+                </div>
+                <div class="mod-hint">工作台始终可见。没勾的入口侧栏不显示，直接打开链接也会被拦回首页。</div>
+              </div>
+            </template>
+          </div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <div class="dlg-foot">
@@ -169,18 +212,33 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { apiClient, type PlatformUserVo } from '../api'
+import { apiClient, type PlatformModuleGroup, type PlatformUserVo } from '../api'
 import { user } from '../stores/auth'
 
 const list = ref<PlatformUserVo[]>([])
 const roles = ref<Array<{ code: string; label: string; description: string }>>([])
+const moduleGroups = ref<PlatformModuleGroup[]>([])
 const loading = ref(false)
 const saving = ref(false)
 
 const editVisible = ref(false)
 const editing = ref<PlatformUserVo | null>(null)
-const form = reactive({ username: '', displayName: '', password: '', role: 'TESTER' })
+const form = reactive({
+  username: '',
+  displayName: '',
+  password: '',
+  role: 'TESTER',
+  allModules: true,
+  modules: [] as string[]
+})
 const roleDesc = computed(() => roles.value.find((r) => r.code === form.role)?.description || '')
+const routeLabel = computed(() => {
+  const map = new Map<string, string>()
+  for (const g of moduleGroups.value) {
+    for (const m of g.modules) map.set(m.route, m.label)
+  }
+  return map
+})
 
 const resetVisible = ref(false)
 const resetTarget = ref<PlatformUserVo | null>(null)
@@ -207,15 +265,36 @@ function loginParts(v: string) {
   }
 }
 
+function moduleTitles(routes: string[]) {
+  return routes.map((r) => routeLabel.value.get(r) || r).join('、')
+}
+
+function groupAllChecked(g: PlatformModuleGroup) {
+  return g.modules.every((m) => form.modules.includes(m.route))
+}
+
+function toggleGroup(g: PlatformModuleGroup) {
+  const routes = g.modules.map((m) => m.route)
+  if (groupAllChecked(g)) {
+    form.modules = form.modules.filter((r) => !routes.includes(r))
+  } else {
+    const set = new Set(form.modules)
+    for (const r of routes) set.add(r)
+    form.modules = [...set]
+  }
+}
+
 async function load() {
   loading.value = true
   try {
-    const [users, roleList] = await Promise.all([
+    const [users, roleList, groups] = await Promise.all([
       apiClient.fetchPlatformUsers(),
-      apiClient.fetchPlatformRoles()
+      apiClient.fetchPlatformRoles(),
+      apiClient.fetchPlatformModules()
     ])
     list.value = users
     roles.value = roleList
+    moduleGroups.value = groups
   } catch (e: any) {
     ElMessage.error(e?.message || '加载失败')
   } finally {
@@ -229,6 +308,8 @@ function openCreate() {
   form.displayName = ''
   form.password = ''
   form.role = 'TESTER'
+  form.allModules = true
+  form.modules = []
   editVisible.value = true
 }
 
@@ -238,6 +319,8 @@ function openEdit(row: PlatformUserVo) {
   form.displayName = row.displayName || ''
   form.password = ''
   form.role = row.role
+  form.allModules = row.allModules !== false
+  form.modules = [...(row.modules || [])]
   editVisible.value = true
 }
 
@@ -247,19 +330,37 @@ async function save() {
     if (!form.username.trim()) return ElMessage.warning('请填写登录名')
     if (form.password.length < 6) return ElMessage.warning('初始密码至少 6 位')
   }
+  const allModules = form.role === 'ADMIN' ? true : form.allModules
+  if (!allModules && form.modules.length === 0) {
+    try {
+      await ElMessageBox.confirm(
+        '一个模块都没勾，这个账号登录后侧栏只剩工作台。确定这样保存吗？',
+        '功能模块为空',
+        { type: 'warning', confirmButtonText: '仍然保存', cancelButtonText: '再改改' }
+      )
+    } catch {
+      return
+    }
+  }
   saving.value = true
   try {
+    const moduleBody = {
+      allModules,
+      modules: allModules ? [] : form.modules
+    }
     if (editing.value) {
       await apiClient.updatePlatformUser(editing.value.id, {
         displayName: form.displayName,
-        role: form.role
+        role: form.role,
+        ...moduleBody
       })
     } else {
       await apiClient.createPlatformUser({
         username: form.username.trim(),
         displayName: form.displayName.trim(),
         password: form.password,
-        role: form.role
+        role: form.role,
+        ...moduleBody
       })
     }
     editVisible.value = false
@@ -582,6 +683,87 @@ onMounted(load)
   font-size: 12px;
   line-height: 1.6;
   color: #86909c;
+}
+
+.mod-cell {
+  font-size: 12.5px;
+  color: #4e5969;
+}
+
+.mod-cell.is-none {
+  color: #d97706;
+}
+
+.mod-field {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.mod-admin {
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: #86909c;
+}
+
+.mod-scope :deep(.el-radio) {
+  margin-right: 18px;
+}
+
+.mod-groups {
+  max-height: 320px;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid #e5e6eb;
+  border-radius: 8px;
+  background: #fafbfc;
+}
+
+.mod-group + .mod-group {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed #e5e6eb;
+}
+
+.mod-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.mod-group-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #4e5969;
+}
+
+.mod-group-all {
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 12px;
+  color: var(--el-color-primary);
+  cursor: pointer;
+}
+
+.mod-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+
+.mod-checks :deep(.el-checkbox) {
+  margin-right: 0;
+  height: 28px;
+}
+
+.mod-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #a0a6ae;
 }
 
 .dlg-foot {

@@ -22,8 +22,12 @@ export interface CurrentUser {
   canWrite?: boolean
   canDelete?: boolean
   canManageUsers?: boolean
-  /** 后端算好的「这个角色看不到的路由」，菜单和路由守卫都用它 */
+  /** 后端算好的「这个角色 / 模块看不到的路由」，菜单和路由守卫都用它 */
   hiddenRoutes: string[]
+  /** 模块目录里看得见的路由；和 hiddenRoutes 一起按最长匹配判断 */
+  visibleRoutes?: string[]
+  /** 管理员给这个账号限了功能模块 */
+  moduleRestricted?: boolean
 }
 
 const token = ref<string>(readToken())
@@ -66,12 +70,37 @@ export const canManageUsers = computed(
   () => !!currentUser.value && (currentUser.value.bootstrapping || !!currentUser.value.canManageUsers)
 )
 
-/** 这个路由当前账号能不能进 */
+/**
+ * 这个路由当前账号能不能进。
+ * <p>
+ * 用最长匹配：勾了「性能报告」{@code /reports/esports/performance}、没勾「APP UI测试报告」{@code /reports}
+ * 时，不能因为父路径在隐藏清单里就把子页面也挡掉。
+ */
 export function canVisit(path: string): boolean {
   const u = currentUser.value
   if (!u || u.bootstrapping) return true
   const p = path.startsWith('/') ? path : `/${path}`
-  return !u.hiddenRoutes?.some((r) => p === r || p.startsWith(`${r}/`))
+  if (p === '/home' || p.startsWith('/home/')) return true
+
+  let best = ''
+  let allowed = true
+  for (const r of u.visibleRoutes || []) {
+    if ((p === r || p.startsWith(`${r}/`)) && r.length >= best.length) {
+      best = r
+      allowed = true
+    }
+  }
+  for (const r of u.hiddenRoutes || []) {
+    if ((p === r || p.startsWith(`${r}/`)) && r.length > best.length) {
+      best = r
+      allowed = false
+    }
+  }
+  // 目录里没有的路由（工作台以外的落地页、重定向）默认放行；真正边界在后端
+  if (!best) {
+    return !(u.hiddenRoutes || []).some((r) => p === r || p.startsWith(`${r}/`))
+  }
+  return allowed
 }
 
 /**

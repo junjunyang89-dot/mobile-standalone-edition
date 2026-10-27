@@ -401,6 +401,15 @@ export interface CurrentUserVo {
   canDelete?: boolean
   canManageUsers?: boolean
   hiddenRoutes: string[]
+  /** 模块目录里看得见的路由；和 hiddenRoutes 一起按最长匹配判断 */
+  visibleRoutes?: string[]
+  /** 管理员给这个账号限了功能模块 */
+  moduleRestricted?: boolean
+}
+
+export interface PlatformModuleGroup {
+  label: string
+  modules: Array<{ route: string; label: string }>
 }
 
 export interface ApiEndpointVo {
@@ -616,6 +625,10 @@ export interface PlatformUserVo {
   role: string
   roleLabel: string
   enabled: boolean
+  /** true = 功能模块不限 */
+  allModules?: boolean
+  /** 勾上的模块路由；allModules 时为 null */
+  modules?: string[] | null
   lastLoginAt?: string
   createdAt?: string
 }
@@ -868,6 +881,8 @@ class ApiClient {
   private usesWorker(endpoint: string) {
     const path = endpoint.split('?')[0]
     if (path.startsWith('/devices')) return true
+    // Scripts, evidence and device sessions all belong to the selected local worker.
+    if (path === '/smart-app' || path.startsWith('/smart-app/')) return true
     if (/\/ui-flows\/[^/]+\/execute$/.test(path)) {
       try {
         const workerHost = new URL(this.workerBaseURL).hostname
@@ -983,11 +998,18 @@ class ApiClient {
     )
   }
 
+  /** 可勾选的功能模块，按侧栏分组 */
+  async fetchPlatformModules() {
+    return this.request<PlatformModuleGroup[]>('/platform-users/modules')
+  }
+
   async createPlatformUser(body: {
     username: string
     displayName?: string
     password: string
     role: string
+    allModules?: boolean
+    modules?: string[]
   }) {
     return this.request<PlatformUserVo>('/platform-users', {
       method: 'POST',
@@ -997,7 +1019,13 @@ class ApiClient {
 
   async updatePlatformUser(
     id: string,
-    body: { displayName?: string; role?: string; enabled?: boolean }
+    body: {
+      displayName?: string
+      role?: string
+      enabled?: boolean
+      allModules?: boolean
+      modules?: string[]
+    }
   ) {
     return this.request<PlatformUserVo>(`/platform-users/${encodeURIComponent(id)}`, {
       method: 'PUT',
@@ -1017,6 +1045,22 @@ class ApiClient {
       method: 'DELETE'
     })
   }
+
+  // TestForge analysis relay: separate from APP/device execution.
+  async smartApp<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
+    return this.request<T>(`/smart-app${path}`, options)
+  }
+
+  async prepareAnalysisFromJira(body: unknown): Promise<any> { return this.request('/analysis-jobs/prepare', { method:'POST', body:JSON.stringify(body) }) }
+  async analysisPreparation(id:string): Promise<any> { return this.request(`/analysis-jobs/preparations/${encodeURIComponent(id)}`) }
+  async listAnalysisJobs(): Promise<any[]> { return this.request('/analysis-jobs') }
+  async analysisJobConfig(): Promise<any> { return this.request('/analysis-jobs/config') }
+  async getAnalysisJob(id: string): Promise<any> { return this.request(`/analysis-jobs/${encodeURIComponent(id)}`) }
+  async getAnalysisResult(id: string): Promise<any> { return this.request(`/analysis-jobs/${encodeURIComponent(id)}/result`) }
+  async createAnalysisJob(body: unknown): Promise<any> { return this.request('/analysis-jobs', { method: 'POST', body: JSON.stringify(body) }) }
+  async analysisJobAction(id: string, action: string): Promise<any> { return this.request(`/analysis-jobs/${encodeURIComponent(id)}/${action}`, { method: 'POST' }) }
+  async publishAnalysisRevision(id: string, result: unknown): Promise<any> { return this.request(`/analysis-jobs/${encodeURIComponent(id)}/result-revisions`, { method: 'POST', body: JSON.stringify(result) }) }
+  async importAnalysisResult(id: string, result: unknown): Promise<any> { return this.request(`/analysis-jobs/${encodeURIComponent(id)}/result`, { method: 'POST', body: JSON.stringify(result) }) }
 
   // 应用信息
   async getVersion() {
@@ -2436,8 +2480,15 @@ class ApiClient {
     })
   }
 
-  /** 发版邮件：发送 */
-  async sendReleaseMail(body: { to: string; cc?: string; subject: string; htmlBody: string }) {
+  /** 发版邮件：发送（带 title+wikiPageUrl 时服务端会先拉最新 Wiki 再发） */
+  async sendReleaseMail(body: {
+    to: string
+    cc?: string
+    subject: string
+    htmlBody: string
+    title?: string
+    wikiPageUrl?: string
+  }) {
     return this.request<any>('/release-doc/mail/send', {
       method: 'POST',
       body: JSON.stringify(body)
@@ -2476,21 +2527,60 @@ class ApiClient {
     return this.request<any[]>(`/release-merge/logs?limit=${limit}`)
   }
 
+  /** 合并到 testing：设置与合 master 共用令牌 / 目录 */
+  async getTestingMergeSettings() {
+    return this.request<any>('/testing-merge/settings')
+  }
+
+  /** 从 JIRA 单号解析项目:分支 */
+  async resolveTestingMerge(body: { text: string }) {
+    return this.request<any>('/testing-merge/resolve', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async checkTestingMerge(body: { rows: Record<string, unknown>[] }) {
+    return this.request<any>('/testing-merge/check', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async mergeTestingBranch(body: { projectCode: string; branch: string; sha: string; acked: string[] }) {
+    return this.request<any>('/testing-merge/merge', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async getTestingMergeLogs(limit = 50) {
+    return this.request<any[]>(`/testing-merge/logs?limit=${limit}`)
+  }
+
   /** 上线看板：从 Wiki 拉表并按项目汇总 */
   async getReleaseGoLiveBoard(wikiUrl: string) {
     const q = new URLSearchParams({ wikiUrl })
     return this.request<any>(`/release-go-live/board?${q}`)
   }
 
-  /** 上线看板：保存已合 master / 已上线勾选 */
+  /** 上线看板：按分支保存已合并 / 已上线（点已合并时会顺带核对 master） */
   async saveReleaseGoLiveState(body: {
     wikiPageId: string
     project: string
+    branch: string
     mergedMaster?: boolean
     released?: boolean
   }) {
     return this.request<any>('/release-go-live/state', {
       method: 'PUT',
+      body: JSON.stringify(body)
+    })
+  }
+
+  /** 上线看板：再核对一次是否已在 master */
+  async verifyReleaseGoLiveMaster(body: { wikiPageId: string; project: string; branch: string }) {
+    return this.request<any>('/release-go-live/verify-master', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  /** 每日发版校对：日期 + 项目：分支文本 */
+  async releaseGoLiveDaily(body: { date?: string; text: string }) {
+    return this.request<any>('/release-go-live/daily', {
+      method: 'POST',
       body: JSON.stringify(body)
     })
   }

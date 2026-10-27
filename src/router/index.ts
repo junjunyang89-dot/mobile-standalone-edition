@@ -9,6 +9,8 @@ const routes: RouteRecordRaw[] = [
     component: () => import('../layouts/MainLayout.vue'),
     redirect: '/home',
     children: [
+      { path: 'smart-app', name: 'SmartAppAutomation', component: () => import('../views/SmartAppAutomation.vue'), meta: { title: '智能 APP 自动化' } },
+      { path: 'analysis-tasks', name: 'AnalysisTasks', component: () => import('../views/AnalysisTasks.vue'), meta: { title: '分析任务' } },
       {
         path: 'home',
         name: 'Home',
@@ -106,6 +108,12 @@ const routes: RouteRecordRaw[] = [
         name: 'ReleaseMerge',
         component: () => import('../views/ReleaseMerge.vue'),
         meta: { title: '合并到 master' }
+      },
+      {
+        path: 'testing-merge',
+        name: 'TestingMerge',
+        component: () => import('../views/ReleaseTestingMerge.vue'),
+        meta: { title: '合并到 testing' }
       },
       {
         path: 'change-review',

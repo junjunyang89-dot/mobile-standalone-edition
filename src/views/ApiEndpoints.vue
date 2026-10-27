@@ -1904,7 +1904,8 @@ async function generate(row: ApiEndpointVo) {
       ElMessage({ type: 'warning', message: `生成 ${it.cases} 条，先停用：${it.note || ''}`, duration: 8000 })
     }
   } catch (e: any) {
-    if (String(e?.message || '').includes('千问没配')) return generateSkeleton(row)
+    // 千问 / ChatGPT 没配密钥时，后端报「xx 没配：…」，退回只生成骨架
+    if (String(e?.message || '').includes('没配：')) return generateSkeleton(row)
     ElMessage.error(e?.message || '生成失败')
   } finally {
     generatingId.value = ''
