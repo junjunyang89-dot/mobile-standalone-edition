@@ -780,6 +780,7 @@ function bootControlPlaneUrl() {
 }
 
 function resolveApiBaseUrl() {
+  if(import.meta.env.MODE === "qa-debug")return "http://127.0.0.1:3081/api"
   const boot = bootControlPlaneUrl()
   const stored = readStoredUrl(API_BASE_STORAGE_KEY, '')
   if (stored && !isLoopbackApiUrl(stored)) return stored
@@ -798,6 +799,7 @@ function resolveApiBaseUrl() {
 }
 
 function resolveWorkerBaseUrl() {
+  if(import.meta.env.MODE === "qa-debug")return "http://127.0.0.1:3081/api"
   return readStoredUrl(WORKER_BASE_STORAGE_KEY, resolveApiBaseUrl())
 }
 
