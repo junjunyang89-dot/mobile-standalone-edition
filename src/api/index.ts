@@ -1051,6 +1051,18 @@ class ApiClient {
     return this.request<T>(`/smart-app${path}`, options)
   }
 
+  private async analysisBrowserRequest(endpoint:string,body:unknown):Promise<any> {
+    const controller=new AbortController()
+    const timer=setTimeout(()=>controller.abort(),60000)
+    try{return await this.request(endpoint,{method:'POST',body:JSON.stringify(body),signal:controller.signal})}
+    catch(e:any){if(controller.signal.aborted)throw new Error('浏览器操作等待超时，请检查独立 Chrome 窗口；不要重复提交分析。');throw e}
+    finally{clearTimeout(timer)}
+  }
+  async openAnalysisDocument(body: unknown): Promise<any> { return this.analysisBrowserRequest('/analysis-jobs/browser/document/open',body) }
+  async captureAnalysisDocument(body: unknown): Promise<any> { return this.analysisBrowserRequest('/analysis-jobs/browser/document/capture',body) }
+  async reparseAnalysisBrowser(body: unknown): Promise<any> { return this.request('/analysis-jobs/browser/reparse', { method:'POST', body:JSON.stringify(body) }) }
+  async openAnalysisBrowser(body: unknown): Promise<any> { return this.analysisBrowserRequest('/analysis-jobs/browser/open',body) }
+  async captureAnalysisBrowser(body: unknown): Promise<any> { return this.analysisBrowserRequest('/analysis-jobs/browser/capture',body) }
   async prepareAnalysisFromJira(body: unknown): Promise<any> { return this.request('/analysis-jobs/prepare', { method:'POST', body:JSON.stringify(body) }) }
   async analysisPreparation(id:string): Promise<any> { return this.request(`/analysis-jobs/preparations/${encodeURIComponent(id)}`) }
   async listAnalysisJobs(): Promise<any[]> { return this.request('/analysis-jobs') }
@@ -1058,6 +1070,7 @@ class ApiClient {
   async getAnalysisJob(id: string): Promise<any> { return this.request(`/analysis-jobs/${encodeURIComponent(id)}`) }
   async getAnalysisResult(id: string): Promise<any> { return this.request(`/analysis-jobs/${encodeURIComponent(id)}/result`) }
   async createAnalysisJob(body: unknown): Promise<any> { return this.request('/analysis-jobs', { method: 'POST', body: JSON.stringify(body) }) }
+  async supplementAnalysisSources(id:string, repositories: Array<{projectId:string;targetRef:string}>):Promise<any> { return this.request(`/analysis-jobs/${encodeURIComponent(id)}/supplement-sources`,{method:'POST',body:JSON.stringify({repositories})}) }
   async analysisJobAction(id: string, action: string): Promise<any> { return this.request(`/analysis-jobs/${encodeURIComponent(id)}/${action}`, { method: 'POST' }) }
   async publishAnalysisRevision(id: string, result: unknown): Promise<any> { return this.request(`/analysis-jobs/${encodeURIComponent(id)}/result-revisions`, { method: 'POST', body: JSON.stringify(result) }) }
   async importAnalysisResult(id: string, result: unknown): Promise<any> { return this.request(`/analysis-jobs/${encodeURIComponent(id)}/result`, { method: 'POST', body: JSON.stringify(result) }) }
